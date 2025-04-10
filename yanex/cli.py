@@ -72,7 +72,9 @@ def run(
     # Run script
     log_path = exp_dir / "log.txt"
     env = os.environ.copy()
+    env = os.environ.copy()
     env["YANEX_CONFIG_PATH"] = str(exp_dir / "parameters.yaml")
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parent.parent) + os.pathsep + env.get("PYTHONPATH", "")
 
     with open(log_path, "w") as log_file:
         process = subprocess.run(
