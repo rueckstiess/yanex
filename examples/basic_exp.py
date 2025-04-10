@@ -11,8 +11,8 @@ with experiment.run():
 
     result = {
         "runtime_sec": 1.5,
-        "docs_scanned": params.get("n_docs", 1000),
-        "throughput": params.get("n_docs", 1000) / 1.5,
+        "docs_scanned": params.get("n_docs"),
+        "throughput": params.get("n_docs") / 1.5,
     }
 
     experiment.log_results(result)
