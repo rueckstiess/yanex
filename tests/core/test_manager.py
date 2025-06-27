@@ -12,6 +12,7 @@ from yanex.core.manager import ExperimentManager
 from yanex.utils.exceptions import (
     DirtyWorkingDirectoryError,
     ExperimentAlreadyRunningError,
+    ExperimentNotFoundError,
     ValidationError,
 )
 
@@ -500,3 +501,371 @@ class TestExperimentCreation:
             assert metadata["duration"] is None
             assert metadata["git"] == {"commit": "abc123", "branch": "main"}
             assert metadata["environment"] == {"python_version": "3.11.0"}
+
+
+class TestExperimentLifecycle:
+    """Test experiment lifecycle management functionality."""
+
+    def test_start_experiment_success(self):
+        """Test successful experiment start."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment in 'created' state
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            
+            metadata = {
+                "id": experiment_id,
+                "status": "created",
+                "created_at": "2023-01-01T00:00:00",
+                "started_at": None
+            }
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Start the experiment
+            manager.start_experiment(experiment_id)
+            
+            # Verify status changed
+            updated_metadata = manager.storage.load_metadata(experiment_id)
+            assert updated_metadata["status"] == "running"
+            assert updated_metadata["started_at"] is not None
+            assert "T" in updated_metadata["started_at"]  # Should be ISO format timestamp
+
+    def test_start_experiment_not_found(self):
+        """Test starting non-existent experiment."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            
+            with pytest.raises(ExperimentNotFoundError):
+                manager.start_experiment("nonexistent")
+
+    def test_start_experiment_wrong_status(self):
+        """Test starting experiment in wrong state."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment in 'completed' state
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            
+            metadata = {
+                "id": experiment_id,
+                "status": "completed",
+                "created_at": "2023-01-01T00:00:00"
+            }
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Should fail to start
+            with pytest.raises(ValueError, match="Expected status 'created'"):
+                manager.start_experiment(experiment_id)
+
+    def test_complete_experiment_success(self):
+        """Test successful experiment completion."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            
+            metadata = {
+                "id": experiment_id,
+                "status": "running",
+                "started_at": "2023-01-01T12:00:00",
+                "completed_at": None,
+                "duration": None
+            }
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Complete the experiment
+            manager.complete_experiment(experiment_id)
+            
+            # Verify status and timestamps
+            updated_metadata = manager.storage.load_metadata(experiment_id)
+            assert updated_metadata["status"] == "completed"
+            assert updated_metadata["completed_at"] is not None
+            assert updated_metadata["duration"] is not None
+
+    def test_complete_experiment_no_start_time(self):
+        """Test completing experiment without start time."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment without start time
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            
+            metadata = {
+                "id": experiment_id,
+                "status": "running",
+                "started_at": None
+            }
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Complete the experiment
+            manager.complete_experiment(experiment_id)
+            
+            # Should complete but duration should be None
+            updated_metadata = manager.storage.load_metadata(experiment_id)
+            assert updated_metadata["status"] == "completed"
+            assert updated_metadata["duration"] is None
+
+    def test_fail_experiment_success(self):
+        """Test successful experiment failure."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            
+            metadata = {
+                "id": experiment_id,
+                "status": "running",
+                "started_at": "2023-01-01T12:00:00"
+            }
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Fail the experiment
+            error_message = "Test error message"
+            manager.fail_experiment(experiment_id, error_message)
+            
+            # Verify status and error info
+            updated_metadata = manager.storage.load_metadata(experiment_id)
+            assert updated_metadata["status"] == "failed"
+            assert updated_metadata["error_message"] == error_message
+            assert updated_metadata["completed_at"] is not None
+            assert updated_metadata["duration"] is not None
+
+    def test_cancel_experiment_success(self):
+        """Test successful experiment cancellation."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            
+            metadata = {
+                "id": experiment_id,
+                "status": "running",
+                "started_at": "2023-01-01T12:00:00"
+            }
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Cancel the experiment
+            reason = "User requested cancellation"
+            manager.cancel_experiment(experiment_id, reason)
+            
+            # Verify status and cancellation info
+            updated_metadata = manager.storage.load_metadata(experiment_id)
+            assert updated_metadata["status"] == "cancelled"
+            assert updated_metadata["cancellation_reason"] == reason
+            assert updated_metadata["completed_at"] is not None
+            assert updated_metadata["duration"] is not None
+
+    def test_get_experiment_status_success(self):
+        """Test getting experiment status."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            
+            metadata = {"id": experiment_id, "status": "running"}
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Get status
+            status = manager.get_experiment_status(experiment_id)
+            assert status == "running"
+
+    def test_get_experiment_status_not_found(self):
+        """Test getting status of non-existent experiment."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            
+            with pytest.raises(ExperimentNotFoundError):
+                manager.get_experiment_status("nonexistent")
+
+    def test_get_experiment_metadata_success(self):
+        """Test getting complete experiment metadata."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            
+            original_metadata = {
+                "id": experiment_id,
+                "status": "completed",
+                "name": "test-experiment"
+            }
+            manager.storage.save_metadata(experiment_id, original_metadata)
+            
+            # Get metadata
+            metadata = manager.get_experiment_metadata(experiment_id)
+            assert metadata["id"] == experiment_id
+            assert metadata["status"] == "completed"
+            assert metadata["name"] == "test-experiment"
+
+    def test_get_experiment_metadata_not_found(self):
+        """Test getting metadata of non-existent experiment."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            
+            with pytest.raises(ExperimentNotFoundError):
+                manager.get_experiment_metadata("nonexistent")
+
+    def test_list_experiments_no_filter(self):
+        """Test listing all experiments."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create multiple experiments
+            experiment_ids = ["exp00001", "exp00002", "exp00003"]
+            for exp_id in experiment_ids:
+                exp_dir = experiments_dir / exp_id
+                exp_dir.mkdir(parents=True)
+                metadata = {"id": exp_id, "status": "completed"}
+                manager.storage.save_metadata(exp_id, metadata)
+            
+            # List all experiments
+            listed_ids = manager.list_experiments()
+            assert set(listed_ids) == set(experiment_ids)
+
+    def test_list_experiments_with_filter(self):
+        """Test listing experiments with status filter."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiments with different statuses
+            experiments = [
+                ("exp00001", "completed"),
+                ("exp00002", "failed"),
+                ("exp00003", "completed"),
+                ("exp00004", "running")
+            ]
+            
+            for exp_id, status in experiments:
+                exp_dir = experiments_dir / exp_id
+                exp_dir.mkdir(parents=True)
+                metadata = {"id": exp_id, "status": status}
+                manager.storage.save_metadata(exp_id, metadata)
+            
+            # Filter by completed status
+            completed_ids = manager.list_experiments(status_filter="completed")
+            assert set(completed_ids) == {"exp00001", "exp00003"}
+            
+            # Filter by failed status
+            failed_ids = manager.list_experiments(status_filter="failed")
+            assert failed_ids == ["exp00002"]
+
+    def test_list_experiments_ignores_corrupted(self):
+        """Test listing experiments ignores corrupted metadata."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create valid experiment
+            valid_id = "valid123"
+            exp_dir = experiments_dir / valid_id
+            exp_dir.mkdir(parents=True)
+            metadata = {"id": valid_id, "status": "completed"}
+            manager.storage.save_metadata(valid_id, metadata)
+            
+            # Create corrupted experiment
+            corrupt_id = "corrupt12"
+            corrupt_dir = experiments_dir / corrupt_id
+            corrupt_dir.mkdir(parents=True)
+            metadata_path = corrupt_dir / "metadata.json"
+            metadata_path.write_text("invalid json")
+            
+            # Should only return valid experiment when filtering
+            completed_ids = manager.list_experiments(status_filter="completed")
+            assert completed_ids == [valid_id]
+
+    def test_archive_experiment_success(self):
+        """Test successful experiment archiving."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment
+            experiment_id = "test1234"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            metadata = {"id": experiment_id, "status": "completed"}
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Archive the experiment
+            archive_path = manager.archive_experiment(experiment_id)
+            
+            # Verify experiment was moved
+            assert not exp_dir.exists()
+            assert archive_path.exists()
+            assert archive_path.name == experiment_id
+
+    def test_archive_experiment_not_found(self):
+        """Test archiving non-existent experiment."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            
+            with pytest.raises(ExperimentNotFoundError):
+                manager.archive_experiment("nonexistent")
+
+    def test_lifecycle_state_transitions(self):
+        """Test complete lifecycle state transitions."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            experiments_dir = Path(temp_dir)
+            manager = ExperimentManager(experiments_dir)
+            
+            # Create experiment (starts in 'created' state)
+            experiment_id = "lifecycle1"
+            exp_dir = experiments_dir / experiment_id
+            exp_dir.mkdir(parents=True)
+            metadata = {
+                "id": experiment_id,
+                "status": "created",
+                "started_at": None,
+                "completed_at": None,
+                "duration": None
+            }
+            manager.storage.save_metadata(experiment_id, metadata)
+            
+            # Verify initial state
+            assert manager.get_experiment_status(experiment_id) == "created"
+            
+            # Start experiment
+            manager.start_experiment(experiment_id)
+            assert manager.get_experiment_status(experiment_id) == "running"
+            
+            # Complete experiment
+            manager.complete_experiment(experiment_id)
+            assert manager.get_experiment_status(experiment_id) == "completed"
+            
+            # Verify final metadata
+            final_metadata = manager.get_experiment_metadata(experiment_id)
+            assert final_metadata["started_at"] is not None
+            assert final_metadata["completed_at"] is not None
+            assert final_metadata["duration"] is not None

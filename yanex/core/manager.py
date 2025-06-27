@@ -91,6 +91,248 @@ class ExperimentManager:
 
         return None
 
+    def start_experiment(self, experiment_id: str) -> None:
+        """Transition experiment to running state.
+
+        Args:
+            experiment_id: Experiment identifier
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist
+            ValueError: If experiment is not in 'created' state
+            StorageError: If metadata update fails
+        """
+        # Verify experiment exists
+        if not self.storage.experiment_exists(experiment_id):
+            from ..utils.exceptions import ExperimentNotFoundError
+            raise ExperimentNotFoundError(experiment_id)
+
+        # Load current metadata
+        metadata = self.storage.load_metadata(experiment_id)
+
+        # Verify experiment is in correct state
+        if metadata.get("status") != "created":
+            current_status = metadata.get("status", "unknown")
+            raise ValueError(
+                f"Cannot start experiment {experiment_id}. "
+                f"Expected status 'created', got '{current_status}'"
+            )
+
+        # Update status and timestamps
+        now = datetime.utcnow().isoformat()
+        metadata["status"] = "running"
+        metadata["started_at"] = now
+
+        # Save updated metadata
+        self.storage.save_metadata(experiment_id, metadata)
+
+    def complete_experiment(self, experiment_id: str) -> None:
+        """Mark experiment as completed.
+
+        Args:
+            experiment_id: Experiment identifier
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist
+            StorageError: If metadata update fails
+        """
+        # Verify experiment exists
+        if not self.storage.experiment_exists(experiment_id):
+            from ..utils.exceptions import ExperimentNotFoundError
+            raise ExperimentNotFoundError(experiment_id)
+
+        # Load current metadata
+        metadata = self.storage.load_metadata(experiment_id)
+
+        # Update status and timestamps
+        now = datetime.utcnow().isoformat()
+        metadata["status"] = "completed"
+        metadata["completed_at"] = now
+
+        # Calculate duration if we have start time
+        if metadata.get("started_at"):
+            try:
+                start_time = datetime.fromisoformat(metadata["started_at"])
+                end_time = datetime.fromisoformat(now)
+                duration = (end_time - start_time).total_seconds()
+                metadata["duration"] = duration
+            except (ValueError, TypeError):
+                # If we can't parse timestamps, skip duration calculation
+                metadata["duration"] = None
+        else:
+            metadata["duration"] = None
+
+        # Save updated metadata
+        self.storage.save_metadata(experiment_id, metadata)
+
+    def fail_experiment(self, experiment_id: str, error_message: str) -> None:
+        """Mark experiment as failed with error details.
+
+        Args:
+            experiment_id: Experiment identifier
+            error_message: Error message describing the failure
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist
+            StorageError: If metadata update fails
+        """
+        # Verify experiment exists
+        if not self.storage.experiment_exists(experiment_id):
+            from ..utils.exceptions import ExperimentNotFoundError
+            raise ExperimentNotFoundError(experiment_id)
+
+        # Load current metadata
+        metadata = self.storage.load_metadata(experiment_id)
+
+        # Update status and error information
+        now = datetime.utcnow().isoformat()
+        metadata["status"] = "failed"
+        metadata["completed_at"] = now
+        metadata["error_message"] = error_message
+
+        # Calculate duration if we have start time
+        if metadata.get("started_at"):
+            try:
+                start_time = datetime.fromisoformat(metadata["started_at"])
+                end_time = datetime.fromisoformat(now)
+                duration = (end_time - start_time).total_seconds()
+                metadata["duration"] = duration
+            except (ValueError, TypeError):
+                metadata["duration"] = None
+        else:
+            metadata["duration"] = None
+
+        # Save updated metadata
+        self.storage.save_metadata(experiment_id, metadata)
+
+    def cancel_experiment(self, experiment_id: str, reason: str) -> None:
+        """Mark experiment as cancelled with reason.
+
+        Args:
+            experiment_id: Experiment identifier
+            reason: Reason for cancellation
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist
+            StorageError: If metadata update fails
+        """
+        # Verify experiment exists
+        if not self.storage.experiment_exists(experiment_id):
+            from ..utils.exceptions import ExperimentNotFoundError
+            raise ExperimentNotFoundError(experiment_id)
+
+        # Load current metadata
+        metadata = self.storage.load_metadata(experiment_id)
+
+        # Update status and cancellation information
+        now = datetime.utcnow().isoformat()
+        metadata["status"] = "cancelled"
+        metadata["completed_at"] = now
+        metadata["cancellation_reason"] = reason
+
+        # Calculate duration if we have start time
+        if metadata.get("started_at"):
+            try:
+                start_time = datetime.fromisoformat(metadata["started_at"])
+                end_time = datetime.fromisoformat(now)
+                duration = (end_time - start_time).total_seconds()
+                metadata["duration"] = duration
+            except (ValueError, TypeError):
+                metadata["duration"] = None
+        else:
+            metadata["duration"] = None
+
+        # Save updated metadata
+        self.storage.save_metadata(experiment_id, metadata)
+
+    def get_experiment_status(self, experiment_id: str) -> str:
+        """Get current status of an experiment.
+
+        Args:
+            experiment_id: Experiment identifier
+
+        Returns:
+            Current experiment status
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist
+            StorageError: If metadata cannot be loaded
+        """
+        # Verify experiment exists
+        if not self.storage.experiment_exists(experiment_id):
+            from ..utils.exceptions import ExperimentNotFoundError
+            raise ExperimentNotFoundError(experiment_id)
+
+        # Load metadata and return status
+        metadata = self.storage.load_metadata(experiment_id)
+        return metadata.get("status", "unknown")
+
+    def get_experiment_metadata(self, experiment_id: str) -> Dict[str, Any]:
+        """Get complete metadata for an experiment.
+
+        Args:
+            experiment_id: Experiment identifier
+
+        Returns:
+            Complete experiment metadata
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist
+            StorageError: If metadata cannot be loaded
+        """
+        # Verify experiment exists
+        if not self.storage.experiment_exists(experiment_id):
+            from ..utils.exceptions import ExperimentNotFoundError
+            raise ExperimentNotFoundError(experiment_id)
+
+        return self.storage.load_metadata(experiment_id)
+
+    def list_experiments(self, status_filter: Optional[str] = None) -> List[str]:
+        """List experiment IDs, optionally filtered by status.
+
+        Args:
+            status_filter: Optional status to filter by (e.g., 'completed', 'failed')
+
+        Returns:
+            List of experiment IDs matching the criteria
+        """
+        experiment_ids = self.storage.list_experiments()
+
+        if status_filter is None:
+            return experiment_ids
+
+        # Filter by status
+        filtered_ids = []
+        for experiment_id in experiment_ids:
+            try:
+                if self.get_experiment_status(experiment_id) == status_filter:
+                    filtered_ids.append(experiment_id)
+            except Exception:
+                # Skip experiments with corrupted metadata
+                continue
+
+        return filtered_ids
+
+    def archive_experiment(self, experiment_id: str) -> Path:
+        """Archive an experiment by moving it to archive directory.
+
+        Args:
+            experiment_id: Experiment identifier
+
+        Returns:
+            Path where experiment was archived
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist
+            StorageError: If archiving fails
+        """
+        # Verify experiment exists
+        if not self.storage.experiment_exists(experiment_id):
+            from ..utils.exceptions import ExperimentNotFoundError
+            raise ExperimentNotFoundError(experiment_id)
+
+        return self.storage.archive_experiment(experiment_id)
+
     def prevent_concurrent_execution(self) -> None:
         """Ensure no other experiment is currently running.
 
