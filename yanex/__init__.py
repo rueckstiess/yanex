@@ -8,5 +8,7 @@ reproducibility and organization.
 __version__ = "0.1.0"
 __author__ = "Thomas"
 
-# Main API exports will be added when experiment module is implemented
-__all__ = []
+# Main API exports from experiment module
+from . import experiment
+
+__all__ = ["experiment"]
