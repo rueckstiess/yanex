@@ -23,4 +23,7 @@ with experiment.run():
     plot_path = "scan_plot.png"
     fig.savefig(plot_path)
 
+    for i in range(5):
+        print(f"Processing document {i + 1} of {params.get('n_docs')}")
+
     experiment.log_artifact("scan_plot.png", plot_path)

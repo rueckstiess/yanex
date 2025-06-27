@@ -11,10 +11,10 @@ def run(
     tags: list[str] = typer.Option([], "--tag", "-t", help="Tags for this experiment"),
     desc: str = typer.Option("", "--desc", "-d", help="Optional description"),
     param_override: list[str] = typer.Option([], "--param", help="Override parameters, e.g. --param=batch_size=64"),
+    no_git_check: bool = typer.Option(False, "--no-git-check", help="Skip git cleanliness check"),
 ):
     """Run an experiment with given parameters."""
     import os
-    import subprocess
     from datetime import datetime
     from pathlib import Path
     import yaml
@@ -31,7 +31,8 @@ def run(
     base_dir.mkdir(exist_ok=True)
 
     # Ensure git is clean
-    ensure_git_clean()
+    if not no_git_check:
+        ensure_git_clean()
 
     # Resolve script path
     script_path = Path(script).resolve()
@@ -69,31 +70,34 @@ def run(
     with open(exp_dir / "metadata.yaml", "w") as f:
         yaml.safe_dump(metadata, f)
 
-    # Run script
+    # Run script in-process
     log_path = exp_dir / "log.txt"
-    env = os.environ.copy()
     env = os.environ.copy()
     env["YANEX_CONFIG_PATH"] = str(exp_dir / "parameters.yaml")
     env["PYTHONPATH"] = str(Path(__file__).resolve().parent.parent) + os.pathsep + env.get("PYTHONPATH", "")
 
-    with open(log_path, "w") as log_file:
-        process = subprocess.run(
-            ["python", str(script_path)],
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            cwd=script_path.parent,
-            env=env,
-        )
-        metadata["exit_code"] = process.returncode
+    # Set env vars for the current process (affects imported modules)
+    os.environ.update(env)
+
+    try:
+        import sys
+        from contextlib import redirect_stdout, redirect_stderr
+
+        with open(log_path, "w") as log_file, redirect_stdout(log_file), redirect_stderr(log_file):
+            exec(open(script_path).read(), {"__name__": "__main__"})
+        metadata["exit_code"] = 0
+    except Exception as e:
+        metadata["exit_code"] = 1
+        typer.echo(f"Experiment {exp_id} failed: {e}")
+    finally:
         metadata["finished_at"] = datetime.now().isoformat()
         metadata["duration_sec"] = (
             datetime.fromisoformat(metadata["finished_at"]) - datetime.fromisoformat(metadata["started_at"])
         ).total_seconds()
+        with open(exp_dir / "metadata.yaml", "w") as f:
+            yaml.safe_dump(metadata, f)
 
-    with open(exp_dir / "metadata.yaml", "w") as f:
-        yaml.safe_dump(metadata, f)
-
-    typer.echo(f"Experiment {exp_id} completed with exit code {process.returncode}")
+    typer.echo(f"Experiment {exp_id} completed with exit code {metadata['exit_code']}")
 
 
 @app.command(name="list")

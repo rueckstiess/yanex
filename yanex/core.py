@@ -21,9 +21,7 @@ def _ensure_initialized():
 
     config_path = os.environ.get("YANEX_CONFIG_PATH")
     if not config_path or not Path(config_path).exists():
-        raise RuntimeError(
-            "YANEX_CONFIG_PATH not set or does not point to a valid file"
-        )
+        raise RuntimeError("YANEX_CONFIG_PATH not set or does not point to a valid file")
 
     _params = yaml.safe_load(Path(config_path).read_text())
     _exp_dir = Path(config_path).parent
@@ -74,6 +72,7 @@ def run():
     meta = yaml.safe_load(_metadata_path.read_text()) or {}
     meta["run_started_at"] = datetime.now().isoformat()
     start = time.time()
+
     try:
         yield
     except Exception as e:
