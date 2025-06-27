@@ -1,6 +1,7 @@
 """
 Pytest configuration and shared fixtures.
 """
+
 import tempfile
 import shutil
 from pathlib import Path
@@ -23,17 +24,17 @@ def temp_dir() -> Generator[Path, None, None]:
 def git_repo(temp_dir: Path) -> git.Repo:
     """Create a temporary git repository for tests."""
     repo = git.Repo.init(temp_dir)
-    
+
     # Configure git user for tests
     repo.config_writer().set_value("user", "name", "Test User").release()
     repo.config_writer().set_value("user", "email", "test@example.com").release()
-    
+
     # Create initial commit
     test_file = temp_dir / "test.txt"
     test_file.write_text("initial content")
-    repo.index.add([str(test_file)])
+    repo.index.add([str(test_file.relative_to(temp_dir))])
     repo.index.commit("Initial commit")
-    
+
     return repo
 
 
@@ -63,7 +64,7 @@ model_type: "transformer"
 def sample_experiment_script(temp_dir: Path) -> Path:
     """Create a sample experiment script."""
     script_path = temp_dir / "experiment.py"
-    script_content = '''
+    script_content = """
 from yanex import experiment
 
 params = experiment.get_params()
@@ -75,6 +76,6 @@ with experiment.run():
         "docs_processed": params.get("n_docs", 1000)
     }
     experiment.log_results(result)
-'''
+"""
     script_path.write_text(script_content)
     return script_path
