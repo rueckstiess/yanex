@@ -177,11 +177,113 @@ yanex run script.py \
 3. Handle script lifecycle and error propagation
 4. Add comprehensive error handling and user feedback
 
-### Phase 4: Testing and Polish
-1. Write comprehensive CLI tests
+### Phase 4: Additional CLI Commands
+1. Implement `yanex list` command with comprehensive filtering
+2. Implement `yanex show <id>` command for detailed experiment view
+3. Implement `yanex status` command for system status
+4. Design reusable filtering and formatting components
+
+### Phase 5: Testing and Polish
+1. Write comprehensive CLI tests for all commands
 2. Test with various script patterns and edge cases
 3. Add progress indicators and rich console output
 4. Write documentation and examples
+
+## Additional CLI Commands Design
+
+### List Command (`yanex list`)
+
+**Purpose**: Display experiments with powerful filtering and formatting options
+
+**Basic Usage:**
+```bash
+yanex list                    # Last 10 experiments
+yanex list --all              # All experiments
+yanex list -n 5               # Last 5 experiments
+```
+
+**Filtering Options:**
+```bash
+--status STATUS               # Filter by status (created/running/completed/failed/cancelled)
+--name PATTERN               # Filter by name with glob patterns
+--tag TAG                    # Filter by tag (repeatable, AND logic)
+--started TIMESPEC           # Filter by start time (human-readable)
+--ended TIMESPEC            # Filter by end time (human-readable)
+```
+
+**Time Specification Examples:**
+- "today", "yesterday", "last week", "2 hours ago"
+- ISO dates: "2023-01-01", "2023-12-31T15:30:00"
+- Relative: "1 week ago", "2 days ago"
+
+**Output Format:**
+- Rich table with colors for different statuses
+- Columns: ID, Name, Status, Duration, Tags, Started
+- Status colors: 🟢 completed, 🔴 failed, 🟡 running, ⚪ created, 🟠 cancelled
+
+**Architecture Components:**
+
+1. **ExperimentFilter Class** (reusable for other commands):
+   ```python
+   class ExperimentFilter:
+       def filter_experiments(
+           self,
+           status: Optional[str] = None,
+           name_pattern: Optional[str] = None,
+           tags: List[str] = None,
+           started_after: Optional[datetime] = None,
+           started_before: Optional[datetime] = None,
+           ended_after: Optional[datetime] = None,
+           ended_before: Optional[datetime] = None,
+           limit: Optional[int] = None
+       ) -> List[Dict[str, Any]]
+   ```
+
+2. **Rich Console Formatter**:
+   - Status-based colors
+   - Duration calculation and formatting
+   - Table layout with proper column alignment
+
+3. **Time Parsing Utilities**:
+   - Library: `dateparser` for human-readable time parsing
+   - Support for natural language and ISO formats
+   - Timezone handling and validation
+
+**File Structure:**
+```
+yanex/cli/
+├── commands/
+│   ├── run.py           # ✅ Existing
+│   ├── list.py          # 🆕 List command
+│   ├── show.py          # 🆕 Show command (future)
+│   └── status.py        # 🆕 Status command (future)
+├── filters/
+│   ├── __init__.py      # 🆕 Filter exports
+│   ├── base.py          # 🆕 ExperimentFilter class
+│   └── time_utils.py    # 🆕 Date parsing utilities
+├── formatters/
+│   ├── __init__.py      # 🆕 Formatter exports
+│   └── console.py       # 🆕 Rich console formatting
+└── main.py              # Update to include new commands
+```
+
+**Dependencies:**
+- `dateparser`: Human-readable date parsing
+- `rich`: Enhanced console output (already included)
+
+### Show Command (`yanex show <id>`) - Future
+
+**Purpose**: Display detailed information about a specific experiment
+- Complete metadata, configuration, results
+- Artifact list with file sizes
+- Execution timeline and logs
+
+### Status Command (`yanex status`) - Future
+
+**Purpose**: Show system status and health information
+- Repository status, storage usage
+- Running experiments
+- Recent activity summary
 
 ## Technical Considerations
 
@@ -190,6 +292,8 @@ yanex run script.py \
 - **Error propagation**: Map script exceptions to experiment status
 - **Module patching**: Thread-safe experiment context injection
 - **Configuration validation**: Early validation before script execution
+- **Reusable components**: Filter and formatting logic shared across commands
+- **Performance**: Efficient experiment loading and filtering for large datasets
 
 ## Future Extensions
 
@@ -197,3 +301,6 @@ yanex run script.py \
 - Integration with external config systems
 - Advanced logging and progress tracking
 - Parallel execution support
+- Experiment comparison and diff tools
+- Export capabilities (CSV, JSON)
+- Experiment deletion and archiving

@@ -18,17 +18,21 @@ from yanex.utils.exceptions import ExperimentContextError
 class TestThreadLocalState:
     """Test thread-local state management."""
 
-    def test_no_active_context_error(self):
-        """Test error when no active experiment context."""
-        with pytest.raises(
-            ExperimentContextError, match="No active experiment context"
-        ):
-            experiment.get_params()
+    def test_no_active_context_standalone_mode(self):
+        """Test standalone mode when no active experiment context."""
+        # In standalone mode, get_params() should return empty dict
+        params = experiment.get_params()
+        assert params == {}
+        
+        # And is_standalone() should return True
+        assert experiment.is_standalone() is True
+        assert experiment.has_context() is False
 
     def test_get_current_experiment_id_no_context(self):
-        """Test getting experiment ID without context raises error."""
-        with pytest.raises(ExperimentContextError):
-            experiment._get_current_experiment_id()
+        """Test getting experiment ID without context returns None in standalone mode."""
+        # In standalone mode, should return None instead of raising exception
+        experiment_id = experiment._get_current_experiment_id()
+        assert experiment_id is None
 
     def test_set_and_get_experiment_id(self):
         """Test setting and getting experiment ID."""
@@ -45,8 +49,9 @@ class TestThreadLocalState:
         experiment._set_current_experiment_id("test12345")
         experiment._clear_current_experiment_id()
 
-        with pytest.raises(ExperimentContextError):
-            experiment._get_current_experiment_id()
+        # After clearing, should return None (standalone mode)
+        experiment_id = experiment._get_current_experiment_id()
+        assert experiment_id is None
 
     def test_thread_isolation(self):
         """Test that thread-local state is isolated between threads."""
@@ -353,8 +358,9 @@ class TestExperimentContext:
         status = self.manager.get_experiment_status(self.experiment_id)
         assert status == "completed"
 
-        with pytest.raises(ExperimentContextError):
-            experiment._get_current_experiment_id()
+        # After context exit, should return to standalone mode
+        experiment_id = experiment._get_current_experiment_id()
+        assert experiment_id is None
 
     @patch("yanex.experiment._get_experiment_manager")
     def test_context_manager_with_exception(self, mock_get_manager):

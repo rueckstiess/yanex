@@ -31,6 +31,7 @@ setup(
         "pyyaml>=6.0",
         "rich>=12.0.0",
         "gitpython>=3.1.0",
+        "dateparser>=1.1.0",
     ],
     extras_require={
         "dev": [

@@ -1,0 +1,234 @@
+"""
+Core experiment filtering functionality.
+"""
+
+import fnmatch
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from ...core.manager import ExperimentManager
+
+
+class ExperimentFilter:
+    """
+    Reusable experiment filtering system for CLI commands.
+    
+    Supports filtering by status, name patterns, tags, and time ranges.
+    Can be used by list, delete, archive, and other commands.
+    """
+    
+    def __init__(self, manager: Optional[ExperimentManager] = None):
+        """
+        Initialize experiment filter.
+        
+        Args:
+            manager: ExperimentManager instance (creates default if None)
+        """
+        self.manager = manager or ExperimentManager()
+    
+    def filter_experiments(
+        self,
+        status: Optional[str] = None,
+        name_pattern: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        started_after: Optional[datetime] = None,
+        started_before: Optional[datetime] = None,
+        ended_after: Optional[datetime] = None,
+        ended_before: Optional[datetime] = None,
+        limit: Optional[int] = None,
+        include_all: bool = False
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter experiments based on multiple criteria.
+        
+        Args:
+            status: Filter by experiment status (created/running/completed/failed/cancelled)
+            name_pattern: Filter by name using glob patterns (e.g., "*tuning*")
+            tags: List of tags - experiments must have ALL specified tags
+            started_after: Filter experiments started after this time
+            started_before: Filter experiments started before this time
+            ended_after: Filter experiments ended after this time  
+            ended_before: Filter experiments ended before this time
+            limit: Maximum number of results to return (for pagination)
+            include_all: If True, ignore default limit and return all matching experiments
+            
+        Returns:
+            List of experiment metadata dictionaries matching all criteria
+            
+        Raises:
+            ValueError: If invalid status or other parameters provided
+        """
+        # Validate status if provided
+        if status is not None:
+            valid_statuses = {"created", "running", "completed", "failed", "cancelled"}
+            if status not in valid_statuses:
+                raise ValueError(f"Invalid status '{status}'. Valid options: {', '.join(sorted(valid_statuses))}")
+        
+        # Get all experiments
+        all_experiments = self._load_all_experiments()
+        
+        # Apply filters
+        filtered = all_experiments
+        
+        if status is not None:
+            filtered = [exp for exp in filtered if exp.get("status") == status]
+            
+        if name_pattern is not None:
+            filtered = [exp for exp in filtered if self._matches_name_pattern(exp, name_pattern)]
+            
+        if tags:
+            filtered = [exp for exp in filtered if self._has_all_tags(exp, tags)]
+            
+        if started_after is not None:
+            filtered = [exp for exp in filtered if self._started_after(exp, started_after)]
+            
+        if started_before is not None:
+            filtered = [exp for exp in filtered if self._started_before(exp, started_before)]
+            
+        if ended_after is not None:
+            filtered = [exp for exp in filtered if self._ended_after(exp, ended_after)]
+            
+        if ended_before is not None:
+            filtered = [exp for exp in filtered if self._ended_before(exp, ended_before)]
+        
+        # Sort by creation time (newest first)
+        filtered.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        
+        # Apply limit
+        if not include_all and limit is not None:
+            filtered = filtered[:limit]
+        elif not include_all and limit is None:
+            # Default limit of 10 if not explicitly requesting all
+            filtered = filtered[:10]
+            
+        return filtered
+    
+    def _load_all_experiments(self) -> List[Dict[str, Any]]:
+        """
+        Load metadata for all experiments.
+        
+        Returns:
+            List of experiment metadata dictionaries
+        """
+        experiments = []
+        experiments_dir = self.manager.storage.experiments_dir
+        
+        if not experiments_dir.exists():
+            return experiments
+        
+        # Iterate through all experiment directories
+        for exp_dir in experiments_dir.iterdir():
+            if not exp_dir.is_dir():
+                continue
+                
+            experiment_id = exp_dir.name
+            
+            try:
+                # Load metadata for this experiment
+                metadata = self.manager.storage.load_metadata(experiment_id)
+                
+                # Add the experiment ID to metadata for convenience
+                metadata["id"] = experiment_id
+                
+                experiments.append(metadata)
+                
+            except Exception:
+                # Skip experiments with corrupted or missing metadata
+                continue
+                
+        return experiments
+    
+    def _matches_name_pattern(self, experiment: Dict[str, Any], pattern: str) -> bool:
+        """Check if experiment name matches glob pattern."""
+        name = experiment.get("name", "")
+        if not name:
+            # Handle unnamed experiments
+            name = "[unnamed]"
+        return fnmatch.fnmatch(name.lower(), pattern.lower())
+    
+    def _has_all_tags(self, experiment: Dict[str, Any], required_tags: List[str]) -> bool:
+        """Check if experiment has all required tags."""
+        exp_tags = set(experiment.get("tags", []))
+        required_tags_set = set(required_tags)
+        return required_tags_set.issubset(exp_tags)
+    
+    def _started_after(self, experiment: Dict[str, Any], after_time: datetime) -> bool:
+        """Check if experiment started after the specified time."""
+        started_at = experiment.get("started_at")
+        if not started_at:
+            return False
+        
+        try:
+            # Parse the ISO format timestamp with proper timezone handling
+            if started_at.endswith('Z'):
+                exp_start = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+            elif '+' in started_at:
+                exp_start = datetime.fromisoformat(started_at)
+            else:
+                # No timezone info, assume UTC
+                from datetime import timezone
+                exp_start = datetime.fromisoformat(started_at).replace(tzinfo=timezone.utc)
+            return exp_start >= after_time
+        except Exception:
+            return False
+    
+    def _started_before(self, experiment: Dict[str, Any], before_time: datetime) -> bool:
+        """Check if experiment started before the specified time."""
+        started_at = experiment.get("started_at")
+        if not started_at:
+            return False
+        
+        try:
+            # Parse the ISO format timestamp with proper timezone handling
+            if started_at.endswith('Z'):
+                exp_start = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+            elif '+' in started_at:
+                exp_start = datetime.fromisoformat(started_at)
+            else:
+                # No timezone info, assume UTC
+                from datetime import timezone
+                exp_start = datetime.fromisoformat(started_at).replace(tzinfo=timezone.utc)
+            return exp_start < before_time
+        except Exception:
+            return False
+    
+    def _ended_after(self, experiment: Dict[str, Any], after_time: datetime) -> bool:
+        """Check if experiment ended after the specified time."""
+        ended_at = experiment.get("ended_at")
+        if not ended_at:
+            return False
+        
+        try:
+            # Parse the ISO format timestamp with proper timezone handling
+            if ended_at.endswith('Z'):
+                exp_end = datetime.fromisoformat(ended_at.replace('Z', '+00:00'))
+            elif '+' in ended_at:
+                exp_end = datetime.fromisoformat(ended_at)
+            else:
+                # No timezone info, assume UTC
+                from datetime import timezone
+                exp_end = datetime.fromisoformat(ended_at).replace(tzinfo=timezone.utc)
+            return exp_end >= after_time
+        except Exception:
+            return False
+    
+    def _ended_before(self, experiment: Dict[str, Any], before_time: datetime) -> bool:
+        """Check if experiment ended before the specified time."""
+        ended_at = experiment.get("ended_at")
+        if not ended_at:
+            return False
+        
+        try:
+            # Parse the ISO format timestamp with proper timezone handling
+            if ended_at.endswith('Z'):
+                exp_end = datetime.fromisoformat(ended_at.replace('Z', '+00:00'))
+            elif '+' in ended_at:
+                exp_end = datetime.fromisoformat(ended_at)
+            else:
+                # No timezone info, assume UTC
+                from datetime import timezone
+                exp_end = datetime.fromisoformat(ended_at).replace(tzinfo=timezone.utc)
+            return exp_end < before_time
+        except Exception:
+            return False

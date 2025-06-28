@@ -5,6 +5,7 @@ Main CLI entry point for yanex.
 import click
 
 from .commands.run import run
+from .commands.list import list_experiments
 
 
 @click.group()
@@ -25,6 +26,7 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 
 # Register commands
 cli.add_command(run)
+cli.add_command(list_experiments, name="list")
 
 
 if __name__ == "__main__":
