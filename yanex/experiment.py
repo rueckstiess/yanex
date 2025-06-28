@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .core.manager import ExperimentManager
-from .utils.exceptions import ExperimentContextError
+from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
 
 # Thread-local storage for current experiment context
 _local = threading.local()
@@ -191,15 +191,14 @@ def log_matplotlib_figure(fig, filename: str, **kwargs) -> None:
         ImportError: If matplotlib is not available
     """
     try:
-        import matplotlib.pyplot as plt
+        import os
+        import tempfile
+
+        import matplotlib.pyplot as plt  # noqa: F401
     except ImportError as err:
         raise ImportError(
-            "matplotlib is required for log_matplotlib_figure. "
-            "Install it with: pip install matplotlib"
+            "matplotlib is required for log_matplotlib_figure. Install it with: pip install matplotlib"
         ) from err
-    
-    import tempfile
-    import os
 
     experiment_id = _get_current_experiment_id()
     manager = _get_experiment_manager()
@@ -338,60 +337,59 @@ class ExperimentContext:
             _clear_current_experiment_id()
 
 
-def create_context(experiment_id: str) -> ExperimentContext:
-    """Create experiment context manager for a specific experiment.
-    
-    Args:
-        experiment_id: ID of existing experiment to create context for
-        
-    Returns:
-        ExperimentContext for use with 'with' statement
-        
-    Raises:
-        ExperimentNotFoundError: If experiment doesn't exist
-    """
-    # Verify experiment exists
-    manager = _get_experiment_manager()
-    if not manager.storage.experiment_exists(experiment_id):
-        from .utils.exceptions import ExperimentNotFoundError
-        raise ExperimentNotFoundError(experiment_id)
-    
-    return ExperimentContext(experiment_id)
-
-
 def create_experiment(
     script_path: Path,
     name: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None,
-    description: Optional[str] = None,
+    description: Optional[str] = None
 ) -> ExperimentContext:
-    """Create a new experiment and return its context manager.
-    
+    """Create a new experiment.
+
     Args:
-        script_path: Path to the Python script to run
+        script_path: Path to the experiment script
         name: Optional experiment name
-        config: Configuration dictionary
-        tags: List of tags for the experiment
+        config: Optional experiment configuration
+        tags: Optional list of tags
         description: Optional experiment description
-        
+
     Returns:
-        ExperimentContext for use with 'with' statement
-        
+        ExperimentContext for the new experiment
+
     Raises:
-        DirtyWorkingDirectoryError: If git working directory is not clean
-        ValidationError: If input parameters are invalid
-        ExperimentAlreadyRunningError: If another experiment is running
-        StorageError: If experiment creation fails
+        ExperimentContextError: If experiment creation fails
     """
     manager = _get_experiment_manager()
     experiment_id = manager.create_experiment(
         script_path=script_path,
         name=name,
-        config=config,
-        tags=tags,
-        description=description,
+        config=config or {},
+        tags=tags or [],
+        description=description
     )
+    return ExperimentContext(experiment_id)
+
+
+def create_context(experiment_id: str) -> ExperimentContext:
+    """Create context for an existing experiment.
+
+    Args:
+        experiment_id: ID of the existing experiment
+
+    Returns:
+        ExperimentContext for the experiment
+
+    Raises:
+        ExperimentNotFoundError: If experiment doesn't exist
+    """
+    manager = _get_experiment_manager()
+    
+    # Verify experiment exists
+    try:
+        manager.get_experiment_metadata(experiment_id)
+    except Exception:
+        raise ExperimentNotFoundError(f"Experiment '{experiment_id}' not found")
+    
     return ExperimentContext(experiment_id)
 
 
@@ -399,7 +397,7 @@ def run() -> ExperimentContext:
     """Create experiment context manager.
 
     Note: This function is intended to be used by the CLI.
-    For programmatic usage, use create_experiment() instead.
+    For programmatic usage, create experiments first using the manager.
 
     Returns:
         ExperimentContext for use with 'with' statement
@@ -411,6 +409,5 @@ def run() -> ExperimentContext:
     # For now, raise an error indicating this needs CLI integration
     raise ExperimentContextError(
         "Direct experiment.run() is not yet implemented. "
-        "Use CLI commands like 'yanex run script.py' to run experiments, "
-        "or use create_experiment() for programmatic usage."
+        "Use CLI commands like 'yanex run script.py' to run experiments."
     )
