@@ -3,7 +3,7 @@ Tests for yanex CLI filtering functionality.
 """
 
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 from typing import Dict, Any, List
@@ -330,3 +330,26 @@ class TestTimeUtils:
         result = parse_time_spec("2025-01-01T12:00:00+05:00")
         assert result is not None
         assert result.tzinfo is not None
+
+    def test_parse_time_spec_relative_days(self):
+        """Test parsing relative day terms returns beginning of day."""
+        from datetime import date, time, timezone
+        
+        # Test "today" returns beginning of today
+        today_result = parse_time_spec("today")
+        expected_today = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+        assert today_result == expected_today
+        
+        # Test "yesterday" returns beginning of yesterday  
+        yesterday_result = parse_time_spec("yesterday")
+        expected_yesterday = datetime.combine(date.today() - timedelta(days=1), time.min, tzinfo=timezone.utc)
+        assert yesterday_result == expected_yesterday
+        
+        # Test "tomorrow" returns beginning of tomorrow
+        tomorrow_result = parse_time_spec("tomorrow")
+        expected_tomorrow = datetime.combine(date.today() + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        assert tomorrow_result == expected_tomorrow
+        
+        # Test case insensitive
+        today_upper = parse_time_spec("TODAY")
+        assert today_upper == expected_today
