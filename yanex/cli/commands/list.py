@@ -47,6 +47,11 @@ from ..formatters import ExperimentTableFormatter
     "ended_spec", 
     help="Show experiments ended on or after this time (e.g., 'today', 'last week', '2023-01-01')"
 )
+@click.option(
+    "--archived",
+    is_flag=True,
+    help="Show archived experiments instead of regular experiments"
+)
 @click.pass_context
 def list_experiments(
     ctx: click.Context,
@@ -57,6 +62,7 @@ def list_experiments(
     tags: List[str],
     started_spec: Optional[str],
     ended_spec: Optional[str],
+    archived: bool,
 ) -> None:
     """
     List experiments with filtering options.
@@ -129,6 +135,10 @@ def list_experiments(
         # Create filter and apply criteria
         experiment_filter = ExperimentFilter()
         
+        # When showing archived experiments, we need to get all experiments first
+        # to avoid the default limit cutting off archived experiments
+        force_all = show_all or archived
+        
         experiments = experiment_filter.filter_experiments(
             status=status,
             name_pattern=name_pattern,
@@ -137,9 +147,23 @@ def list_experiments(
             started_before=started_before,
             ended_after=ended_after,
             ended_before=ended_before,
-            limit=limit,
-            include_all=show_all
+            limit=None if force_all else limit,
+            include_all=force_all,
+            include_archived=archived
         )
+        
+        # Filter experiments based on archived flag
+        if archived:
+            experiments = [exp for exp in experiments if exp.get("archived", False)]
+        else:
+            experiments = [exp for exp in experiments if not exp.get("archived", False)]
+        
+        # Apply limit after filtering by archived status if needed
+        if not show_all and limit is not None:
+            experiments = experiments[:limit]
+        elif not show_all and limit is None and not archived:
+            # Only apply default limit to regular experiments, not archived
+            experiments = experiments[:10]
         
         if verbose:
             click.echo(f"Found {len(experiments)} matching experiments")
@@ -153,15 +177,23 @@ def list_experiments(
             return
         
         # Display table
+        table_title = "Yanex Archived Experiments" if archived else "Yanex Experiments"
         formatter.print_experiments_table(
             experiments, 
-            title="Yanex Experiments"
+            title=table_title
         )
         
         # Show summary if filtering was applied or not showing all
         if any([status, name_pattern, tags, started_spec, ended_spec]) or (not show_all and limit != len(experiments)):
             # Get total count for summary
-            total_experiments = experiment_filter.filter_experiments(include_all=True)
+            total_experiments = experiment_filter.filter_experiments(include_all=True, include_archived=archived)
+            
+            # Filter total based on archived flag too
+            if archived:
+                total_experiments = [exp for exp in total_experiments if exp.get("archived", False)]
+            else:
+                total_experiments = [exp for exp in total_experiments if not exp.get("archived", False)]
+                
             formatter.print_summary(experiments, len(total_experiments))
         
     except ValueError as e:

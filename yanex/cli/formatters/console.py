@@ -106,18 +106,22 @@ class ExperimentTableFormatter:
             
         self.console.print(table)
     
-    def print_summary(self, experiments: List[Dict[str, Any]], total_count: int = None) -> None:
+    def print_summary(self, experiments: List[Dict[str, Any]], total_count: int = None, show_help: bool = True) -> None:
         """
         Print summary information about the experiments.
         
         Args:
             experiments: Filtered experiment list  
             total_count: Total number of experiments before filtering (if different)
+            show_help: Whether to show helpful hints about viewing more experiments
         """
         count = len(experiments)
         
         if total_count is not None and total_count != count:
             summary = f"Showing {count} of {total_count} experiments"
+            # Add helpful hint if showing limited results
+            if show_help and count < total_count:
+                summary += " (use --all to show all experiments)"
         else:
             summary = f"Found {count} experiment{'s' if count != 1 else ''}"
             

@@ -18,8 +18,13 @@ from yanex.utils.exceptions import ExperimentNotFoundError
     "show_metrics",
     help="Comma-separated list of specific metrics to show in results table (e.g., 'accuracy,loss,f1_score')"
 )
+@click.option(
+    "--archived",
+    is_flag=True,
+    help="Include archived experiments in search"
+)
 @click.pass_context
-def show_experiment(ctx, experiment_identifier: str, show_metrics: Optional[str]):
+def show_experiment(ctx, experiment_identifier: str, show_metrics: Optional[str], archived: bool):
     """
     Show detailed information about an experiment.
     
@@ -36,7 +41,7 @@ def show_experiment(ctx, experiment_identifier: str, show_metrics: Optional[str]
         formatter = ExperimentTableFormatter()
         
         # Try to find the experiment
-        experiment = find_experiment(filter_obj, experiment_identifier)
+        experiment = find_experiment(filter_obj, experiment_identifier, archived)
         
         if experiment is None:
             click.echo(f"Error: No experiment found with ID or name '{experiment_identifier}'", err=True)
@@ -59,16 +64,21 @@ def show_experiment(ctx, experiment_identifier: str, show_metrics: Optional[str]
             requested_metrics = [metric.strip() for metric in show_metrics.split(',') if metric.strip()]
         
         # Display detailed experiment information
-        display_experiment_details(filter_obj.manager, experiment, formatter, requested_metrics)
+        display_experiment_details(filter_obj.manager, experiment, formatter, requested_metrics, archived)
         
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         ctx.exit(1)
 
 
-def find_experiment(filter_obj: ExperimentFilter, identifier: str) -> Optional[Dict[str, Any] | List[Dict[str, Any]]]:
+def find_experiment(filter_obj: ExperimentFilter, identifier: str, include_archived: bool = False) -> Optional[Dict[str, Any] | List[Dict[str, Any]]]:
     """
     Find experiment by ID or name.
+    
+    Args:
+        filter_obj: ExperimentFilter instance
+        identifier: Experiment ID or name
+        include_archived: Whether to search archived experiments
     
     Returns:
         - Single experiment dict if found by ID or unique name
@@ -77,7 +87,7 @@ def find_experiment(filter_obj: ExperimentFilter, identifier: str) -> Optional[D
     """
     # First, try to find by exact ID match
     try:
-        all_experiments = filter_obj._load_all_experiments()
+        all_experiments = filter_obj._load_all_experiments(include_archived)
         
         # Try ID match first (exact 8-character match)
         if len(identifier) == 8:
@@ -105,7 +115,7 @@ def find_experiment(filter_obj: ExperimentFilter, identifier: str) -> Optional[D
         return None
 
 
-def display_experiment_details(manager: ExperimentManager, experiment: Dict[str, Any], formatter: ExperimentTableFormatter, requested_metrics: Optional[List[str]] = None):
+def display_experiment_details(manager: ExperimentManager, experiment: Dict[str, Any], formatter: ExperimentTableFormatter, requested_metrics: Optional[List[str]] = None, include_archived: bool = False):
     """Display comprehensive experiment details."""
     from rich.console import Console
     from rich.panel import Panel
@@ -179,7 +189,7 @@ def display_experiment_details(manager: ExperimentManager, experiment: Dict[str,
     
     # Configuration
     try:
-        config = manager.storage.load_config(experiment_id)
+        config = manager.storage.load_config(experiment_id, include_archived)
         if config:
             config_table = Table(show_header=True, header_style="bold magenta", box=box.SIMPLE)
             config_table.add_column("Parameter", style="cyan")
@@ -203,7 +213,7 @@ def display_experiment_details(manager: ExperimentManager, experiment: Dict[str,
     
     # Results
     try:
-        results = manager.storage.load_results(experiment_id)
+        results = manager.storage.load_results(experiment_id, include_archived)
         if results:
             # Get all unique metric names
             all_metrics = set()
@@ -376,7 +386,7 @@ def display_experiment_details(manager: ExperimentManager, experiment: Dict[str,
     # Artifacts
     try:
         import os
-        experiment_dir = manager.storage.get_experiment_dir(experiment_id)
+        experiment_dir = manager.storage.get_experiment_dir(experiment_id, include_archived)
         artifacts_dir = experiment_dir / "artifacts"
         
         if artifacts_dir.exists():
@@ -407,7 +417,7 @@ def display_experiment_details(manager: ExperimentManager, experiment: Dict[str,
     
     # Environment and execution info
     try:
-        metadata = manager.storage.load_metadata(experiment_id)
+        metadata = manager.storage.load_metadata(experiment_id, include_archived)
         env_info = metadata.get("environment", {})
         git_info = metadata.get("git", {})
         

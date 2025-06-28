@@ -37,7 +37,8 @@ class ExperimentFilter:
         ended_after: Optional[datetime] = None,
         ended_before: Optional[datetime] = None,
         limit: Optional[int] = None,
-        include_all: bool = False
+        include_all: bool = False,
+        include_archived: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Filter experiments based on multiple criteria.
@@ -52,6 +53,7 @@ class ExperimentFilter:
             ended_before: Filter experiments ended before this time
             limit: Maximum number of results to return (for pagination)
             include_all: If True, ignore default limit and return all matching experiments
+            include_archived: If True, include archived experiments in results
             
         Returns:
             List of experiment metadata dictionaries matching all criteria
@@ -66,7 +68,7 @@ class ExperimentFilter:
                 raise ValueError(f"Invalid status '{status}'. Valid options: {', '.join(sorted(valid_statuses))}")
         
         # Get all experiments
-        all_experiments = self._load_all_experiments()
+        all_experiments = self._load_all_experiments(include_archived)
         
         # Apply filters
         filtered = all_experiments
@@ -104,9 +106,12 @@ class ExperimentFilter:
             
         return filtered
     
-    def _load_all_experiments(self) -> List[Dict[str, Any]]:
+    def _load_all_experiments(self, include_archived: bool = False) -> List[Dict[str, Any]]:
         """
         Load metadata for all experiments.
+        
+        Args:
+            include_archived: Whether to include archived experiments
         
         Returns:
             List of experiment metadata dictionaries
@@ -117,25 +122,46 @@ class ExperimentFilter:
         if not experiments_dir.exists():
             return experiments
         
-        # Iterate through all experiment directories
-        for exp_dir in experiments_dir.iterdir():
-            if not exp_dir.is_dir():
-                continue
+        # Helper function to load experiments from a directory
+        def load_from_directory(directory: Path, is_archived: bool = False):
+            for exp_dir in directory.iterdir():
+                if not exp_dir.is_dir():
+                    continue
                 
-            experiment_id = exp_dir.name
-            
-            try:
-                # Load metadata for this experiment
-                metadata = self.manager.storage.load_metadata(experiment_id)
+                # Skip the archived directory when loading regular experiments
+                if not is_archived and exp_dir.name == "archived":
+                    continue
+                    
+                experiment_id = exp_dir.name
                 
-                # Add the experiment ID to metadata for convenience
-                metadata["id"] = experiment_id
+                # Validate experiment ID format (8 characters)
+                if len(experiment_id) != 8:
+                    continue
                 
-                experiments.append(metadata)
-                
-            except Exception:
-                # Skip experiments with corrupted or missing metadata
-                continue
+                try:
+                    # Load metadata for this experiment
+                    metadata = self.manager.storage.load_metadata(experiment_id, include_archived=is_archived)
+                    
+                    # Add the experiment ID to metadata for convenience
+                    metadata["id"] = experiment_id
+                    
+                    # Add archived flag to distinguish archived experiments
+                    metadata["archived"] = is_archived
+                    
+                    experiments.append(metadata)
+                    
+                except Exception:
+                    # Skip experiments with corrupted or missing metadata
+                    continue
+        
+        # Load regular experiments
+        load_from_directory(experiments_dir, is_archived=False)
+        
+        # Load archived experiments if requested
+        if include_archived:
+            archived_dir = experiments_dir / "archived"
+            if archived_dir.exists():
+                load_from_directory(archived_dir, is_archived=True)
                 
         return experiments
     

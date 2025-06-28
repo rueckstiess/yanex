@@ -54,12 +54,13 @@ class ExperimentStorage:
 
         return exp_dir
 
-    def get_experiment_directory(self, experiment_id: str) -> Path:
+    def get_experiment_directory(self, experiment_id: str, include_archived: bool = False) -> Path:
         """
         Get path to experiment directory.
 
         Args:
             experiment_id: Experiment identifier
+            include_archived: Whether to search archived experiments too
 
         Returns:
             Path to experiment directory
@@ -69,10 +70,27 @@ class ExperimentStorage:
         """
         exp_dir = self.experiments_dir / experiment_id
 
-        if not exp_dir.exists():
-            raise StorageError(f"Experiment directory not found: {exp_dir}")
+        if exp_dir.exists():
+            return exp_dir
+        
+        if include_archived:
+            archive_dir = self.experiments_dir / "archived" 
+            archive_path = archive_dir / experiment_id
+            if archive_path.exists():
+                return archive_path
 
-        return exp_dir
+        # If we get here, experiment not found
+        locations = [f"{exp_dir}"]
+        if include_archived:
+            locations.append(f"{archive_path}")
+        
+        raise StorageError(f"Experiment directory not found in: {', '.join(locations)}")
+
+    def get_experiment_dir(self, experiment_id: str, include_archived: bool = False) -> Path:
+        """
+        Alias for get_experiment_directory to match show command usage.
+        """
+        return self.get_experiment_directory(experiment_id, include_archived)
 
     def save_metadata(self, experiment_id: str, metadata: Dict[str, Any]) -> None:
         """
@@ -98,12 +116,13 @@ class ExperimentStorage:
         except Exception as e:
             raise StorageError(f"Failed to save metadata: {e}") from e
 
-    def load_metadata(self, experiment_id: str) -> Dict[str, Any]:
+    def load_metadata(self, experiment_id: str, include_archived: bool = False) -> Dict[str, Any]:
         """
         Load experiment metadata.
 
         Args:
             experiment_id: Experiment identifier
+            include_archived: Whether to search archived experiments too
 
         Returns:
             Metadata dictionary
@@ -111,7 +130,7 @@ class ExperimentStorage:
         Raises:
             StorageError: If metadata cannot be loaded
         """
-        exp_dir = self.get_experiment_directory(experiment_id)
+        exp_dir = self.get_experiment_directory(experiment_id, include_archived)
         metadata_path = exp_dir / "metadata.json"
 
         if not metadata_path.exists():
@@ -142,12 +161,13 @@ class ExperimentStorage:
         except Exception as e:
             raise StorageError(f"Failed to save config: {e}") from e
 
-    def load_config(self, experiment_id: str) -> Dict[str, Any]:
+    def load_config(self, experiment_id: str, include_archived: bool = False) -> Dict[str, Any]:
         """
         Load experiment configuration.
 
         Args:
             experiment_id: Experiment identifier
+            include_archived: Whether to search archived experiments too
 
         Returns:
             Configuration dictionary
@@ -155,7 +175,7 @@ class ExperimentStorage:
         Raises:
             StorageError: If configuration cannot be loaded
         """
-        exp_dir = self.get_experiment_directory(experiment_id)
+        exp_dir = self.get_experiment_directory(experiment_id, include_archived)
         config_path = exp_dir / "config.yaml"
 
         if not config_path.exists():
@@ -188,12 +208,13 @@ class ExperimentStorage:
         except Exception as e:
             raise StorageError(f"Failed to save results: {e}") from e
 
-    def load_results(self, experiment_id: str) -> List[Dict[str, Any]]:
+    def load_results(self, experiment_id: str, include_archived: bool = False) -> List[Dict[str, Any]]:
         """
         Load experiment results.
 
         Args:
             experiment_id: Experiment identifier
+            include_archived: Whether to search archived experiments too
 
         Returns:
             List of result dictionaries
@@ -201,7 +222,7 @@ class ExperimentStorage:
         Raises:
             StorageError: If results cannot be loaded
         """
-        exp_dir = self.get_experiment_directory(experiment_id)
+        exp_dir = self.get_experiment_directory(experiment_id, include_archived)
         results_path = exp_dir / "results.json"
 
         if not results_path.exists():
@@ -350,36 +371,55 @@ class ExperimentStorage:
             "stderr": exp_dir / "stderr.log",
         }
 
-    def list_experiments(self) -> List[str]:
+    def list_experiments(self, include_archived: bool = False) -> List[str]:
         """
         List all experiment IDs.
+
+        Args:
+            include_archived: Whether to include archived experiments
 
         Returns:
             List of experiment IDs
         """
-        if not self.experiments_dir.exists():
-            return []
-
         experiment_ids = []
-        for item in self.experiments_dir.iterdir():
-            if item.is_dir() and len(item.name) == 8:
-                # Basic validation that it looks like an experiment ID
-                experiment_ids.append(item.name)
+        
+        # List regular experiments
+        if self.experiments_dir.exists():
+            for item in self.experiments_dir.iterdir():
+                if item.is_dir() and len(item.name) == 8 and item.name != "archived":
+                    # Basic validation that it looks like an experiment ID
+                    experiment_ids.append(item.name)
+
+        # List archived experiments if requested
+        if include_archived:
+            archive_dir = self.experiments_dir / "archived"
+            if archive_dir.exists():
+                for item in archive_dir.iterdir():
+                    if item.is_dir() and len(item.name) == 8:
+                        # Basic validation that it looks like an experiment ID
+                        experiment_ids.append(item.name)
 
         return sorted(experiment_ids)
 
-    def experiment_exists(self, experiment_id: str) -> bool:
+    def experiment_exists(self, experiment_id: str, include_archived: bool = False) -> bool:
         """
         Check if experiment exists.
 
         Args:
             experiment_id: Experiment identifier
+            include_archived: Whether to check archived experiments too
 
         Returns:
             True if experiment exists
         """
         exp_dir = self.experiments_dir / experiment_id
-        return exp_dir.exists() and exp_dir.is_dir()
+        if exp_dir.exists() and exp_dir.is_dir():
+            return True
+            
+        if include_archived:
+            return self.archived_experiment_exists(experiment_id)
+            
+        return False
 
     def archive_experiment(
         self, experiment_id: str, archive_dir: Optional[Path] = None
@@ -412,5 +452,150 @@ class ExperimentStorage:
             shutil.move(str(exp_dir), str(archive_path))
         except Exception as e:
             raise StorageError(f"Failed to archive experiment: {e}") from e
+
+        return archive_path
+
+    def unarchive_experiment(
+        self, experiment_id: str, archive_dir: Optional[Path] = None
+    ) -> Path:
+        """
+        Unarchive an experiment by moving it back to experiments directory.
+
+        Args:
+            experiment_id: Experiment identifier
+            archive_dir: Archive directory, defaults to ./experiments/archived
+
+        Returns:
+            Path where experiment was unarchived
+
+        Raises:
+            StorageError: If unarchiving fails
+        """
+        if archive_dir is None:
+            archive_dir = self.experiments_dir / "archived"
+
+        archive_path = archive_dir / experiment_id
+        if not archive_path.exists():
+            raise StorageError(f"Archived experiment not found: {archive_path}")
+
+        exp_dir = self.experiments_dir / experiment_id
+        if exp_dir.exists():
+            raise StorageError(f"Experiment directory already exists: {exp_dir}")
+
+        try:
+            shutil.move(str(archive_path), str(exp_dir))
+        except Exception as e:
+            raise StorageError(f"Failed to unarchive experiment: {e}") from e
+
+        return exp_dir
+
+    def delete_experiment(self, experiment_id: str) -> None:
+        """
+        Permanently delete an experiment directory.
+
+        Args:
+            experiment_id: Experiment identifier
+
+        Raises:
+            StorageError: If deletion fails
+        """
+        exp_dir = self.get_experiment_directory(experiment_id)
+
+        try:
+            shutil.rmtree(exp_dir)
+        except Exception as e:
+            raise StorageError(f"Failed to delete experiment: {e}") from e
+
+    def delete_archived_experiment(
+        self, experiment_id: str, archive_dir: Optional[Path] = None
+    ) -> None:
+        """
+        Permanently delete an archived experiment directory.
+
+        Args:
+            experiment_id: Experiment identifier
+            archive_dir: Archive directory, defaults to ./experiments/archived
+
+        Raises:
+            StorageError: If deletion fails
+        """
+        if archive_dir is None:
+            archive_dir = self.experiments_dir / "archived"
+
+        archive_path = archive_dir / experiment_id
+        if not archive_path.exists():
+            raise StorageError(f"Archived experiment not found: {archive_path}")
+
+        try:
+            shutil.rmtree(archive_path)
+        except Exception as e:
+            raise StorageError(f"Failed to delete archived experiment: {e}") from e
+
+    def list_archived_experiments(self, archive_dir: Optional[Path] = None) -> List[str]:
+        """
+        List all archived experiment IDs.
+
+        Args:
+            archive_dir: Archive directory, defaults to ./experiments/archived
+
+        Returns:
+            List of archived experiment IDs
+        """
+        if archive_dir is None:
+            archive_dir = self.experiments_dir / "archived"
+
+        if not archive_dir.exists():
+            return []
+
+        experiment_ids = []
+        for item in archive_dir.iterdir():
+            if item.is_dir() and len(item.name) == 8:
+                # Basic validation that it looks like an experiment ID
+                experiment_ids.append(item.name)
+
+        return sorted(experiment_ids)
+
+    def archived_experiment_exists(
+        self, experiment_id: str, archive_dir: Optional[Path] = None
+    ) -> bool:
+        """
+        Check if archived experiment exists.
+
+        Args:
+            experiment_id: Experiment identifier
+            archive_dir: Archive directory, defaults to ./experiments/archived
+
+        Returns:
+            True if archived experiment exists
+        """
+        if archive_dir is None:
+            archive_dir = self.experiments_dir / "archived"
+
+        archive_path = archive_dir / experiment_id
+        return archive_path.exists() and archive_path.is_dir()
+
+    def get_archived_experiment_directory(
+        self, experiment_id: str, archive_dir: Optional[Path] = None
+    ) -> Path:
+        """
+        Get path to archived experiment directory.
+
+        Args:
+            experiment_id: Experiment identifier
+            archive_dir: Archive directory, defaults to ./experiments/archived
+
+        Returns:
+            Path to archived experiment directory
+
+        Raises:
+            StorageError: If archived experiment directory doesn't exist
+        """
+        if archive_dir is None:
+            archive_dir = self.experiments_dir / "archived"
+
+        archive_path = archive_dir / experiment_id
+
+        if not archive_path.exists():
+            raise StorageError(f"Archived experiment directory not found: {archive_path}")
 
         return archive_path
