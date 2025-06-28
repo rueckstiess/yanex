@@ -360,6 +360,7 @@ class ExperimentManager:
         config: Optional[Dict[str, Any]] = None,
         tags: Optional[List[str]] = None,
         description: Optional[str] = None,
+        allow_dirty: bool = False,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -369,18 +370,20 @@ class ExperimentManager:
             config: Configuration dictionary
             tags: List of tags for the experiment
             description: Optional experiment description
+            allow_dirty: Allow running with uncommitted changes
 
         Returns:
             Experiment ID
 
         Raises:
-            DirtyWorkingDirectoryError: If git working directory is not clean
+            DirtyWorkingDirectoryError: If git working directory is not clean and allow_dirty=False
             ValidationError: If input parameters are invalid
             ExperimentAlreadyRunningError: If another experiment is running
             StorageError: If experiment creation fails
         """
-        # Validate git working directory is clean
-        validate_clean_working_directory()
+        # Validate git working directory is clean (unless explicitly allowed)
+        if not allow_dirty:
+            validate_clean_working_directory()
 
         # Prevent concurrent execution
         self.prevent_concurrent_execution()

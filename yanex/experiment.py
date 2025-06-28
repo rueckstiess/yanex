@@ -5,6 +5,7 @@ This module provides the main interface for experiment tracking using context ma
 and thread-local storage for safe concurrent usage.
 """
 
+import os
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -17,14 +18,17 @@ _local = threading.local()
 
 
 def _get_current_experiment_id() -> Optional[str]:
-    """Get current experiment ID from thread-local storage.
+    """Get current experiment ID from thread-local storage or environment.
 
     Returns:
         Current experiment ID, or None if no active experiment context
     """
-    if not hasattr(_local, "experiment_id"):
-        return None
-    return _local.experiment_id
+    # First check thread-local storage (for direct API usage)
+    if hasattr(_local, "experiment_id"):
+        return _local.experiment_id
+    
+    # Then check environment variables (for CLI subprocess execution)
+    return os.environ.get("YANEX_EXPERIMENT_ID")
 
 
 def _set_current_experiment_id(experiment_id: str) -> None:
@@ -80,8 +84,24 @@ def get_params() -> Dict[str, Any]:
     if experiment_id is None:
         return {}
     
-    manager = _get_experiment_manager()
-    return manager.storage.load_config(experiment_id)
+    # If experiment ID comes from environment (CLI mode), read params from environment
+    if hasattr(_local, "experiment_id"):
+        # Direct API usage - read from storage
+        manager = _get_experiment_manager()
+        return manager.storage.load_config(experiment_id)
+    else:
+        # CLI subprocess mode - read from environment variables
+        params = {}
+        for key, value in os.environ.items():
+            if key.startswith("YANEX_PARAM_"):
+                param_key = key[12:]  # Remove "YANEX_PARAM_" prefix
+                # Try to parse as JSON for complex types, fallback to string
+                try:
+                    import json
+                    params[param_key] = json.loads(value)
+                except (json.JSONDecodeError, ValueError):
+                    params[param_key] = value
+        return params
 
 
 def get_param(key: str, default: Any = None) -> Any:
