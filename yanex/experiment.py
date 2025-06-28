@@ -16,17 +16,14 @@ from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
 _local = threading.local()
 
 
-def _get_current_experiment_id() -> str:
+def _get_current_experiment_id() -> Optional[str]:
     """Get current experiment ID from thread-local storage.
 
     Returns:
-        Current experiment ID
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        Current experiment ID, or None if no active experiment context
     """
     if not hasattr(_local, "experiment_id"):
-        raise ExperimentContextError("No active experiment context. Use 'with experiment.run():' to create one.")
+        return None
     return _local.experiment_id
 
 
@@ -55,16 +52,34 @@ def _get_experiment_manager() -> ExperimentManager:
     return ExperimentManager()
 
 
+def is_standalone() -> bool:
+    """Check if running in standalone mode (no experiment context).
+    
+    Returns:
+        True if no active experiment context exists
+    """
+    return _get_current_experiment_id() is None
+
+
+def has_context() -> bool:
+    """Check if there is an active experiment context.
+    
+    Returns:
+        True if there is an active experiment context
+    """
+    return _get_current_experiment_id() is not None
+
+
 def get_params() -> Dict[str, Any]:
     """Get experiment parameters.
 
     Returns:
-        Dictionary of experiment parameters
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        Dictionary of experiment parameters (empty dict in standalone mode)
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return {}
+    
     manager = _get_experiment_manager()
     return manager.storage.load_config(experiment_id)
 
@@ -77,37 +92,31 @@ def get_param(key: str, default: Any = None) -> Any:
         default: Default value if key not found
 
     Returns:
-        Parameter value or default
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        Parameter value or default (default is returned in standalone mode)
     """
     params = get_params()
     return params.get(key, default)
 
 
-def get_status() -> str:
+def get_status() -> Optional[str]:
     """Get current experiment status.
 
     Returns:
-        Current experiment status
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        Current experiment status, or None in standalone mode
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return None
+    
     manager = _get_experiment_manager()
     return manager.get_experiment_status(experiment_id)
 
 
-def get_experiment_id() -> str:
+def get_experiment_id() -> Optional[str]:
     """Get current experiment ID.
 
     Returns:
-        Current experiment ID
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        Current experiment ID, or None in standalone mode
     """
     return _get_current_experiment_id()
 
@@ -116,12 +125,12 @@ def get_metadata() -> Dict[str, Any]:
     """Get complete experiment metadata.
 
     Returns:
-        Complete experiment metadata
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        Complete experiment metadata (empty dict in standalone mode)
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return {}
+    
     manager = _get_experiment_manager()
     return manager.get_experiment_metadata(experiment_id)
 
@@ -132,11 +141,14 @@ def log_results(data: Dict[str, Any], step: Optional[int] = None) -> None:
     Args:
         data: Results data to log
         step: Optional step number (auto-incremented if None)
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        
+    Note:
+        Does nothing in standalone mode (no active experiment context)
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return  # No-op in standalone mode
+    
     manager = _get_experiment_manager()
 
     # Warn if replacing existing step
@@ -154,11 +166,14 @@ def log_artifact(name: str, file_path: Path) -> None:
     Args:
         name: Name for the artifact
         file_path: Path to source file
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        
+    Note:
+        Does nothing in standalone mode (no active experiment context)
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return  # No-op in standalone mode
+    
     manager = _get_experiment_manager()
     manager.storage.save_artifact(experiment_id, name, file_path)
 
@@ -169,11 +184,14 @@ def log_text(content: str, filename: str) -> None:
     Args:
         content: Text content to save
         filename: Name for the artifact file
-
-    Raises:
-        ExperimentContextError: If no active experiment context
+        
+    Note:
+        Does nothing in standalone mode (no active experiment context)
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return  # No-op in standalone mode
+    
     manager = _get_experiment_manager()
     manager.storage.save_text_artifact(experiment_id, filename, content)
 
@@ -187,9 +205,15 @@ def log_matplotlib_figure(fig, filename: str, **kwargs) -> None:
         **kwargs: Additional arguments passed to fig.savefig()
 
     Raises:
-        ExperimentContextError: If no active experiment context
         ImportError: If matplotlib is not available
+        
+    Note:
+        Does nothing in standalone mode (no active experiment context)
     """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return  # No-op in standalone mode
+    
     try:
         import os
         import tempfile
@@ -200,7 +224,6 @@ def log_matplotlib_figure(fig, filename: str, **kwargs) -> None:
             "matplotlib is required for log_matplotlib_figure. Install it with: pip install matplotlib"
         ) from err
 
-    experiment_id = _get_current_experiment_id()
     manager = _get_experiment_manager()
 
     # Save figure to temporary file
@@ -226,6 +249,9 @@ def completed() -> None:
         ExperimentContextError: If no active experiment context
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        raise ExperimentContextError("No active experiment context. Cannot mark experiment as completed in standalone mode.")
+    
     manager = _get_experiment_manager()
     manager.complete_experiment(experiment_id)
 
@@ -243,6 +269,9 @@ def fail(message: str) -> None:
         ExperimentContextError: If no active experiment context
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        raise ExperimentContextError("No active experiment context. Cannot mark experiment as failed in standalone mode.")
+    
     manager = _get_experiment_manager()
     manager.fail_experiment(experiment_id, message)
 
@@ -260,6 +289,9 @@ def cancel(message: str) -> None:
         ExperimentContextError: If no active experiment context
     """
     experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        raise ExperimentContextError("No active experiment context. Cannot mark experiment as cancelled in standalone mode.")
+    
     manager = _get_experiment_manager()
     manager.cancel_experiment(experiment_id, message)
 
