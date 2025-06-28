@@ -105,6 +105,7 @@ class ExperimentManager:
         # Verify experiment exists
         if not self.storage.experiment_exists(experiment_id):
             from ..utils.exceptions import ExperimentNotFoundError
+
             raise ExperimentNotFoundError(experiment_id)
 
         # Load current metadata
@@ -139,6 +140,7 @@ class ExperimentManager:
         # Verify experiment exists
         if not self.storage.experiment_exists(experiment_id):
             from ..utils.exceptions import ExperimentNotFoundError
+
             raise ExperimentNotFoundError(experiment_id)
 
         # Load current metadata
@@ -179,6 +181,7 @@ class ExperimentManager:
         # Verify experiment exists
         if not self.storage.experiment_exists(experiment_id):
             from ..utils.exceptions import ExperimentNotFoundError
+
             raise ExperimentNotFoundError(experiment_id)
 
         # Load current metadata
@@ -219,6 +222,7 @@ class ExperimentManager:
         # Verify experiment exists
         if not self.storage.experiment_exists(experiment_id):
             from ..utils.exceptions import ExperimentNotFoundError
+
             raise ExperimentNotFoundError(experiment_id)
 
         # Load current metadata
@@ -261,6 +265,7 @@ class ExperimentManager:
         # Verify experiment exists
         if not self.storage.experiment_exists(experiment_id):
             from ..utils.exceptions import ExperimentNotFoundError
+
             raise ExperimentNotFoundError(experiment_id)
 
         # Load metadata and return status
@@ -283,6 +288,7 @@ class ExperimentManager:
         # Verify experiment exists
         if not self.storage.experiment_exists(experiment_id):
             from ..utils.exceptions import ExperimentNotFoundError
+
             raise ExperimentNotFoundError(experiment_id)
 
         return self.storage.load_metadata(experiment_id)
@@ -329,6 +335,7 @@ class ExperimentManager:
         # Verify experiment exists
         if not self.storage.experiment_exists(experiment_id):
             from ..utils.exceptions import ExperimentNotFoundError
+
             raise ExperimentNotFoundError(experiment_id)
 
         return self.storage.archive_experiment(experiment_id)
@@ -485,4 +492,3 @@ class ExperimentManager:
                     continue
 
         return None
-

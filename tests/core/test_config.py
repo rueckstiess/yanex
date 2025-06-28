@@ -324,7 +324,9 @@ class TestResolveConfig:
 
         param_overrides = ["param1=overridden", "param3=new_value"]
 
-        result = resolve_config(config_path=config_path, param_overrides=param_overrides)
+        result = resolve_config(
+            config_path=config_path, param_overrides=param_overrides
+        )
 
         assert result == {
             "param1": "overridden",

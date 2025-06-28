@@ -150,7 +150,9 @@ class TestGetCurrentCommitInfo:
             mock_commit.hexsha = "a1b2c3d4e5f6789012345678901234567890abcd"
             mock_commit.message = "Test commit\n"
             mock_commit.author = "Test Author"
-            mock_commit.committed_datetime.isoformat.return_value = "2023-01-01T12:00:00"
+            mock_commit.committed_datetime.isoformat.return_value = (
+                "2023-01-01T12:00:00"
+            )
 
             mock_repo.head.commit = mock_commit
             mock_repo.active_branch.name = "main"
@@ -220,7 +222,9 @@ class TestGetRepositoryInfo:
         with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
             mock_repo = Mock()
             # Make working_dir property raise GitError when accessed
-            type(mock_repo).working_dir = property(lambda _: (_ for _ in ()).throw(git.GitError("Test error")))
+            type(mock_repo).working_dir = property(
+                lambda _: (_ for _ in ()).throw(git.GitError("Test error"))
+            )
             mock_get_repo.return_value = mock_repo
 
             with pytest.raises(GitError, match="Failed to get repository info"):

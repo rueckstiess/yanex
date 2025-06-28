@@ -118,11 +118,15 @@ class TestCaptureGitEnvironment:
             with patch("yanex.core.environment.get_repository_info") as mock_repo_info:
                 mock_repo_info.return_value = {"repo_path": "/test"}
 
-                with patch("yanex.core.environment.get_current_commit_info") as mock_commit_info:
+                with patch(
+                    "yanex.core.environment.get_current_commit_info"
+                ) as mock_commit_info:
                     mock_commit_info.return_value = {"commit_hash": "abc123"}
 
                     with patch("git.Git") as mock_git:
-                        mock_git.return_value.version.return_value = "git version 2.34.1"
+                        mock_git.return_value.version.return_value = (
+                            "git version 2.34.1"
+                        )
 
                         result = capture_git_environment()
 
@@ -141,7 +145,9 @@ class TestCaptureDependencies:
 
             # Create dependency files
             (temp_dir / "requirements.txt").write_text("numpy==1.21.0\npandas==1.3.0")
-            (temp_dir / "environment.yml").write_text("name: test\ndependencies:\n  - python=3.9")
+            (temp_dir / "environment.yml").write_text(
+                "name: test\ndependencies:\n  - python=3.9"
+            )
             (temp_dir / "pyproject.toml").write_text('[tool.poetry]\nname = "test"')
 
             result = capture_dependencies()
@@ -209,13 +215,19 @@ class TestCaptureFullEnvironment:
         with patch("yanex.core.environment.capture_python_environment") as mock_python:
             mock_python.return_value = {"python_version": "3.9.0"}
 
-            with patch("yanex.core.environment.capture_system_environment") as mock_system:
+            with patch(
+                "yanex.core.environment.capture_system_environment"
+            ) as mock_system:
                 mock_system.return_value = {"platform": "test"}
 
-                with patch("yanex.core.environment.capture_git_environment") as mock_git:
+                with patch(
+                    "yanex.core.environment.capture_git_environment"
+                ) as mock_git:
                     mock_git.return_value = {"repository": None}
 
-                    with patch("yanex.core.environment.capture_dependencies") as mock_deps:
+                    with patch(
+                        "yanex.core.environment.capture_dependencies"
+                    ) as mock_deps:
                         mock_deps.return_value = {"requirements_txt": None}
 
                         result = capture_full_environment()
