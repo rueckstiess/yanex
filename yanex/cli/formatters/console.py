@@ -3,7 +3,7 @@ Rich console formatting for experiment data.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 from rich.table import Table
@@ -238,3 +238,62 @@ class ExperimentTableFormatter:
             return Text(relative_str, style="cyan")
         except Exception:
             return Text("unknown", style="dim")
+    
+    def _format_time(self, time_str: str) -> str:
+        """Format timestamp for detailed display."""
+        try:
+            from datetime import datetime, timezone
+            if isinstance(time_str, str):
+                dt = datetime.fromisoformat(time_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = time_str
+                
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return str(time_str)
+    
+    def _calculate_duration(self, start_time: str, end_time: Optional[str] = None) -> str:
+        """Calculate and format duration between two times."""
+        try:
+            from yanex.cli.filters.time_utils import format_duration
+            from datetime import datetime, timezone
+            
+            if isinstance(start_time, str):
+                start_dt = datetime.fromisoformat(start_time)
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+            else:
+                start_dt = start_time
+            
+            if end_time:
+                if isinstance(end_time, str):
+                    end_dt = datetime.fromisoformat(end_time)
+                    if end_dt.tzinfo is None:
+                        end_dt = end_dt.replace(tzinfo=timezone.utc)
+                else:
+                    end_dt = end_time
+            else:
+                end_dt = None
+                
+            return format_duration(start_dt, end_dt)
+        except Exception:
+            return "unknown"
+    
+    def _format_file_size(self, size_bytes: int) -> str:
+        """Format file size in human-readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024
+        return f"{size_bytes:.1f} TB"
+    
+    def _format_timestamp(self, timestamp: float) -> str:
+        """Format Unix timestamp for display."""
+        try:
+            from datetime import datetime
+            dt = datetime.fromtimestamp(timestamp)
+            return dt.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            return "unknown"

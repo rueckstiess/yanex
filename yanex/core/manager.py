@@ -397,9 +397,7 @@ class ExperimentManager:
         # Validate inputs
         if name is not None:
             validate_experiment_name(name)
-            # Check if name is already in use
-            if self.find_experiment_by_name(name) is not None:
-                raise ValueError(f"Experiment name '{name}' is already in use")
+            # Note: We allow duplicate names to support experiment grouping
 
         validate_tags(tags)
 

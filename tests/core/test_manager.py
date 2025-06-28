@@ -392,7 +392,7 @@ class TestExperimentCreation:
     def test_create_experiment_duplicate_name(
         self, mock_capture_env, mock_git_info, mock_validate_git
     ):
-        """Test experiment creation fails with duplicate name."""
+        """Test experiment creation allows duplicate names for grouping."""
         mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
@@ -403,11 +403,17 @@ class TestExperimentCreation:
 
             # Create first experiment
             name = "duplicate-name"
-            manager.create_experiment(Path(__file__), name=name)
+            exp1_id = manager.create_experiment(Path(__file__), name=name)
 
-            # Second experiment with same name should fail
-            with pytest.raises(ValueError, match="already in use"):
-                manager.create_experiment(Path(__file__), name=name)
+            # Second experiment with same name should succeed (allows grouping)
+            exp2_id = manager.create_experiment(Path(__file__), name=name)
+            
+            # Verify both experiments exist with same name but different IDs
+            assert exp1_id != exp2_id
+            exp1_metadata = manager.storage.load_metadata(exp1_id)
+            exp2_metadata = manager.storage.load_metadata(exp2_id)
+            assert exp1_metadata["name"] == name
+            assert exp2_metadata["name"] == name
 
     @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")

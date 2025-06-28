@@ -6,6 +6,7 @@ import click
 
 from .commands.run import run
 from .commands.list import list_experiments
+from .commands.show import show_experiment
 
 
 @click.group()
@@ -27,6 +28,7 @@ def cli(ctx: click.Context, verbose: bool) -> None:
 # Register commands
 cli.add_command(run)
 cli.add_command(list_experiments, name="list")
+cli.add_command(show_experiment, name="show")
 
 
 if __name__ == "__main__":
