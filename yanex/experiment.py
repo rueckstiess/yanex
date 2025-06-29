@@ -426,8 +426,17 @@ def create_experiment(
         ExperimentContext for the new experiment
 
     Raises:
-        ExperimentContextError: If experiment creation fails
+        ExperimentContextError: If experiment creation fails or if called in CLI context
     """
+    # Check for CLI context conflict
+    if _is_cli_context():
+        raise ExperimentContextError(
+            "Cannot use experiment.create_experiment() when script is run via 'yanex run'. "
+            "Either:\n"
+            "  - Run directly: python script.py\n"
+            "  - Or remove experiment.create_experiment() and use: yanex run script.py"
+        )
+    
     manager = _get_experiment_manager()
     experiment_id = manager.create_experiment(
         script_path=script_path,
@@ -462,21 +471,10 @@ def create_context(experiment_id: str) -> ExperimentContext:
     return ExperimentContext(experiment_id)
 
 
-def run() -> ExperimentContext:
-    """Create experiment context manager.
-
-    Note: This function is intended to be used by the CLI.
-    For programmatic usage, create experiments first using the manager.
-
+def _is_cli_context() -> bool:
+    """Check if currently running in a yanex CLI-managed experiment.
+    
     Returns:
-        ExperimentContext for use with 'with' statement
-
-    Raises:
-        ExperimentContextError: If experiment creation fails
+        True if running in CLI context, False otherwise
     """
-    # This will be called by CLI - experiment should already be created
-    # For now, raise an error indicating this needs CLI integration
-    raise ExperimentContextError(
-        "Direct experiment.run() is not yet implemented. "
-        "Use CLI commands like 'yanex run script.py' to run experiments."
-    )
+    return bool(os.environ.get('YANEX_CLI_ACTIVE'))

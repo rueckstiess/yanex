@@ -216,9 +216,7 @@ class TestExperimentAPI:
         experiment.log_artifact("test.txt", test_file)
 
         # Verify artifact was saved
-        artifact_path = (
-            self.experiments_dir / self.experiment_id / "artifacts" / "test.txt"
-        )
+        artifact_path = self.experiments_dir / self.experiment_id / "artifacts" / "test.txt"
         assert artifact_path.exists()
         assert artifact_path.read_text() == "test content"
 
@@ -231,9 +229,7 @@ class TestExperimentAPI:
         experiment.log_text(content, "output.txt")
 
         # Verify text artifact was saved
-        artifact_path = (
-            self.experiments_dir / self.experiment_id / "artifacts" / "output.txt"
-        )
+        artifact_path = self.experiments_dir / self.experiment_id / "artifacts" / "output.txt"
         assert artifact_path.exists()
         assert artifact_path.read_text() == content
 
@@ -438,9 +434,7 @@ class TestExperimentCreation:
     @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
-    def test_create_experiment(
-        self, mock_capture_env, mock_git_info, mock_validate_git, mock_get_manager
-    ):
+    def test_create_experiment(self, mock_capture_env, mock_git_info, mock_validate_git, mock_get_manager):
         """Test create_experiment function."""
         # Setup mocks
         mock_validate_git.return_value = None
@@ -491,15 +485,3 @@ class TestExperimentCreation:
 
         with pytest.raises(ExperimentNotFoundError):
             experiment.create_context("nonexistent")
-
-
-class TestExperimentRun:
-    """Test experiment.run() function."""
-
-    def test_run_not_implemented(self):
-        """Test that run() raises appropriate error."""
-        with pytest.raises(
-            ExperimentContextError,
-            match="Direct experiment.run\\(\\) is not yet implemented",
-        ):
-            experiment.run()

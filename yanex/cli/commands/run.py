@@ -167,6 +167,7 @@ def _execute_experiment(
         # Prepare environment for subprocess
         env = os.environ.copy()
         env["YANEX_EXPERIMENT_ID"] = experiment_id
+        env["YANEX_CLI_ACTIVE"] = "1"  # Mark as CLI context
 
         # Add parameters as environment variables
         for key, value in config.items():
