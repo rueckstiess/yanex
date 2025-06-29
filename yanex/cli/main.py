@@ -10,6 +10,7 @@ from .commands.show import show_experiment
 from .commands.archive import archive_experiments
 from .commands.delete import delete_experiments
 from .commands.unarchive import unarchive_experiments
+from .commands.update import update_experiments
 
 
 @click.group()
@@ -35,6 +36,7 @@ cli.add_command(show_experiment, name="show")
 cli.add_command(archive_experiments, name="archive")
 cli.add_command(delete_experiments, name="delete")
 cli.add_command(unarchive_experiments, name="unarchive")
+cli.add_command(update_experiments, name="update")
 
 
 if __name__ == "__main__":
