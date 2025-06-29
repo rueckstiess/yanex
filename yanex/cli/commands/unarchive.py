@@ -81,6 +81,18 @@ def unarchive_experiments(
     try:
         filter_obj = ExperimentFilter()
         
+        # Validate mutually exclusive targeting
+        has_identifiers = len(experiment_identifiers) > 0
+        has_filters = any([status, name_pattern, tags, started_after, started_before, ended_after, ended_before])
+        
+        if has_identifiers and has_filters:
+            click.echo("Error: Cannot use both experiment identifiers and filter options. Choose one approach.", err=True)
+            ctx.exit(1)
+        
+        if not has_identifiers and not has_filters:
+            click.echo("Error: Must specify either experiment identifiers or filter options", err=True)
+            ctx.exit(1)
+        
         # Parse time specifications
         started_after_dt = parse_time_spec(started_after) if started_after else None
         started_before_dt = parse_time_spec(started_before) if started_before else None
@@ -97,9 +109,6 @@ def unarchive_experiments(
             )
         else:
             # Unarchive experiments by filter criteria
-            if not any([status, name_pattern, tags, started_after, started_before, ended_after, ended_before]):
-                click.echo("Error: Must specify either experiment identifiers or filter options", err=True)
-                ctx.exit(1)
             
             experiments = find_experiments_by_filters(
                 filter_obj,
