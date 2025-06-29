@@ -9,7 +9,7 @@ from ..filters import ExperimentFilter, parse_time_spec
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_identifiers,
-    find_experiments_by_filters
+    find_experiments_by_filters,
 )
 
 
@@ -18,40 +18,24 @@ from .confirm import (
 @click.option(
     "--status",
     type=click.Choice(["created", "running", "completed", "failed", "cancelled"]),
-    help="Unarchive experiments with specific status"
+    help="Unarchive experiments with specific status",
 )
 @click.option(
     "--name",
     "name_pattern",
-    help="Unarchive experiments matching name pattern (glob syntax)"
+    help="Unarchive experiments matching name pattern (glob syntax)",
 )
 @click.option(
-    "--tag",
-    "tags",
-    multiple=True,
-    help="Unarchive experiments with ALL specified tags"
+    "--tag", "tags", multiple=True, help="Unarchive experiments with ALL specified tags"
 )
 @click.option(
     "--started-after",
-    help="Unarchive experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')"
+    help="Unarchive experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
 )
-@click.option(
-    "--started-before", 
-    help="Unarchive experiments started before date/time"
-)
-@click.option(
-    "--ended-after",
-    help="Unarchive experiments ended after date/time"
-)
-@click.option(
-    "--ended-before",
-    help="Unarchive experiments ended before date/time"
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Skip confirmation prompt"
-)
+@click.option("--started-before", help="Unarchive experiments started before date/time")
+@click.option("--ended-after", help="Unarchive experiments ended after date/time")
+@click.option("--ended-before", help="Unarchive experiments ended before date/time")
+@click.option("--force", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 def unarchive_experiments(
     ctx,
@@ -63,7 +47,7 @@ def unarchive_experiments(
     started_before: Optional[str],
     ended_after: Optional[str],
     ended_before: Optional[str],
-    force: bool
+    force: bool,
 ):
     """
     Unarchive experiments by moving them back to experiments directory.
@@ -74,25 +58,41 @@ def unarchive_experiments(
     Examples:
     \\b
         yanex unarchive exp1 exp2            # Unarchive specific experiments
-        yanex unarchive --status completed   # Unarchive all completed experiments  
+        yanex unarchive --status completed   # Unarchive all completed experiments
         yanex unarchive --name "*training*"  # Unarchive experiments with "training" in name
         yanex unarchive --tag experiment-v1 # Unarchive experiments with specific tag
     """
     try:
         filter_obj = ExperimentFilter()
-        
+
         # Validate mutually exclusive targeting
         has_identifiers = len(experiment_identifiers) > 0
-        has_filters = any([status, name_pattern, tags, started_after, started_before, ended_after, ended_before])
-        
+        has_filters = any(
+            [
+                status,
+                name_pattern,
+                tags,
+                started_after,
+                started_before,
+                ended_after,
+                ended_before,
+            ]
+        )
+
         if has_identifiers and has_filters:
-            click.echo("Error: Cannot use both experiment identifiers and filter options. Choose one approach.", err=True)
+            click.echo(
+                "Error: Cannot use both experiment identifiers and filter options. Choose one approach.",
+                err=True,
+            )
             ctx.exit(1)
-        
+
         if not has_identifiers and not has_filters:
-            click.echo("Error: Must specify either experiment identifiers or filter options", err=True)
+            click.echo(
+                "Error: Must specify either experiment identifiers or filter options",
+                err=True,
+            )
             ctx.exit(1)
-        
+
         # Parse time specifications
         started_after_dt = parse_time_spec(started_after) if started_after else None
         started_before_dt = parse_time_spec(started_before) if started_before else None
@@ -103,13 +103,13 @@ def unarchive_experiments(
         if experiment_identifiers:
             # Unarchive specific experiments by ID/name
             experiments = find_experiments_by_identifiers(
-                filter_obj, 
+                filter_obj,
                 list(experiment_identifiers),
-                archived_only=True  # Only search archived experiments
+                archived_only=True,  # Only search archived experiments
             )
         else:
             # Unarchive experiments by filter criteria
-            
+
             experiments = find_experiments_by_filters(
                 filter_obj,
                 status=status,
@@ -119,7 +119,7 @@ def unarchive_experiments(
                 started_before=started_before_dt,
                 ended_after=ended_after_dt,
                 ended_before=ended_before_dt,
-                include_archived=True  # Only search archived experiments
+                include_archived=True,  # Only search archived experiments
             )
 
         # Filter to only archived experiments
@@ -130,34 +130,42 @@ def unarchive_experiments(
             return
 
         # Show experiments and get confirmation
-        if not confirm_experiment_operation(experiments, "unarchive", force, "unarchived", default_yes=True):
+        if not confirm_experiment_operation(
+            experiments, "unarchive", force, "unarchived", default_yes=True
+        ):
             click.echo("Unarchive operation cancelled.")
             return
 
         # Unarchive experiments
         click.echo(f"Unarchiving {len(experiments)} experiment(s)...")
-        
+
         success_count = 0
         for exp in experiments:
             try:
                 experiment_id = exp["id"]
                 filter_obj.manager.storage.unarchive_experiment(experiment_id)
-                
+
                 # Show progress
                 exp_name = exp.get("name", "[unnamed]")
                 click.echo(f"  ✓ Unarchived {experiment_id} ({exp_name})")
                 success_count += 1
-                
+
             except Exception as e:
                 exp_name = exp.get("name", "[unnamed]")
-                click.echo(f"  ✗ Failed to unarchive {experiment_id} ({exp_name}): {e}", err=True)
+                click.echo(
+                    f"  ✗ Failed to unarchive {experiment_id} ({exp_name}): {e}",
+                    err=True,
+                )
 
         # Summary
         if success_count == len(experiments):
             click.echo(f"Successfully unarchived {success_count} experiment(s).")
         else:
             failed_count = len(experiments) - success_count
-            click.echo(f"Unarchived {success_count} experiment(s), {failed_count} failed.", err=True)
+            click.echo(
+                f"Unarchived {success_count} experiment(s), {failed_count} failed.",
+                err=True,
+            )
             ctx.exit(1)
 
     except click.ClickException:

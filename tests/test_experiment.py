@@ -23,7 +23,7 @@ class TestThreadLocalState:
         # In standalone mode, get_params() should return empty dict
         params = experiment.get_params()
         assert params == {}
-        
+
         # And is_standalone() should return True
         assert experiment.is_standalone() is True
         assert experiment.has_context() is False
@@ -248,6 +248,7 @@ class TestExperimentAPI:
 
         # Mock the import inside the function to raise ImportError
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):

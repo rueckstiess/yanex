@@ -26,7 +26,7 @@ def _get_current_experiment_id() -> Optional[str]:
     # First check thread-local storage (for direct API usage)
     if hasattr(_local, "experiment_id"):
         return _local.experiment_id
-    
+
     # Then check environment variables (for CLI subprocess execution)
     return os.environ.get("YANEX_EXPERIMENT_ID")
 
@@ -58,7 +58,7 @@ def _get_experiment_manager() -> ExperimentManager:
 
 def is_standalone() -> bool:
     """Check if running in standalone mode (no experiment context).
-    
+
     Returns:
         True if no active experiment context exists
     """
@@ -67,7 +67,7 @@ def is_standalone() -> bool:
 
 def has_context() -> bool:
     """Check if there is an active experiment context.
-    
+
     Returns:
         True if there is an active experiment context
     """
@@ -83,7 +83,7 @@ def get_params() -> Dict[str, Any]:
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return {}
-    
+
     # If experiment ID comes from environment (CLI mode), read params from environment
     if hasattr(_local, "experiment_id"):
         # Direct API usage - read from storage
@@ -98,6 +98,7 @@ def get_params() -> Dict[str, Any]:
                 # Try to parse as JSON for complex types, fallback to string
                 try:
                     import json
+
                     params[param_key] = json.loads(value)
                 except (json.JSONDecodeError, ValueError):
                     params[param_key] = value
@@ -115,6 +116,10 @@ def get_param(key: str, default: Any = None) -> Any:
         Parameter value or default (default is returned in standalone mode)
     """
     params = get_params()
+    if key not in params:
+        print(
+            f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
+        )
     return params.get(key, default)
 
 
@@ -127,7 +132,7 @@ def get_status() -> Optional[str]:
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return None
-    
+
     manager = _get_experiment_manager()
     return manager.get_experiment_status(experiment_id)
 
@@ -150,7 +155,7 @@ def get_metadata() -> Dict[str, Any]:
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return {}
-    
+
     manager = _get_experiment_manager()
     return manager.get_experiment_metadata(experiment_id)
 
@@ -161,14 +166,14 @@ def log_results(data: Dict[str, Any], step: Optional[int] = None) -> None:
     Args:
         data: Results data to log
         step: Optional step number (auto-incremented if None)
-        
+
     Note:
         Does nothing in standalone mode (no active experiment context)
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return  # No-op in standalone mode
-    
+
     manager = _get_experiment_manager()
 
     # Warn if replacing existing step
@@ -186,14 +191,14 @@ def log_artifact(name: str, file_path: Path) -> None:
     Args:
         name: Name for the artifact
         file_path: Path to source file
-        
+
     Note:
         Does nothing in standalone mode (no active experiment context)
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return  # No-op in standalone mode
-    
+
     manager = _get_experiment_manager()
     manager.storage.save_artifact(experiment_id, name, file_path)
 
@@ -204,14 +209,14 @@ def log_text(content: str, filename: str) -> None:
     Args:
         content: Text content to save
         filename: Name for the artifact file
-        
+
     Note:
         Does nothing in standalone mode (no active experiment context)
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return  # No-op in standalone mode
-    
+
     manager = _get_experiment_manager()
     manager.storage.save_text_artifact(experiment_id, filename, content)
 
@@ -226,14 +231,14 @@ def log_matplotlib_figure(fig, filename: str, **kwargs) -> None:
 
     Raises:
         ImportError: If matplotlib is not available
-        
+
     Note:
         Does nothing in standalone mode (no active experiment context)
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return  # No-op in standalone mode
-    
+
     try:
         import os
         import tempfile
@@ -270,8 +275,10 @@ def completed() -> None:
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
-        raise ExperimentContextError("No active experiment context. Cannot mark experiment as completed in standalone mode.")
-    
+        raise ExperimentContextError(
+            "No active experiment context. Cannot mark experiment as completed in standalone mode."
+        )
+
     manager = _get_experiment_manager()
     manager.complete_experiment(experiment_id)
 
@@ -290,8 +297,10 @@ def fail(message: str) -> None:
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
-        raise ExperimentContextError("No active experiment context. Cannot mark experiment as failed in standalone mode.")
-    
+        raise ExperimentContextError(
+            "No active experiment context. Cannot mark experiment as failed in standalone mode."
+        )
+
     manager = _get_experiment_manager()
     manager.fail_experiment(experiment_id, message)
 
@@ -310,8 +319,10 @@ def cancel(message: str) -> None:
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
-        raise ExperimentContextError("No active experiment context. Cannot mark experiment as cancelled in standalone mode.")
-    
+        raise ExperimentContextError(
+            "No active experiment context. Cannot mark experiment as cancelled in standalone mode."
+        )
+
     manager = _get_experiment_manager()
     manager.cancel_experiment(experiment_id, message)
 
@@ -368,14 +379,20 @@ class ExperimentContext:
                 # Normal exit - mark as completed
                 if not self._manual_exit:
                     self.manager.complete_experiment(self.experiment_id)
-            elif exc_type in (_ExperimentCompletedException, _ExperimentFailedException, _ExperimentCancelledException):
+            elif exc_type in (
+                _ExperimentCompletedException,
+                _ExperimentFailedException,
+                _ExperimentCancelledException,
+            ):
                 # Manual exit via completed()/fail()/cancel() - already handled
                 self._manual_exit = True
                 # Don't propagate these internal exceptions
                 return True
             elif exc_type is KeyboardInterrupt:
                 # User interruption - mark as cancelled
-                self.manager.cancel_experiment(self.experiment_id, "Interrupted by user (Ctrl+C)")
+                self.manager.cancel_experiment(
+                    self.experiment_id, "Interrupted by user (Ctrl+C)"
+                )
                 # Re-raise KeyboardInterrupt
                 return False
             else:
@@ -394,7 +411,7 @@ def create_experiment(
     name: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None,
-    description: Optional[str] = None
+    description: Optional[str] = None,
 ) -> ExperimentContext:
     """Create a new experiment.
 
@@ -417,7 +434,7 @@ def create_experiment(
         name=name,
         config=config or {},
         tags=tags or [],
-        description=description
+        description=description,
     )
     return ExperimentContext(experiment_id)
 
@@ -435,13 +452,13 @@ def create_context(experiment_id: str) -> ExperimentContext:
         ExperimentNotFoundError: If experiment doesn't exist
     """
     manager = _get_experiment_manager()
-    
+
     # Verify experiment exists
     try:
         manager.get_experiment_metadata(experiment_id)
     except Exception:
         raise ExperimentNotFoundError(f"Experiment '{experiment_id}' not found")
-    
+
     return ExperimentContext(experiment_id)
 
 

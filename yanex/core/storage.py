@@ -54,7 +54,9 @@ class ExperimentStorage:
 
         return exp_dir
 
-    def get_experiment_directory(self, experiment_id: str, include_archived: bool = False) -> Path:
+    def get_experiment_directory(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> Path:
         """
         Get path to experiment directory.
 
@@ -72,9 +74,9 @@ class ExperimentStorage:
 
         if exp_dir.exists():
             return exp_dir
-        
+
         if include_archived:
-            archive_dir = self.experiments_dir / "archived" 
+            archive_dir = self.experiments_dir / "archived"
             archive_path = archive_dir / experiment_id
             if archive_path.exists():
                 return archive_path
@@ -83,16 +85,23 @@ class ExperimentStorage:
         locations = [f"{exp_dir}"]
         if include_archived:
             locations.append(f"{archive_path}")
-        
+
         raise StorageError(f"Experiment directory not found in: {', '.join(locations)}")
 
-    def get_experiment_dir(self, experiment_id: str, include_archived: bool = False) -> Path:
+    def get_experiment_dir(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> Path:
         """
         Alias for get_experiment_directory to match show command usage.
         """
         return self.get_experiment_directory(experiment_id, include_archived)
 
-    def save_metadata(self, experiment_id: str, metadata: Dict[str, Any], include_archived: bool = False) -> None:
+    def save_metadata(
+        self,
+        experiment_id: str,
+        metadata: Dict[str, Any],
+        include_archived: bool = False,
+    ) -> None:
         """
         Save experiment metadata.
 
@@ -117,7 +126,9 @@ class ExperimentStorage:
         except Exception as e:
             raise StorageError(f"Failed to save metadata: {e}") from e
 
-    def load_metadata(self, experiment_id: str, include_archived: bool = False) -> Dict[str, Any]:
+    def load_metadata(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> Dict[str, Any]:
         """
         Load experiment metadata.
 
@@ -162,7 +173,9 @@ class ExperimentStorage:
         except Exception as e:
             raise StorageError(f"Failed to save config: {e}") from e
 
-    def load_config(self, experiment_id: str, include_archived: bool = False) -> Dict[str, Any]:
+    def load_config(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> Dict[str, Any]:
         """
         Load experiment configuration.
 
@@ -209,7 +222,9 @@ class ExperimentStorage:
         except Exception as e:
             raise StorageError(f"Failed to save results: {e}") from e
 
-    def load_results(self, experiment_id: str, include_archived: bool = False) -> List[Dict[str, Any]]:
+    def load_results(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         Load experiment results.
 
@@ -383,7 +398,7 @@ class ExperimentStorage:
             List of experiment IDs
         """
         experiment_ids = []
-        
+
         # List regular experiments
         if self.experiments_dir.exists():
             for item in self.experiments_dir.iterdir():
@@ -402,7 +417,9 @@ class ExperimentStorage:
 
         return sorted(experiment_ids)
 
-    def experiment_exists(self, experiment_id: str, include_archived: bool = False) -> bool:
+    def experiment_exists(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> bool:
         """
         Check if experiment exists.
 
@@ -416,10 +433,10 @@ class ExperimentStorage:
         exp_dir = self.experiments_dir / experiment_id
         if exp_dir.exists() and exp_dir.is_dir():
             return True
-            
+
         if include_archived:
             return self.archived_experiment_exists(experiment_id)
-            
+
         return False
 
     def archive_experiment(
@@ -532,7 +549,9 @@ class ExperimentStorage:
         except Exception as e:
             raise StorageError(f"Failed to delete archived experiment: {e}") from e
 
-    def list_archived_experiments(self, archive_dir: Optional[Path] = None) -> List[str]:
+    def list_archived_experiments(
+        self, archive_dir: Optional[Path] = None
+    ) -> List[str]:
         """
         List all archived experiment IDs.
 
@@ -597,15 +616,17 @@ class ExperimentStorage:
         archive_path = archive_dir / experiment_id
 
         if not archive_path.exists():
-            raise StorageError(f"Archived experiment directory not found: {archive_path}")
+            raise StorageError(
+                f"Archived experiment directory not found: {archive_path}"
+            )
 
         return archive_path
 
     def update_experiment_metadata(
-        self, 
-        experiment_id: str, 
-        updates: Dict[str, Any], 
-        include_archived: bool = False
+        self,
+        experiment_id: str,
+        updates: Dict[str, Any],
+        include_archived: bool = False,
     ) -> Dict[str, Any]:
         """
         Update experiment metadata with new values.
@@ -623,22 +644,22 @@ class ExperimentStorage:
         """
         # Load current metadata
         current_metadata = self.load_metadata(experiment_id, include_archived)
-        
+
         # Apply updates
         updated_metadata = current_metadata.copy()
-        
-        # Handle tag operations first (before the main loop)  
+
+        # Handle tag operations first (before the main loop)
         if "add_tags" in updates or "remove_tags" in updates:
             current_tags = set(updated_metadata.get("tags", []))
-            
+
             if "add_tags" in updates:
                 current_tags.update(updates["add_tags"])
-                
+
             if "remove_tags" in updates:
                 current_tags.difference_update(updates["remove_tags"])
-                
+
             updated_metadata["tags"] = sorted(list(current_tags))
-        
+
         # Handle other field updates
         for key, value in updates.items():
             if key in ["add_tags", "remove_tags"]:
@@ -654,8 +675,8 @@ class ExperimentStorage:
             else:
                 # Other fields - direct assignment
                 updated_metadata[key] = value
-        
+
         # Save updated metadata
         self.save_metadata(experiment_id, updated_metadata, include_archived)
-        
+
         return updated_metadata

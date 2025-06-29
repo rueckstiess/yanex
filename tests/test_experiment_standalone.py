@@ -32,7 +32,7 @@ class TestStandaloneMode:
         assert experiment.get_param("learning_rate", 0.01) == 0.01
         assert experiment.get_param("epochs", 10) == 10
         assert experiment.get_param("model_type", "linear") == "linear"
-        
+
         # Should return None for non-existent param without default
         assert experiment.get_param("nonexistent") is None
 
@@ -74,13 +74,19 @@ class TestStandaloneMode:
 
     def test_manual_control_functions_error(self):
         """Test manual control functions raise errors in standalone mode."""
-        with pytest.raises(ExperimentContextError, match="No active experiment context"):
+        with pytest.raises(
+            ExperimentContextError, match="No active experiment context"
+        ):
             experiment.completed()
-        
-        with pytest.raises(ExperimentContextError, match="No active experiment context"):
+
+        with pytest.raises(
+            ExperimentContextError, match="No active experiment context"
+        ):
             experiment.fail("test error")
-        
-        with pytest.raises(ExperimentContextError, match="No active experiment context"):
+
+        with pytest.raises(
+            ExperimentContextError, match="No active experiment context"
+        ):
             experiment.cancel("test cancellation")
 
 
@@ -125,7 +131,7 @@ class TestContextMode:
     def test_get_params_with_context(self, mock_get_manager):
         """Test get_params returns actual config in context mode."""
         mock_get_manager.return_value = self.manager
-        
+
         params = experiment.get_params()
         assert params["learning_rate"] == 0.01
         assert params["epochs"] == 10
@@ -134,10 +140,10 @@ class TestContextMode:
     def test_get_param_with_context(self, mock_get_manager):
         """Test get_param returns actual values in context mode."""
         mock_get_manager.return_value = self.manager
-        
+
         assert experiment.get_param("learning_rate") == 0.01
         assert experiment.get_param("epochs") == 10
-        
+
         # Should still use default for non-existent param
         assert experiment.get_param("batch_size", 32) == 32
 
@@ -155,7 +161,7 @@ class TestContextMode:
     def test_get_metadata_with_context(self, mock_get_manager):
         """Test get_metadata returns actual metadata in context mode."""
         mock_get_manager.return_value = self.manager
-        
+
         metadata = experiment.get_metadata()
         assert metadata["id"] == self.experiment_id
         assert metadata["status"] == "running"

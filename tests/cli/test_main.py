@@ -66,16 +66,26 @@ class TestCLIMain:
             script_path = Path(f.name)
 
         try:
-            result = self.runner.invoke(cli, [
-                "run", str(script_path), 
-                "--param", "learning_rate=0.01",
-                "--param", "epochs=100",
-                "--name", "test-experiment",
-                "--tag", "test",
-                "--tag", "cli",
-                "--description", "Test experiment",
-                "--dry-run"
-            ])
+            result = self.runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(script_path),
+                    "--param",
+                    "learning_rate=0.01",
+                    "--param",
+                    "epochs=100",
+                    "--name",
+                    "test-experiment",
+                    "--tag",
+                    "test",
+                    "--tag",
+                    "cli",
+                    "--description",
+                    "Test experiment",
+                    "--dry-run",
+                ],
+            )
             assert result.exit_code == 0
             assert "learning_rate" in result.output
             assert "epochs" in result.output
@@ -91,11 +101,16 @@ class TestCLIMain:
             script_path = Path(f.name)
 
         try:
-            result = self.runner.invoke(cli, [
-                "run", str(script_path), 
-                "--param", "invalid_format_no_equals",
-                "--dry-run"
-            ])
+            result = self.runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(script_path),
+                    "--param",
+                    "invalid_format_no_equals",
+                    "--dry-run",
+                ],
+            )
             assert result.exit_code != 0
             assert "must be in format 'key=value'" in result.output
         finally:
@@ -107,16 +122,15 @@ class TestCLIMain:
             # Create script
             script_path = Path(temp_dir) / "script.py"
             script_path.write_text("print('hello world')")
-            
+
             # Create config file
             config_path = Path(temp_dir) / "config.yaml"
             config_path.write_text("learning_rate: 0.01\nepochs: 50")
-            
-            result = self.runner.invoke(cli, [
-                "run", str(script_path),
-                "--config", str(config_path),
-                "--dry-run"
-            ])
+
+            result = self.runner.invoke(
+                cli,
+                ["run", str(script_path), "--config", str(config_path), "--dry-run"],
+            )
             assert result.exit_code == 0
             assert "learning_rate" in result.output
             assert "epochs" in result.output
@@ -128,9 +142,9 @@ class TestCLIMain:
             script_path = Path(f.name)
 
         try:
-            result = self.runner.invoke(cli, [
-                "--verbose", "run", str(script_path), "--dry-run"
-            ])
+            result = self.runner.invoke(
+                cli, ["--verbose", "run", str(script_path), "--dry-run"]
+            )
             assert result.exit_code == 0
             assert f"Running script: {script_path}" in result.output
             assert "No configuration file found" in result.output

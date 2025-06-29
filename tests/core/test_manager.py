@@ -407,7 +407,7 @@ class TestExperimentCreation:
 
             # Second experiment with same name should succeed (allows grouping)
             exp2_id = manager.create_experiment(Path(__file__), name=name)
-            
+
             # Verify both experiments exist with same name but different IDs
             assert exp1_id != exp2_id
             exp1_metadata = manager.storage.load_metadata(exp1_id)

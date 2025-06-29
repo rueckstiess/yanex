@@ -106,7 +106,9 @@ def main():
         print(f"Simulating training for {epochs} epochs with lr={learning_rate}")
 
         # Simulate training process
-        train_acc, val_acc, train_loss, val_loss = simulate_training(epochs, learning_rate)
+        train_acc, val_acc, train_loss, val_loss = simulate_training(
+            epochs, learning_rate
+        )
         epoch_list = list(range(1, epochs + 1))
 
         # Log metrics for each epoch
@@ -124,15 +126,21 @@ def main():
 
         # Create and log matplotlib figures
         try:
-            combined_fig, accuracy_fig = create_training_plots(epoch_list, train_acc, val_acc, train_loss, val_loss)
+            combined_fig, accuracy_fig = create_training_plots(
+                epoch_list, train_acc, val_acc, train_loss, val_loss
+            )
 
             if combined_fig and accuracy_fig:
                 # Log the combined training curves
-                experiment.log_matplotlib_figure(combined_fig, "training_curves.png", dpi=150, bbox_inches="tight")
+                experiment.log_matplotlib_figure(
+                    combined_fig, "training_curves.png", dpi=150, bbox_inches="tight"
+                )
                 print("Logged combined training curves plot")
 
                 # Log just the accuracy plot
-                experiment.log_matplotlib_figure(accuracy_fig, "accuracy_plot.png", dpi=150, bbox_inches="tight")
+                experiment.log_matplotlib_figure(
+                    accuracy_fig, "accuracy_plot.png", dpi=150, bbox_inches="tight"
+                )
                 print("Logged accuracy plot")
 
                 # Create a simple scatter plot
@@ -143,11 +151,15 @@ def main():
                 scatter_ax.set_xlabel("Training Accuracy")
                 scatter_ax.set_ylabel("Validation Accuracy")
                 scatter_ax.set_title("Training vs Validation Accuracy")
-                scatter_ax.plot([0, 1], [0, 1], "r--", alpha=0.5, label="Perfect Correlation")
+                scatter_ax.plot(
+                    [0, 1], [0, 1], "r--", alpha=0.5, label="Perfect Correlation"
+                )
                 scatter_ax.legend()
                 scatter_ax.grid(True, alpha=0.3)
 
-                experiment.log_matplotlib_figure(scatter_fig, "accuracy_correlation.png", dpi=150)
+                experiment.log_matplotlib_figure(
+                    scatter_fig, "accuracy_correlation.png", dpi=150
+                )
                 print("Logged accuracy correlation plot")
 
         except ImportError:

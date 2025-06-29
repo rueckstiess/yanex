@@ -9,7 +9,7 @@ from ..filters import ExperimentFilter, parse_time_spec
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_identifiers,
-    find_experiments_by_filters
+    find_experiments_by_filters,
 )
 
 
@@ -18,45 +18,29 @@ from .confirm import (
 @click.option(
     "--status",
     type=click.Choice(["created", "running", "completed", "failed", "cancelled"]),
-    help="Delete experiments with specific status"
+    help="Delete experiments with specific status",
 )
 @click.option(
     "--name",
     "name_pattern",
-    help="Delete experiments matching name pattern (glob syntax)"
+    help="Delete experiments matching name pattern (glob syntax)",
 )
 @click.option(
-    "--tag",
-    "tags",
-    multiple=True,
-    help="Delete experiments with ALL specified tags"
+    "--tag", "tags", multiple=True, help="Delete experiments with ALL specified tags"
 )
 @click.option(
     "--started-after",
-    help="Delete experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')"
+    help="Delete experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
 )
-@click.option(
-    "--started-before", 
-    help="Delete experiments started before date/time"
-)
-@click.option(
-    "--ended-after",
-    help="Delete experiments ended after date/time"
-)
-@click.option(
-    "--ended-before",
-    help="Delete experiments ended before date/time"
-)
+@click.option("--started-before", help="Delete experiments started before date/time")
+@click.option("--ended-after", help="Delete experiments ended after date/time")
+@click.option("--ended-before", help="Delete experiments ended before date/time")
 @click.option(
     "--archived",
     is_flag=True,
-    help="Delete from archived experiments (default: delete from regular experiments)"
+    help="Delete from archived experiments (default: delete from regular experiments)",
 )
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Skip confirmation prompt"
-)
+@click.option("--force", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 def delete_experiments(
     ctx,
@@ -69,11 +53,11 @@ def delete_experiments(
     ended_after: Optional[str],
     ended_before: Optional[str],
     archived: bool,
-    force: bool
+    force: bool,
 ):
     """
     Permanently delete experiments.
-    
+
     ⚠️  WARNING: This operation cannot be undone!
 
     EXPERIMENT_IDENTIFIERS can be experiment IDs or names.
@@ -82,26 +66,42 @@ def delete_experiments(
     Examples:
     \\b
         yanex delete exp1 exp2               # Delete specific experiments
-        yanex delete --status failed         # Delete all failed experiments  
+        yanex delete --status failed         # Delete all failed experiments
         yanex delete --archived --ended-before "6 months ago"
         yanex delete --name "*test*"         # Delete experiments with "test" in name
         yanex delete --tag temp              # Delete experiments with "temp" tag
     """
     try:
         filter_obj = ExperimentFilter()
-        
+
         # Validate mutually exclusive targeting
         has_identifiers = len(experiment_identifiers) > 0
-        has_filters = any([status, name_pattern, tags, started_after, started_before, ended_after, ended_before])
-        
+        has_filters = any(
+            [
+                status,
+                name_pattern,
+                tags,
+                started_after,
+                started_before,
+                ended_after,
+                ended_before,
+            ]
+        )
+
         if has_identifiers and has_filters:
-            click.echo("Error: Cannot use both experiment identifiers and filter options. Choose one approach.", err=True)
+            click.echo(
+                "Error: Cannot use both experiment identifiers and filter options. Choose one approach.",
+                err=True,
+            )
             ctx.exit(1)
-        
+
         if not has_identifiers and not has_filters:
-            click.echo("Error: Must specify either experiment identifiers or filter options", err=True)
+            click.echo(
+                "Error: Must specify either experiment identifiers or filter options",
+                err=True,
+            )
             ctx.exit(1)
-        
+
         # Parse time specifications
         started_after_dt = parse_time_spec(started_after) if started_after else None
         started_before_dt = parse_time_spec(started_before) if started_before else None
@@ -112,13 +112,11 @@ def delete_experiments(
         if experiment_identifiers:
             # Delete specific experiments by ID/name
             experiments = find_experiments_by_identifiers(
-                filter_obj, 
-                list(experiment_identifiers),
-                include_archived=archived
+                filter_obj, list(experiment_identifiers), include_archived=archived
             )
         else:
             # Delete experiments by filter criteria
-            
+
             experiments = find_experiments_by_filters(
                 filter_obj,
                 status=status,
@@ -128,7 +126,7 @@ def delete_experiments(
                 started_before=started_before_dt,
                 ended_after=ended_after_dt,
                 ended_before=ended_before_dt,
-                include_archived=archived
+                include_archived=archived,
             )
 
         # Filter experiments based on archived flag
@@ -144,7 +142,9 @@ def delete_experiments(
 
         # Show experiments and get confirmation (always required for deletion)
         operation_verb = "permanently deleted"
-        if not confirm_experiment_operation(experiments, "delete", force, operation_verb):
+        if not confirm_experiment_operation(
+            experiments, "delete", force, operation_verb
+        ):
             click.echo("Delete operation cancelled.")
             return
 
@@ -159,34 +159,39 @@ def delete_experiments(
 
         # Delete experiments
         click.echo(f"Deleting {len(experiments)} experiment(s)...")
-        
+
         success_count = 0
         for exp in experiments:
             try:
                 experiment_id = exp["id"]
-                
+
                 if exp.get("archived", False):
                     # Delete from archived directory
                     filter_obj.manager.storage.delete_archived_experiment(experiment_id)
                 else:
                     # Delete from regular directory
                     filter_obj.manager.storage.delete_experiment(experiment_id)
-                
+
                 # Show progress
                 exp_name = exp.get("name", "[unnamed]")
                 click.echo(f"  ✓ Deleted {experiment_id} ({exp_name})")
                 success_count += 1
-                
+
             except Exception as e:
                 exp_name = exp.get("name", "[unnamed]")
-                click.echo(f"  ✗ Failed to delete {experiment_id} ({exp_name}): {e}", err=True)
+                click.echo(
+                    f"  ✗ Failed to delete {experiment_id} ({exp_name}): {e}", err=True
+                )
 
         # Summary
         if success_count == len(experiments):
             click.echo(f"Successfully deleted {success_count} experiment(s).")
         else:
             failed_count = len(experiments) - success_count
-            click.echo(f"Deleted {success_count} experiment(s), {failed_count} failed.", err=True)
+            click.echo(
+                f"Deleted {success_count} experiment(s), {failed_count} failed.",
+                err=True,
+            )
             ctx.exit(1)
 
     except click.ClickException:
