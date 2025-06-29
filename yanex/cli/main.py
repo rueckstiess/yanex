@@ -11,6 +11,7 @@ from .commands.archive import archive_experiments
 from .commands.delete import delete_experiments
 from .commands.unarchive import unarchive_experiments
 from .commands.update import update_experiments
+from .commands.compare import compare_experiments
 
 
 @click.group()
@@ -37,6 +38,7 @@ cli.add_command(archive_experiments, name="archive")
 cli.add_command(delete_experiments, name="delete")
 cli.add_command(unarchive_experiments, name="unarchive")
 cli.add_command(update_experiments, name="update")
+cli.add_command(compare_experiments, name="compare")
 
 
 if __name__ == "__main__":
