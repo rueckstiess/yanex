@@ -7,7 +7,11 @@ from typing import Optional
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES
-from ..filters import ExperimentFilter, parse_time_spec
+from ..error_handling import (
+    BulkOperationReporter,
+    CLIErrorHandler,
+)
+from ..filters import ExperimentFilter
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -39,6 +43,7 @@ from .confirm import (
 @click.option("--ended-before", help="Archive experiments ended before date/time")
 @click.option("--force", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
+@CLIErrorHandler.handle_cli_errors
 def archive_experiments(
     ctx,
     experiment_identifiers: tuple,
@@ -65,113 +70,85 @@ def archive_experiments(
         yanex archive --name "*training*"    # Archive experiments with "training" in name
         yanex archive --tag experiment-v1   # Archive experiments with specific tag
     """
-    try:
-        filter_obj = ExperimentFilter()
+    filter_obj = ExperimentFilter()
 
-        # Validate mutually exclusive targeting
-        has_identifiers = len(experiment_identifiers) > 0
-        has_filters = any(
-            [
-                status,
-                name_pattern,
-                tags,
-                started_after,
-                started_before,
-                ended_after,
-                ended_before,
-            ]
+    # Validate mutually exclusive targeting
+    has_filters = any(
+        [
+            status,
+            name_pattern,
+            tags,
+            started_after,
+            started_before,
+            ended_after,
+            ended_before,
+        ]
+    )
+
+    CLIErrorHandler.validate_targeting_options(
+        list(experiment_identifiers),
+        has_filters,
+        "archive"
+    )
+
+    # Parse time specifications
+    started_after_dt, started_before_dt, ended_after_dt, ended_before_dt = (
+        CLIErrorHandler.parse_time_filters(
+            started_after, started_before, ended_after, ended_before
+        )
+    )
+
+    # Find experiments to archive
+    if experiment_identifiers:
+        # Archive specific experiments by ID/name
+        experiments = find_experiments_by_identifiers(
+            filter_obj,
+            list(experiment_identifiers),
+            include_archived=False,  # Can't archive already archived experiments
+        )
+    else:
+        # Archive experiments by filter criteria
+        experiments = find_experiments_by_filters(
+            filter_obj,
+            status=status,
+            name_pattern=name_pattern,
+            tags=list(tags) if tags else None,
+            started_after=started_after_dt,
+            started_before=started_before_dt,
+            ended_after=ended_after_dt,
+            ended_before=ended_before_dt,
+            include_archived=False,  # Can't archive already archived experiments
         )
 
-        if has_identifiers and has_filters:
-            click.echo(
-                "Error: Cannot use both experiment identifiers and filter options. Choose one approach.",
-                err=True,
-            )
-            ctx.exit(1)
+    # Filter out already archived experiments (extra safety)
+    experiments = [exp for exp in experiments if not exp.get("archived", False)]
 
-        if not has_identifiers and not has_filters:
-            click.echo(
-                "Error: Must specify either experiment identifiers or filter options",
-                err=True,
-            )
-            ctx.exit(1)
+    if not experiments:
+        click.echo("No experiments found to archive.")
+        return
 
-        # Parse time specifications
-        started_after_dt = parse_time_spec(started_after) if started_after else None
-        started_before_dt = parse_time_spec(started_before) if started_before else None
-        ended_after_dt = parse_time_spec(ended_after) if ended_after else None
-        ended_before_dt = parse_time_spec(ended_before) if ended_before else None
+    # Show experiments and get confirmation
+    if not confirm_experiment_operation(
+        experiments, "archive", force, default_yes=True
+    ):
+        click.echo("Archive operation cancelled.")
+        return
 
-        # Find experiments to archive
-        if experiment_identifiers:
-            # Archive specific experiments by ID/name
-            experiments = find_experiments_by_identifiers(
-                filter_obj,
-                list(experiment_identifiers),
-                include_archived=False,  # Can't archive already archived experiments
-            )
-        else:
-            # Archive experiments by filter criteria
+    # Archive experiments using centralized reporter
+    click.echo(f"Archiving {len(experiments)} experiment(s)...")
+    reporter = BulkOperationReporter("archive")
 
-            experiments = find_experiments_by_filters(
-                filter_obj,
-                status=status,
-                name_pattern=name_pattern,
-                tags=list(tags) if tags else None,
-                started_after=started_after_dt,
-                started_before=started_before_dt,
-                ended_after=ended_after_dt,
-                ended_before=ended_before_dt,
-                include_archived=False,  # Can't archive already archived experiments
-            )
+    for exp in experiments:
+        experiment_id = exp["id"]
+        exp_name = exp.get("name", "[unnamed]")
 
-        # Filter out already archived experiments (extra safety)
-        experiments = [exp for exp in experiments if not exp.get("archived", False)]
+        try:
+            filter_obj.manager.storage.archive_experiment(experiment_id)
+            reporter.report_success(experiment_id, exp_name)
+        except Exception as e:
+            reporter.report_failure(experiment_id, e, exp_name)
 
-        if not experiments:
-            click.echo("No experiments found to archive.")
-            return
-
-        # Show experiments and get confirmation
-        if not confirm_experiment_operation(
-            experiments, "archive", force, default_yes=True
-        ):
-            click.echo("Archive operation cancelled.")
-            return
-
-        # Archive experiments
-        click.echo(f"Archiving {len(experiments)} experiment(s)...")
-
-        success_count = 0
-        for exp in experiments:
-            try:
-                experiment_id = exp["id"]
-                filter_obj.manager.storage.archive_experiment(experiment_id)
-
-                # Show progress
-                exp_name = exp.get("name", "[unnamed]")
-                click.echo(f"  ✓ Archived {experiment_id} ({exp_name})")
-                success_count += 1
-
-            except Exception as e:
-                exp_name = exp.get("name", "[unnamed]")
-                click.echo(
-                    f"  ✗ Failed to archive {experiment_id} ({exp_name}): {e}", err=True
-                )
-
-        # Summary
-        if success_count == len(experiments):
-            click.echo(f"Successfully archived {success_count} experiment(s).")
-        else:
-            failed_count = len(experiments) - success_count
-            click.echo(
-                f"Archived {success_count} experiment(s), {failed_count} failed.",
-                err=True,
-            )
-            ctx.exit(1)
-
-    except click.ClickException:
-        raise  # Re-raise ClickException to show proper error message
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        ctx.exit(1)
+    # Report summary and exit with appropriate code
+    reporter.report_summary()
+    if reporter.has_failures():
+        ctx.exit(reporter.get_exit_code())
