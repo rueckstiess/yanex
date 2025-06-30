@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from ...core.constants import EXPERIMENT_STATUSES_SET
 from ...core.manager import ExperimentManager
+from ...utils.datetime_utils import parse_iso_timestamp
 
 
 class ExperimentFilter:
@@ -201,22 +202,11 @@ class ExperimentFilter:
         if not started_at:
             return False
 
-        try:
-            # Parse the ISO format timestamp with proper timezone handling
-            if started_at.endswith("Z"):
-                exp_start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-            elif "+" in started_at:
-                exp_start = datetime.fromisoformat(started_at)
-            else:
-                # No timezone info, assume UTC
-                from datetime import timezone
-
-                exp_start = datetime.fromisoformat(started_at).replace(
-                    tzinfo=timezone.utc
-                )
-            return exp_start >= after_time
-        except Exception:
+        exp_start = parse_iso_timestamp(started_at)
+        if exp_start is None:
             return False
+
+        return exp_start >= after_time
 
     def _started_before(
         self, experiment: Dict[str, Any], before_time: datetime
@@ -226,22 +216,11 @@ class ExperimentFilter:
         if not started_at:
             return False
 
-        try:
-            # Parse the ISO format timestamp with proper timezone handling
-            if started_at.endswith("Z"):
-                exp_start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-            elif "+" in started_at:
-                exp_start = datetime.fromisoformat(started_at)
-            else:
-                # No timezone info, assume UTC
-                from datetime import timezone
-
-                exp_start = datetime.fromisoformat(started_at).replace(
-                    tzinfo=timezone.utc
-                )
-            return exp_start < before_time
-        except Exception:
+        exp_start = parse_iso_timestamp(started_at)
+        if exp_start is None:
             return False
+
+        return exp_start < before_time
 
     def _ended_after(self, experiment: Dict[str, Any], after_time: datetime) -> bool:
         """Check if experiment ended after the specified time."""
@@ -249,20 +228,11 @@ class ExperimentFilter:
         if not ended_at:
             return False
 
-        try:
-            # Parse the ISO format timestamp with proper timezone handling
-            if ended_at.endswith("Z"):
-                exp_end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
-            elif "+" in ended_at:
-                exp_end = datetime.fromisoformat(ended_at)
-            else:
-                # No timezone info, assume UTC
-                from datetime import timezone
-
-                exp_end = datetime.fromisoformat(ended_at).replace(tzinfo=timezone.utc)
-            return exp_end >= after_time
-        except Exception:
+        exp_end = parse_iso_timestamp(ended_at)
+        if exp_end is None:
             return False
+
+        return exp_end >= after_time
 
     def _ended_before(self, experiment: Dict[str, Any], before_time: datetime) -> bool:
         """Check if experiment ended before the specified time."""
@@ -270,17 +240,8 @@ class ExperimentFilter:
         if not ended_at:
             return False
 
-        try:
-            # Parse the ISO format timestamp with proper timezone handling
-            if ended_at.endswith("Z"):
-                exp_end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
-            elif "+" in ended_at:
-                exp_end = datetime.fromisoformat(ended_at)
-            else:
-                # No timezone info, assume UTC
-                from datetime import timezone
-
-                exp_end = datetime.fromisoformat(ended_at).replace(tzinfo=timezone.utc)
-            return exp_end < before_time
-        except Exception:
+        exp_end = parse_iso_timestamp(ended_at)
+        if exp_end is None:
             return False
+
+        return exp_end < before_time

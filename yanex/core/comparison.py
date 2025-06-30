@@ -6,9 +6,9 @@ for comparison views, including parameter and metric analysis.
 """
 
 import json
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..utils.datetime_utils import calculate_duration_seconds, parse_iso_timestamp
 from ..utils.exceptions import StorageError
 from .manager import ExperimentManager
 
@@ -268,11 +268,10 @@ class ExperimentComparisonData:
         if not dt_str:
             return "-"
 
-        try:
-            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except (ValueError, AttributeError):
+        dt = parse_iso_timestamp(dt_str)
+        if dt is None:
             return str(dt_str) if dt_str else "-"
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
 
     def _format_tags(self, tags: list) -> str:
         """Format tags list for display."""
@@ -302,21 +301,17 @@ class ExperimentComparisonData:
         if not end_str:
             return "[running]"
 
-        try:
-            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-            end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
-            duration = end_dt - start_dt
-
-            # Format as HH:MM:SS
-            total_seconds = int(duration.total_seconds())
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
-            seconds = total_seconds % 60
-
-            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-        except (ValueError, AttributeError):
+        duration_seconds = calculate_duration_seconds(start_str, end_str)
+        if duration_seconds is None:
             return "-"
+
+        # Format as HH:MM:SS
+        total_seconds = int(duration_seconds)
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
     def _format_value(self, value: Any) -> str:
         """Format a value for table display."""
@@ -464,12 +459,9 @@ class ExperimentComparisonData:
                 pass
 
             # Check if datetime
-            try:
-                datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if parse_iso_timestamp(str(value)) is not None:
                 datetime_count += 1
                 continue
-            except (ValueError, TypeError):
-                pass
 
         # Determine type based on majority
         total_values = len(values)
