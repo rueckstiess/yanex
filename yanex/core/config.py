@@ -5,7 +5,6 @@ Configuration management for experiments.
 from __future__ import annotations
 
 import copy
-import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -125,7 +124,7 @@ def _parse_parameter_value(value_str: str) -> Any:
         Parsed value with appropriate type (including SweepParameter instances)
     """
     from .parameter_parser_factory import ParameterParserFactory
-    
+
     factory = ParameterParserFactory()
     return factory.parse_value(value_str)
 

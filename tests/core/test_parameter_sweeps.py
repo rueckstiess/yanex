@@ -219,7 +219,7 @@ class TestSweepSyntaxParsing:
         # Incomplete syntax should raise errors during parsing
         with pytest.raises(ConfigError, match="Invalid sweep syntax"):
             sweep_parser.parse("range(0.01, 0.1)")  # missing step
-        
+
         with pytest.raises(ConfigError, match="Invalid sweep syntax"):
             sweep_parser.parse("linspace(0.01)")  # missing arguments
 

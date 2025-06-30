@@ -429,7 +429,7 @@ def _execute_staged_script(
     verbose: bool = False,
 ) -> None:
     """Execute the script for a staged experiment."""
-    
+
     # Execute script using ScriptExecutor
     executor = ScriptExecutor(manager)
     executor.execute_script(experiment_id, script_path, config, verbose)
