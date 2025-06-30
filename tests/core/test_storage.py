@@ -2,14 +2,10 @@
 Tests for yanex.core.storage module.
 """
 
-import json
 import shutil
-from datetime import datetime
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import yaml
 
 from yanex.core.storage import ExperimentStorage
 from yanex.utils.exceptions import StorageError

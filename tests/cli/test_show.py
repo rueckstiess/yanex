@@ -6,9 +6,6 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
-from typing import Dict, Any, List
-
-import pytest
 
 from yanex.cli.commands.show import find_experiment
 from yanex.cli.filters import ExperimentFilter

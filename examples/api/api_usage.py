@@ -2,10 +2,12 @@
 """
 Basic example of yanex experiment tracking.
 
-This example demonstrates the core functionality of yanex including:
+This example demonstrates the Python API functionality of yanex including:
 - Creating experiments with configuration
 - Logging results and artifacts
 - Parameter access
+
+Run with Python: python api_usage.py
 """
 
 import time
@@ -54,6 +56,7 @@ def main():
         },
         tags=["example", "basic", "training"],
         description="Basic training example to demonstrate yanex functionality",
+        allow_dirty=True,  # Allow logging from dirty git state
     ):
         print(f"Started experiment: {yanex.get_experiment_id()}")
 
@@ -108,9 +111,6 @@ Final Loss: {final_loss}
             )
 
         yanex.log_text(csv_content.getvalue(), "results.csv")
-
-        print(f"Experiment completed: {yanex.get_experiment_id()}")
-        print("Check ~/.yanex/experiments/ for saved results")
 
 
 if __name__ == "__main__":

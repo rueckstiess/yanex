@@ -3,16 +3,15 @@ Tests for yanex.utils.validation module.
 """
 
 import pytest
-from pathlib import Path
 
-from yanex.utils.validation import (
-    validate_experiment_name,
-    validate_experiment_id,
-    validate_tags,
-    validate_script_path,
-    validate_config_data,
-)
 from yanex.utils.exceptions import ValidationError
+from yanex.utils.validation import (
+    validate_config_data,
+    validate_experiment_id,
+    validate_experiment_name,
+    validate_script_path,
+    validate_tags,
+)
 
 
 class TestValidateExperimentName:
@@ -256,7 +255,7 @@ class TestValidateConfigData:
             {"param": CustomClass()},
             {"param": object()},
             {"param": lambda x: x},
-            {"nested": {"param": set([1, 2, 3])}},
+            {"nested": {"param": {1, 2, 3}}},
         ]
 
         for config in invalid_configs:

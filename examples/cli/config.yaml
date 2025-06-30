@@ -1,0 +1,16 @@
+---
+# Example configuration for advanced benchmark
+# Run with: yanex run advanced_benchmark.py --config config.yaml
+
+# Benchmark parameters
+duration: 15          # seconds to run benchmark
+workload: "mixed"     # read_heavy, write_heavy, or mixed
+target_qps: 25        # target queries per second
+
+# Experiment metadata
+name: "database-benchmark"
+description: "Performance benchmark of query workload"
+tags:
+  - "benchmark"
+  - "performance" 
+  - "database"

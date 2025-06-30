@@ -2,12 +2,13 @@
 Pytest configuration and shared fixtures.
 """
 
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Generator
-import pytest
+
 import git
+import pytest
 
 
 @pytest.fixture

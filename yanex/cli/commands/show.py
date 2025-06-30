@@ -2,13 +2,13 @@
 Show detailed information about a specific experiment.
 """
 
+from typing import Any, Dict, List, Optional
+
 import click
-from typing import Optional, Dict, Any, List
 
 from yanex.cli.filters import ExperimentFilter
 from yanex.cli.formatters.console import ExperimentTableFormatter
 from yanex.core.manager import ExperimentManager
-from yanex.utils.exceptions import ExperimentNotFoundError
 
 
 @click.command("show")
@@ -134,11 +134,11 @@ def display_experiment_details(
     include_archived: bool = False,
 ):
     """Display comprehensive experiment details."""
+    from rich import box
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
-    from rich import box
 
     console = Console()
     experiment_id = experiment["id"]
@@ -149,12 +149,12 @@ def display_experiment_details(
     status_emoji = formatter.STATUS_SYMBOLS.get(status, "○")
 
     header_text = Text()
-    header_text.append(f"Experiment: ", style="bold")
+    header_text.append("Experiment: ", style="bold")
     header_text.append(f"{experiment.get('name', '[unnamed]')} ", style="bold cyan")
     header_text.append(f"({experiment_id})", style="dim")
     header_text.append(f"\nStatus: {status_emoji} ", style="")
     header_text.append(f"{status}", style=f"bold {status_color}")
-    
+
     # Add directory path
     try:
         exp_dir = manager.storage.get_experiment_dir(experiment_id, include_archived)
@@ -430,7 +430,7 @@ def display_experiment_details(
 
                     results_table.add_row(*row)
 
-                title = f"[bold]Results[/bold]"
+                title = "[bold]Results[/bold]"
                 if len(results) > 10:
                     title += f" (showing last 10 of {len(results)})"
 
@@ -441,8 +441,6 @@ def display_experiment_details(
 
     # Artifacts
     try:
-        import os
-
         experiment_dir = manager.storage.get_experiment_dir(
             experiment_id, include_archived
         )

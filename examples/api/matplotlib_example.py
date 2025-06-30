@@ -4,6 +4,8 @@ Example demonstrating matplotlib figure logging.
 
 This example shows how to log matplotlib figures as artifacts.
 Note: This requires matplotlib to be installed (pip install matplotlib).
+
+Run with Python: python matplotlib_example.py
 """
 
 from pathlib import Path
@@ -96,6 +98,7 @@ def main():
         },
         tags=["example", "plotting", "visualization"],
         description="Example demonstrating matplotlib figure logging",
+        allow_dirty=True,  # Allow logging from dirty git state
     ):
         exp_id = yanex.get_experiment_id()
         print(f"Started experiment: {exp_id}")
@@ -201,9 +204,8 @@ Artifacts Generated:
 
         yanex.log_text(log_content, "training_log.txt")
 
-        print(f"Training simulation completed!")
+        print("Training simulation completed!")
         print(f"Final validation accuracy: {final_results['final_val_accuracy']:.4f}")
-        print(f"Check experiment artifacts in ~/.yanex/experiments/{exp_id}/artifacts/")
 
 
 if __name__ == "__main__":

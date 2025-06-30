@@ -30,7 +30,7 @@ class TestSweepExperimentNaming:
         """Test naming with nested parameters."""
         config = {
             "model": {"lr": 0.01, "hidden_size": 128},
-            "training": {"epochs": 100}
+            "training": {"epochs": 100},
         }
         name = _generate_sweep_experiment_name("test", config)
         assert name == "test-model_lr_0p01-model_hidden_size_128-training_epochs_100"
@@ -77,7 +77,7 @@ class TestSweepExperimentNaming:
         config = {}
         for i in range(20):
             config[f"very_long_parameter_name_{i}"] = f"very_long_value_{i}"
-        
+
         name = _generate_sweep_experiment_name("base-name", config)
         assert len(name) <= 100
         assert name.startswith("base-name-")
@@ -89,7 +89,7 @@ class TestSweepExperimentNaming:
         config = {}
         for i in range(20):
             config[f"very_long_parameter_name_{i}"] = f"very_long_value_{i}"
-        
+
         name = _generate_sweep_experiment_name(None, config)
         assert len(name) <= 100
         assert name.startswith("sweep-")
@@ -100,7 +100,7 @@ class TestSweepExperimentNaming:
         config = {}
         name = _generate_sweep_experiment_name("test", config)
         assert name == "test"
-        
+
         name = _generate_sweep_experiment_name(None, config)
         assert name == "sweep"
 
@@ -117,11 +117,8 @@ class TestSweepExperimentNaming:
         """Test naming with mixed nested parameter levels."""
         config = {
             "lr": 0.01,
-            "model": {
-                "type": "resnet",
-                "layers": 6
-            },
-            "batch_size": 32
+            "model": {"type": "resnet", "layers": 6},
+            "batch_size": 32,
         }
         name = _generate_sweep_experiment_name("test", config)
         # Check that it contains the expected components

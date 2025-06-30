@@ -82,7 +82,9 @@ class ExperimentTableFormatter:
 
         return table
 
-    def print_experiments_table(self, experiments: List[Dict[str, Any]], title: str = None) -> None:
+    def print_experiments_table(
+        self, experiments: List[Dict[str, Any]], title: str = None
+    ) -> None:
         """
         Print experiments table to console.
 
@@ -176,7 +178,9 @@ class ExperimentTableFormatter:
                 # No timezone info, assume UTC
                 from datetime import timezone
 
-                start_time = datetime.fromisoformat(started_at).replace(tzinfo=timezone.utc)
+                start_time = datetime.fromisoformat(started_at).replace(
+                    tzinfo=timezone.utc
+                )
             end_time = None
 
             if ended_at:
@@ -188,7 +192,9 @@ class ExperimentTableFormatter:
                     # No timezone info, assume UTC
                     from datetime import timezone
 
-                    end_time = datetime.fromisoformat(ended_at).replace(tzinfo=timezone.utc)
+                    end_time = datetime.fromisoformat(ended_at).replace(
+                        tzinfo=timezone.utc
+                    )
             elif status == "running":
                 # For running experiments, end_time stays None to show "(ongoing)"
                 pass
@@ -246,7 +252,9 @@ class ExperimentTableFormatter:
                 # No timezone info, assume UTC
                 from datetime import timezone
 
-                start_time = datetime.fromisoformat(started_at).replace(tzinfo=timezone.utc)
+                start_time = datetime.fromisoformat(started_at).replace(
+                    tzinfo=timezone.utc
+                )
             relative_str = format_relative_time(start_time)
             return Text(relative_str, style="cyan")
         except Exception:
@@ -268,11 +276,14 @@ class ExperimentTableFormatter:
         except Exception:
             return str(time_str)
 
-    def _calculate_duration(self, start_time: str, end_time: Optional[str] = None) -> str:
+    def _calculate_duration(
+        self, start_time: str, end_time: Optional[str] = None
+    ) -> str:
         """Calculate and format duration between two times."""
         try:
-            from yanex.cli.filters.time_utils import format_duration
             from datetime import datetime, timezone
+
+            from yanex.cli.filters.time_utils import format_duration
 
             if isinstance(start_time, str):
                 start_dt = datetime.fromisoformat(start_time)

@@ -4,9 +4,8 @@ Tests for yanex CLI main entry point.
 
 import tempfile
 from pathlib import Path
-from click.testing import CliRunner
 
-import pytest
+from click.testing import CliRunner
 
 from yanex.cli.main import cli
 
@@ -188,7 +187,7 @@ class TestCLIMain:
             result = self.runner.invoke(
                 cli,
                 [
-                    "run", 
+                    "run",
                     str(script_path),
                     "--stage",
                     "--staged",
@@ -206,7 +205,11 @@ class TestCLIMain:
         # Should succeed - either find no staged experiments or successfully execute any that exist
         assert result.exit_code == 0
         # Check for expected messages (could be no staged experiments or successful execution)
-        assert "No staged experiments found" in result.output or "Experiment completed successfully" in result.output or "Experiment failed" in result.output
+        assert (
+            "No staged experiments found" in result.output
+            or "Experiment completed successfully" in result.output
+            or "Experiment failed" in result.output
+        )
 
     def test_run_staged_flag_with_script_error(self):
         """Test run with --staged flag and script argument shows error."""
@@ -218,19 +221,22 @@ class TestCLIMain:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Use isolated experiment directory for this test
                 import os
-                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
-                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
-                
+
+                old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+                os.environ["YANEX_EXPERIMENTS_DIR"] = temp_dir
+
                 try:
                     # This should work - script argument is optional when using --staged
-                    result = self.runner.invoke(cli, ["run", str(script_path), "--staged"])
+                    result = self.runner.invoke(
+                        cli, ["run", str(script_path), "--staged"]
+                    )
                     assert result.exit_code == 0
                     assert "No staged experiments found" in result.output
                 finally:
                     if old_yanex_dir:
-                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
-                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
-                        del os.environ['YANEX_EXPERIMENTS_DIR']
+                        os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+                    elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                        del os.environ["YANEX_EXPERIMENTS_DIR"]
         finally:
             script_path.unlink()
 

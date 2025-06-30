@@ -8,7 +8,7 @@ from typing import Optional
 import git
 from git import Repo
 
-from ..utils.exceptions import GitError, DirtyWorkingDirectoryError
+from ..utils.exceptions import DirtyWorkingDirectoryError, GitError
 
 
 def get_git_repo(path: Optional[Path] = None) -> Repo:

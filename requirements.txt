@@ -1,0 +1,7 @@
+# Core dependencies for yanex
+click>=8.0.0
+pyyaml>=6.0
+rich>=12.0.0
+gitpython>=3.1.0
+dateparser>=1.1.0
+textual>=0.45.0

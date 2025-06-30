@@ -7,8 +7,6 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import pytest
-
 from yanex.core.environment import (
     capture_dependencies,
     capture_full_environment,

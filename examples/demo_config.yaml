@@ -1,7 +1,0 @@
-# Demo configuration for yanex dual-mode testing
-learning_rate: 0.001
-epochs: 3
-model_type: "convolutional_neural_network"
-batch_size: 64
-optimizer: "adam"
-dataset: "cifar10"

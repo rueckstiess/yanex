@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ...core.manager import ExperimentManager
 from ...core.constants import EXPERIMENT_STATUSES_SET
+from ...core.manager import ExperimentManager
 
 
 class ExperimentFilter:

@@ -2,14 +2,9 @@
 Tests for yanex CLI archive, delete, and unarchive commands.
 """
 
-import tempfile
-from pathlib import Path
 from click.testing import CliRunner
 
-import pytest
-
 from yanex.cli.main import cli
-from yanex.core.manager import ExperimentManager
 
 
 class TestArchiveCommands:

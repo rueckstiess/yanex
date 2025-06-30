@@ -2,16 +2,17 @@
 Update experiment metadata - name, description, status, and tags.
 """
 
-import click
-from typing import List, Optional, Dict, Any
+from typing import Optional
 
+import click
+
+from ...core.constants import EXPERIMENT_STATUSES
 from ..filters import ExperimentFilter, parse_time_spec
 from .confirm import (
     confirm_experiment_operation,
-    find_experiments_by_identifiers,
     find_experiments_by_filters,
+    find_experiments_by_identifiers,
 )
-from ...core.constants import EXPERIMENT_STATUSES
 
 
 @click.command("update")
@@ -217,7 +218,7 @@ def update_experiments(
             updates["remove_tags"] = list(remove_tags)
 
         # Show what will be updated
-        click.echo(f"Updates to apply:")
+        click.echo("Updates to apply:")
         for key, value in updates.items():
             if key == "add_tags":
                 click.echo(f"  Add tags: {', '.join(value)}")

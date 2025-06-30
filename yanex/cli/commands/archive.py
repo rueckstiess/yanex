@@ -2,16 +2,17 @@
 Archive experiments - move them to archived directory.
 """
 
-import click
-from typing import List, Optional
+from typing import Optional
 
+import click
+
+from ...core.constants import EXPERIMENT_STATUSES
 from ..filters import ExperimentFilter, parse_time_spec
 from .confirm import (
     confirm_experiment_operation,
-    find_experiments_by_identifiers,
     find_experiments_by_filters,
+    find_experiments_by_identifiers,
 )
-from ...core.constants import EXPERIMENT_STATUSES
 
 
 @click.command("archive")

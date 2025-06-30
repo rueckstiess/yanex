@@ -75,8 +75,9 @@ class TestCLIParameterSweeps:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Use isolated experiment directory
                 import os
-                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
-                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
+
+                old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+                os.environ["YANEX_EXPERIMENTS_DIR"] = temp_dir
 
                 try:
                     result = self.runner.invoke(
@@ -93,14 +94,20 @@ class TestCLIParameterSweeps:
                         ],
                     )
                     assert result.exit_code == 0
-                    assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+                    assert (
+                        "Parameter sweep detected: expanding into 2 experiments"
+                        in result.output
+                    )
                     assert "Staged 2 sweep experiments" in result.output
-                    assert "sweep-test-sweep-001" in result.output or "IDs:" in result.output
+                    assert (
+                        "sweep-test-sweep-001" in result.output
+                        or "IDs:" in result.output
+                    )
                 finally:
                     if old_yanex_dir:
-                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
-                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
-                        del os.environ['YANEX_EXPERIMENTS_DIR']
+                        os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+                    elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                        del os.environ["YANEX_EXPERIMENTS_DIR"]
         finally:
             script_path.unlink()
 
@@ -114,8 +121,9 @@ class TestCLIParameterSweeps:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Use isolated experiment directory
                 import os
-                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
-                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
+
+                old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+                os.environ["YANEX_EXPERIMENTS_DIR"] = temp_dir
 
                 try:
                     result = self.runner.invoke(
@@ -132,13 +140,16 @@ class TestCLIParameterSweeps:
                         ],
                     )
                     assert result.exit_code == 0
-                    assert "Parameter sweep detected: expanding into 4 experiments" in result.output
+                    assert (
+                        "Parameter sweep detected: expanding into 4 experiments"
+                        in result.output
+                    )
                     assert "Staged 4 sweep experiments" in result.output
                 finally:
                     if old_yanex_dir:
-                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
-                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
-                        del os.environ['YANEX_EXPERIMENTS_DIR']
+                        os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+                    elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                        del os.environ["YANEX_EXPERIMENTS_DIR"]
         finally:
             script_path.unlink()
 
@@ -152,8 +163,9 @@ class TestCLIParameterSweeps:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Use isolated experiment directory
                 import os
-                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
-                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
+
+                old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+                os.environ["YANEX_EXPERIMENTS_DIR"] = temp_dir
 
                 try:
                     result = self.runner.invoke(
@@ -172,13 +184,16 @@ class TestCLIParameterSweeps:
                         ],
                     )
                     assert result.exit_code == 0
-                    assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+                    assert (
+                        "Parameter sweep detected: expanding into 2 experiments"
+                        in result.output
+                    )
                     assert "Staged 2 sweep experiments" in result.output
                 finally:
                     if old_yanex_dir:
-                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
-                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
-                        del os.environ['YANEX_EXPERIMENTS_DIR']
+                        os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+                    elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                        del os.environ["YANEX_EXPERIMENTS_DIR"]
         finally:
             script_path.unlink()
 
@@ -192,8 +207,9 @@ class TestCLIParameterSweeps:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Use isolated experiment directory
                 import os
-                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
-                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
+
+                old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+                os.environ["YANEX_EXPERIMENTS_DIR"] = temp_dir
 
                 try:
                     result = self.runner.invoke(
@@ -210,13 +226,16 @@ class TestCLIParameterSweeps:
                         ],
                     )
                     assert result.exit_code == 0
-                    assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+                    assert (
+                        "Parameter sweep detected: expanding into 2 experiments"
+                        in result.output
+                    )
                     assert "Staged 2 sweep experiments" in result.output
                 finally:
                     if old_yanex_dir:
-                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
-                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
-                        del os.environ['YANEX_EXPERIMENTS_DIR']
+                        os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+                    elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                        del os.environ["YANEX_EXPERIMENTS_DIR"]
         finally:
             script_path.unlink()
 
@@ -268,7 +287,10 @@ class TestCLIParameterSweeps:
                 ],
             )
             assert result.exit_code != 0
-            assert "Invalid range() syntax" in result.output or "Expected numeric value" in result.output
+            assert (
+                "Invalid range() syntax" in result.output
+                or "Expected numeric value" in result.output
+            )
 
         finally:
             script_path.unlink()
@@ -283,9 +305,10 @@ class TestCLIParameterSweeps:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Use isolated experiment directory
                 import os
-                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
-                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
-                
+
+                old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+                os.environ["YANEX_EXPERIMENTS_DIR"] = temp_dir
+
                 try:
                     result = self.runner.invoke(
                         cli,
@@ -303,17 +326,20 @@ class TestCLIParameterSweeps:
                         ],
                     )
                     assert result.exit_code == 0
-                    assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+                    assert (
+                        "Parameter sweep detected: expanding into 2 experiments"
+                        in result.output
+                    )
                     assert "Staged 2 sweep experiments" in result.output
-                    
+
                     # Check that parameter values are included in names
                     # Note: We can't easily check the exact names without accessing the storage,
                     # but we can verify the sweep was created successfully
                 finally:
                     if old_yanex_dir:
-                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
-                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
-                        del os.environ['YANEX_EXPERIMENTS_DIR']
+                        os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+                    elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                        del os.environ["YANEX_EXPERIMENTS_DIR"]
         finally:
             script_path.unlink()
 
@@ -327,9 +353,10 @@ class TestCLIParameterSweeps:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Use isolated experiment directory
                 import os
-                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
-                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
-                
+
+                old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+                os.environ["YANEX_EXPERIMENTS_DIR"] = temp_dir
+
                 try:
                     result = self.runner.invoke(
                         cli,
@@ -343,13 +370,15 @@ class TestCLIParameterSweeps:
                         ],
                     )
                     assert result.exit_code == 0
-                    assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+                    assert (
+                        "Parameter sweep detected: expanding into 2 experiments"
+                        in result.output
+                    )
                     assert "Staged 2 sweep experiments" in result.output
                 finally:
                     if old_yanex_dir:
-                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
-                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
-                        del os.environ['YANEX_EXPERIMENTS_DIR']
+                        os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+                    elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                        del os.environ["YANEX_EXPERIMENTS_DIR"]
         finally:
             script_path.unlink()
-

@@ -2,11 +2,7 @@
 Tests for yanex CLI update command.
 """
 
-import tempfile
-from pathlib import Path
 from click.testing import CliRunner
-
-import pytest
 
 from yanex.cli.main import cli
 

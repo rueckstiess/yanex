@@ -2,19 +2,17 @@
 Tests for yanex.utils.exceptions module.
 """
 
-import pytest
-
 from yanex.utils.exceptions import (
-    YanexError,
-    ExperimentError,
-    GitError,
     ConfigError,
+    DirtyWorkingDirectoryError,
+    ExperimentAlreadyRunningError,
+    ExperimentContextError,
+    ExperimentError,
+    ExperimentNotFoundError,
+    GitError,
     StorageError,
     ValidationError,
-    ExperimentNotFoundError,
-    ExperimentAlreadyRunningError,
-    DirtyWorkingDirectoryError,
-    ExperimentContextError,
+    YanexError,
 )
 
 

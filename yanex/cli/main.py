@@ -4,14 +4,14 @@ Main CLI entry point for yanex.
 
 import click
 
-from .commands.run import run
-from .commands.list import list_experiments
-from .commands.show import show_experiment
 from .commands.archive import archive_experiments
+from .commands.compare import compare_experiments
 from .commands.delete import delete_experiments
+from .commands.list import list_experiments
+from .commands.run import run
+from .commands.show import show_experiment
 from .commands.unarchive import unarchive_experiments
 from .commands.update import update_experiments
-from .commands.compare import compare_experiments
 
 
 @click.group()

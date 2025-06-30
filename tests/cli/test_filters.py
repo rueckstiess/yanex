@@ -3,10 +3,9 @@ Tests for yanex CLI filtering functionality.
 """
 
 import tempfile
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
-from typing import Dict, Any, List
 
 import pytest
 

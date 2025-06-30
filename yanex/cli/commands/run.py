@@ -8,12 +8,12 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import click
 
+from ...core.config import expand_parameter_sweeps, has_sweep_parameters
 from ...core.manager import ExperimentManager
-from ...core.config import has_sweep_parameters, expand_parameter_sweeps
 
 
 @click.command()
@@ -249,7 +249,7 @@ def _execute_experiment(
 
         def stream_output(pipe, capture_list, output_stream):
             """Stream output line by line while capturing it."""
-            for line in iter(pipe.readline, ''):
+            for line in iter(pipe.readline, ""):
                 # Display in real-time
                 output_stream.write(line)
                 output_stream.flush()
@@ -259,12 +259,10 @@ def _execute_experiment(
 
         # Start threads for stdout and stderr streaming
         stdout_thread = threading.Thread(
-            target=stream_output,
-            args=(process.stdout, stdout_capture, sys.stdout)
+            target=stream_output, args=(process.stdout, stdout_capture, sys.stdout)
         )
         stderr_thread = threading.Thread(
-            target=stream_output,
-            args=(process.stderr, stderr_capture, sys.stderr)
+            target=stream_output, args=(process.stderr, stderr_capture, sys.stderr)
         )
 
         stdout_thread.start()
@@ -278,17 +276,13 @@ def _execute_experiment(
         stderr_thread.join()
 
         # Save captured output as artifacts
-        stdout_text = ''.join(stdout_capture)
-        stderr_text = ''.join(stderr_capture)
+        stdout_text = "".join(stdout_capture)
+        stderr_text = "".join(stderr_capture)
 
         if stdout_text:
-            manager.storage.save_text_artifact(
-                experiment_id, "stdout.txt", stdout_text
-            )
+            manager.storage.save_text_artifact(experiment_id, "stdout.txt", stdout_text)
         if stderr_text:
-            manager.storage.save_text_artifact(
-                experiment_id, "stderr.txt", stderr_text
-            )
+            manager.storage.save_text_artifact(experiment_id, "stderr.txt", stderr_text)
 
         # Handle experiment result based on exit code
         if return_code == 0:
@@ -309,7 +303,7 @@ def _execute_experiment(
 
     except KeyboardInterrupt:
         # Terminate the process and wait for threads
-        if 'process' in locals():
+        if "process" in locals():
             process.terminate()
             process.wait()
         manager.cancel_experiment(experiment_id, "Interrupted by user (Ctrl+C)")
@@ -323,14 +317,16 @@ def _execute_experiment(
         raise click.Abort() from e
 
 
-def _generate_sweep_experiment_name(base_name: Optional[str], config: Dict[str, Any]) -> str:
+def _generate_sweep_experiment_name(
+    base_name: Optional[str], config: Dict[str, Any]
+) -> str:
     """
     Generate a descriptive name for a sweep experiment based on its parameters.
-    
+
     Args:
         base_name: Base experiment name (can be None)
         config: Configuration dictionary with parameter values
-        
+
     Returns:
         Generated experiment name with parameter suffixes
     """
@@ -339,10 +335,10 @@ def _generate_sweep_experiment_name(base_name: Optional[str], config: Dict[str, 
         name_parts = [base_name]
     else:
         name_parts = ["sweep"]
-    
+
     # Extract parameter name-value pairs
     param_parts = []
-    
+
     def extract_params(d: Dict[str, Any], prefix: str = "") -> None:
         for key, value in d.items():
             if isinstance(value, dict):
@@ -352,7 +348,7 @@ def _generate_sweep_experiment_name(base_name: Optional[str], config: Dict[str, 
             else:
                 # Format parameter name
                 param_name = f"{prefix}_{key}" if prefix else key
-                
+
                 # Format parameter value
                 if isinstance(value, bool):
                     param_value = str(value).lower()
@@ -365,23 +361,28 @@ def _generate_sweep_experiment_name(base_name: Optional[str], config: Dict[str, 
                         else:
                             formatted = f"{value:.6g}"  # Up to 6 significant digits
                             # Replace dots with 'p' and handle scientific notation
-                            param_value = formatted.replace(".", "p").replace("e", "e").replace("+", "").replace("-", "m")
+                            param_value = (
+                                formatted.replace(".", "p")
+                                .replace("e", "e")
+                                .replace("+", "")
+                                .replace("-", "m")
+                            )
                     else:
                         param_value = str(value)
                 else:
                     # String values
                     param_value = str(value)
-                
+
                 param_parts.append(f"{param_name}_{param_value}")
-    
+
     extract_params(config)
-    
+
     # Combine name parts
     if param_parts:
         name_parts.extend(param_parts)
-    
+
     result = "-".join(name_parts)
-    
+
     # Ensure name isn't too long (limit to 100 characters)
     if len(result) > 100:
         # Truncate but keep the base name and at least one parameter
@@ -395,7 +396,7 @@ def _generate_sweep_experiment_name(base_name: Optional[str], config: Dict[str, 
                 result = base_name[:97] + "..."
         else:
             result = result[:97] + "..."
-    
+
     return result
 
 
@@ -409,21 +410,23 @@ def _stage_experiment(
     ignore_dirty: bool = False,
 ) -> None:
     """Stage experiment(s) for later execution, expanding parameter sweeps."""
-    
+
     manager = ExperimentManager()
-    
+
     # Check if this is a parameter sweep
     if has_sweep_parameters(config):
         # Expand parameter sweeps into individual configurations
         expanded_configs = expand_parameter_sweeps(config)
-        
-        click.echo(f"✓ Parameter sweep detected: expanding into {len(expanded_configs)} experiments")
-        
+
+        click.echo(
+            f"✓ Parameter sweep detected: expanding into {len(expanded_configs)} experiments"
+        )
+
         experiment_ids = []
         for i, expanded_config in enumerate(expanded_configs):
             # Generate descriptive name for each sweep experiment
             sweep_name = _generate_sweep_experiment_name(name, expanded_config)
-            
+
             experiment_id = manager.create_experiment(
                 script_path=script,
                 name=sweep_name,
@@ -433,18 +436,20 @@ def _stage_experiment(
                 allow_dirty=ignore_dirty,
                 stage_only=True,
             )
-            
+
             experiment_ids.append(experiment_id)
-            
+
             if verbose:
-                click.echo(f"  Staged sweep experiment {i+1}/{len(expanded_configs)}: {experiment_id}")
+                click.echo(
+                    f"  Staged sweep experiment {i + 1}/{len(expanded_configs)}: {experiment_id}"
+                )
                 click.echo(f"    Config: {expanded_config}")
-        
+
         # Show summary
         click.echo(f"✓ Staged {len(experiment_ids)} sweep experiments")
         click.echo(f"  IDs: {', '.join(experiment_ids)}")
-        click.echo(f"  Use 'yanex run --staged' to execute all staged experiments")
-        
+        click.echo("  Use 'yanex run --staged' to execute all staged experiments")
+
     else:
         # Single experiment (no sweeps)
         experiment_id = manager.create_experiment(
@@ -459,39 +464,39 @@ def _stage_experiment(
 
         if verbose:
             click.echo(f"Staged experiment: {experiment_id}")
-            
+
         exp_dir = manager.storage.get_experiment_directory(experiment_id)
         click.echo(f"✓ Experiment staged: {experiment_id}")
         click.echo(f"  Directory: {exp_dir}")
-        click.echo(f"  Use 'yanex run --staged' to execute staged experiments")
+        click.echo("  Use 'yanex run --staged' to execute staged experiments")
 
 
 def _execute_staged_experiments(verbose: bool = False) -> None:
     """Execute all staged experiments."""
-    
+
     manager = ExperimentManager()
     staged_experiments = manager.get_staged_experiments()
-    
+
     if not staged_experiments:
         click.echo("No staged experiments found")
         return
-    
+
     if verbose:
         click.echo(f"Found {len(staged_experiments)} staged experiments")
-    
+
     for experiment_id in staged_experiments:
         try:
             if verbose:
                 click.echo(f"Executing staged experiment: {experiment_id}")
-            
+
             # Load experiment metadata to get script path and config
             metadata = manager.storage.load_metadata(experiment_id)
             config = manager.storage.load_config(experiment_id)
             script_path = Path(metadata["script_path"])
-            
+
             # Transition to running state
             manager.execute_staged_experiment(experiment_id)
-            
+
             # Execute the script using the same logic as _execute_experiment
             _execute_staged_script(
                 experiment_id=experiment_id,
@@ -500,11 +505,15 @@ def _execute_staged_experiments(verbose: bool = False) -> None:
                 manager=manager,
                 verbose=verbose,
             )
-            
+
         except Exception as e:
-            click.echo(f"✗ Failed to execute staged experiment {experiment_id}: {e}", err=True)
+            click.echo(
+                f"✗ Failed to execute staged experiment {experiment_id}: {e}", err=True
+            )
             try:
-                manager.fail_experiment(experiment_id, f"Staged execution failed: {str(e)}")
+                manager.fail_experiment(
+                    experiment_id, f"Staged execution failed: {str(e)}"
+                )
             except Exception:
                 pass  # Best effort to record failure
 
@@ -517,7 +526,7 @@ def _execute_staged_script(
     verbose: bool = False,
 ) -> None:
     """Execute the script for a staged experiment."""
-    
+
     try:
         # Prepare environment for subprocess (same as _execute_experiment)
         env = os.environ.copy()
@@ -548,7 +557,7 @@ def _execute_staged_script(
 
         def stream_output(pipe, capture_list, output_stream):
             """Stream output line by line while capturing it."""
-            for line in iter(pipe.readline, ''):
+            for line in iter(pipe.readline, ""):
                 # Display in real-time
                 output_stream.write(line)
                 output_stream.flush()
@@ -558,12 +567,10 @@ def _execute_staged_script(
 
         # Start threads for stdout and stderr streaming
         stdout_thread = threading.Thread(
-            target=stream_output,
-            args=(process.stdout, stdout_capture, sys.stdout)
+            target=stream_output, args=(process.stdout, stdout_capture, sys.stdout)
         )
         stderr_thread = threading.Thread(
-            target=stream_output,
-            args=(process.stderr, stderr_capture, sys.stderr)
+            target=stream_output, args=(process.stderr, stderr_capture, sys.stderr)
         )
 
         stdout_thread.start()
@@ -577,17 +584,13 @@ def _execute_staged_script(
         stderr_thread.join()
 
         # Save captured output as artifacts
-        stdout_text = ''.join(stdout_capture)
-        stderr_text = ''.join(stderr_capture)
+        stdout_text = "".join(stdout_capture)
+        stderr_text = "".join(stderr_capture)
 
         if stdout_text:
-            manager.storage.save_text_artifact(
-                experiment_id, "stdout.txt", stdout_text
-            )
+            manager.storage.save_text_artifact(experiment_id, "stdout.txt", stdout_text)
         if stderr_text:
-            manager.storage.save_text_artifact(
-                experiment_id, "stderr.txt", stderr_text
-            )
+            manager.storage.save_text_artifact(experiment_id, "stderr.txt", stderr_text)
 
         # Handle experiment result based on exit code
         if return_code == 0:
@@ -608,7 +611,7 @@ def _execute_staged_script(
 
     except KeyboardInterrupt:
         # Terminate the process and wait for threads
-        if 'process' in locals():
+        if "process" in locals():
             process.terminate()
             process.wait()
         manager.cancel_experiment(experiment_id, "Interrupted by user (Ctrl+C)")

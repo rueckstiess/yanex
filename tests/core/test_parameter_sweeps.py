@@ -221,11 +221,9 @@ class TestParameterSweepIntegration:
 
     def test_parse_param_overrides_with_sweeps(self):
         """Test parsing parameter overrides containing sweeps."""
-        result = parse_param_overrides([
-            "lr=range(0.01, 0.03, 0.01)",
-            "batch_size=list(16, 32)",
-            "epochs=100"
-        ])
+        result = parse_param_overrides(
+            ["lr=range(0.01, 0.03, 0.01)", "batch_size=list(16, 32)", "epochs=100"]
+        )
 
         assert isinstance(result["lr"], RangeSweep)
         assert isinstance(result["batch_size"], ListSweep)
@@ -234,36 +232,23 @@ class TestParameterSweepIntegration:
     def test_has_sweep_parameters_detection(self):
         """Test sweep parameter detection."""
         # Config with sweeps
-        config_with_sweeps = {
-            "lr": RangeSweep(0.01, 0.1, 0.01),
-            "batch_size": 32
-        }
+        config_with_sweeps = {"lr": RangeSweep(0.01, 0.1, 0.01), "batch_size": 32}
         assert has_sweep_parameters(config_with_sweeps) is True
 
         # Config without sweeps
-        config_without_sweeps = {
-            "lr": 0.01,
-            "batch_size": 32
-        }
+        config_without_sweeps = {"lr": 0.01, "batch_size": 32}
         assert has_sweep_parameters(config_without_sweeps) is False
 
         # Nested config with sweeps
         nested_config = {
-            "model": {
-                "lr": RangeSweep(0.01, 0.1, 0.01)
-            },
-            "training": {
-                "epochs": 100
-            }
+            "model": {"lr": RangeSweep(0.01, 0.1, 0.01)},
+            "training": {"epochs": 100},
         }
         assert has_sweep_parameters(nested_config) is True
 
     def test_expand_parameter_sweeps_single(self):
         """Test expansion of single sweep parameter."""
-        config = {
-            "lr": RangeSweep(0.01, 0.03, 0.01),
-            "batch_size": 32
-        }
+        config = {"lr": RangeSweep(0.01, 0.03, 0.01), "batch_size": 32}
 
         expanded = expand_parameter_sweeps(config)
         assert len(expanded) == 2
@@ -279,7 +264,7 @@ class TestParameterSweepIntegration:
         config = {
             "lr": LinspaceSweep(0.01, 0.02, 2),
             "batch_size": ListSweep([16, 32]),
-            "epochs": 100
+            "epochs": 100,
         }
 
         expanded = expand_parameter_sweeps(config)
@@ -296,13 +281,8 @@ class TestParameterSweepIntegration:
     def test_expand_parameter_sweeps_nested(self):
         """Test expansion of nested sweep parameters."""
         config = {
-            "model": {
-                "lr": RangeSweep(0.01, 0.03, 0.01),
-                "architecture": "resnet"
-            },
-            "training": {
-                "epochs": 100
-            }
+            "model": {"lr": RangeSweep(0.01, 0.03, 0.01), "architecture": "resnet"},
+            "training": {"epochs": 100},
         }
 
         expanded = expand_parameter_sweeps(config)
@@ -316,10 +296,7 @@ class TestParameterSweepIntegration:
 
     def test_expand_parameter_sweeps_no_sweeps(self):
         """Test expansion with no sweep parameters returns original config."""
-        config = {
-            "lr": 0.01,
-            "batch_size": 32
-        }
+        config = {"lr": 0.01, "batch_size": 32}
 
         expanded = expand_parameter_sweeps(config)
         assert len(expanded) == 1
@@ -327,10 +304,7 @@ class TestParameterSweepIntegration:
 
     def test_expand_parameter_sweeps_preserves_original(self):
         """Test that expansion doesn't modify original config."""
-        original_config = {
-            "lr": RangeSweep(0.01, 0.03, 0.01),
-            "nested": {"value": 42}
-        }
+        original_config = {"lr": RangeSweep(0.01, 0.03, 0.01), "nested": {"value": 42}}
         config_copy = original_config.copy()
 
         expanded = expand_parameter_sweeps(original_config)
@@ -343,4 +317,3 @@ class TestParameterSweepIntegration:
         for expanded_config in expanded:
             assert isinstance(expanded_config["lr"], (int, float))
             assert expanded_config["nested"]["value"] == 42
-

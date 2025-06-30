@@ -1,14 +1,61 @@
-.venv
-.pytest_cache
-.ruff_cache
-__pycache__
+# Byte-compiled / optimized / DLL files
+__pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.egg-info
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
 *.egg
 *.whl
+MANIFEST
 
-experiments/
-
+# Unit test / coverage reports
+htmlcov/
+.tox/
 .coverage
+.coverage.*
+.cache
+.pytest_cache/
+*.cover
+.hypothesis/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Yanex experiment directories
+experiments/
+archived_experiments/

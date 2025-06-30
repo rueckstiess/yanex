@@ -5,7 +5,7 @@ Core constants used throughout yanex.
 # Valid experiment statuses
 EXPERIMENT_STATUSES = [
     "created",
-    "running", 
+    "running",
     "completed",
     "failed",
     "cancelled",

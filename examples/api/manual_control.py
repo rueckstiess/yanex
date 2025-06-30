@@ -6,6 +6,8 @@ This example shows how to manually control experiment lifecycle:
 - Manual completion with yanex.completed()
 - Manual failure with yanex.fail()
 - Manual cancellation with yanex.cancel()
+
+Run with Python: python manual_control.py
 """
 
 import random
@@ -39,6 +41,7 @@ def main():
         config={"max_retries": 3, "timeout_seconds": 1.0, "algorithm": "monte_carlo"},
         tags=["example", "manual", "control"],
         description="Example showing manual experiment control",
+        allow_dirty=True,  # Allow logging from dirty git state
     ):
         exp_id = yanex.get_experiment_id()
         print(f"Started experiment: {exp_id}")
@@ -100,9 +103,7 @@ def main():
 
                 if attempt == max_retries:
                     # Out of retries - manually fail the experiment
-                    yanex.fail(
-                        f"Computation failed after {max_retries} attempts: {e}"
-                    )
+                    yanex.fail(f"Computation failed after {max_retries} attempts: {e}")
                     return
 
                 print(f"Error on attempt {attempt}: {e}")
@@ -126,6 +127,7 @@ def cancellation_example():
         config={"countdown_seconds": 5},
         tags=["example", "cancellation"],
         description="Example showing experiment cancellation",
+        allow_dirty=True,  # Allow logging from dirty git state
     ):
         exp_id = yanex.get_experiment_id()
         print(f"Started experiment: {exp_id}")
@@ -142,7 +144,7 @@ def cancellation_example():
             yanex.log_results({"countdown": 0, "status": "completed"})
 
         except KeyboardInterrupt:
-            print("\nReceived interrupt signal")
+            print("\nReceived interrupt signal, cancelling experiment...")
             yanex.cancel("User requested cancellation during countdown")
 
 

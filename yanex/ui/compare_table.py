@@ -9,10 +9,9 @@ import csv
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
 
@@ -28,7 +27,7 @@ class HelpScreen(ModalScreen):
                 """
 Navigation:
   ↑/↓, j/k     Navigate rows
-  ←/→, h/l     Navigate columns  
+  ←/→, h/l     Navigate columns
   Home/End     Jump to first/last row
   PgUp/PgDn    Navigate by page
 
@@ -48,10 +47,9 @@ Other Controls:
 Column Types:
   Parameters are prefixed with 'param:'
   Metrics are prefixed with 'metric:'
-  
 Missing values are shown as '-'
                 """,
-                classes="help-content"
+                classes="help-content",
             ),
             Button("Close", variant="primary", id="close-help"),
             classes="help-dialog",
@@ -75,7 +73,9 @@ class ExportScreen(ModalScreen):
         yield Container(
             Label("Export Comparison Data", classes="export-title"),
             Label("Enter filename for CSV export:"),
-            Input(value=self.default_path, placeholder="comparison.csv", id="export-path"),
+            Input(
+                value=self.default_path, placeholder="comparison.csv", id="export-path"
+            ),
             Horizontal(
                 Button("Export", variant="primary", id="export-confirm"),
                 Button("Cancel", variant="default", id="export-cancel"),
@@ -181,7 +181,7 @@ class ComparisonTableApp(App):
         self.comparison_data = comparison_data
         self.title_text = title
         self.export_path = export_path or "comparison.csv"
-        self.original_rows = comparison_data.get('rows', [])
+        self.original_rows = comparison_data.get("rows", [])
         # Set default sort to "started" descending (latest experiments first)
         self.current_sort_key = "started"
         self.current_sort_reverse = True
@@ -196,14 +196,13 @@ class ComparisonTableApp(App):
     def on_mount(self) -> None:
         """Initialize the table when app mounts."""
         self.title = self.title_text
-        table = self.query_one(DataTable)
 
         # Apply default sort (started descending) - this will also populate the table
         self._sort_table("started", reverse=True)
 
     def _setup_table_columns(self, table: DataTable) -> None:
         """Set up table columns."""
-        rows = self.comparison_data.get('rows', [])
+        rows = self.comparison_data.get("rows", [])
         if not rows:
             return
 
@@ -221,10 +220,10 @@ class ComparisonTableApp(App):
         # Save cursor position before clearing
         saved_cursor_row = table.cursor_row
         saved_cursor_column = table.cursor_column
-        
+
         # Clear table completely (removes columns and rows)
         table.clear(columns=True)
-        rows = self.comparison_data.get('rows', [])
+        rows = self.comparison_data.get("rows", [])
 
         if not rows:
             return
@@ -239,24 +238,24 @@ class ComparisonTableApp(App):
 
         # Add rows
         for row_data in rows:
-            row_values = [row_data.get(key, '-') for key in column_keys]
+            row_values = [row_data.get(key, "-") for key in column_keys]
             table.add_row(*row_values)
-        
+
         # Restore cursor position (with bounds checking)
         if rows:
             max_row = len(rows) - 1
             max_column = len(column_keys) - 1
-            
+
             # Ensure cursor position is within bounds
             new_cursor_row = min(saved_cursor_row, max_row)
             new_cursor_column = min(saved_cursor_column, max_column)
-            
+
             # Restore cursor position
             table.move_cursor(row=new_cursor_row, column=new_cursor_column)
 
     def _get_column_keys(self) -> List[str]:
         """Get column keys from data."""
-        rows = self.comparison_data.get('rows', [])
+        rows = self.comparison_data.get("rows", [])
         if not rows:
             return []
         return list(rows[0].keys())
@@ -264,9 +263,9 @@ class ComparisonTableApp(App):
     def _get_column_header(self, key: str) -> str:
         """Get formatted column header with optional sort indicator."""
         # Base header without sort indicator
-        if key.startswith('param:'):
+        if key.startswith("param:"):
             base_header = f"📊 {key[6:]}"  # Remove 'param:' prefix
-        elif key.startswith('metric:'):
+        elif key.startswith("metric:"):
             base_header = f"📈 {key[7:]}"  # Remove 'metric:' prefix
         elif key == "duration":
             base_header = "Duration"
@@ -283,14 +282,14 @@ class ComparisonTableApp(App):
         if self.current_sort_key == key:
             sort_indicator = " ↓" if self.current_sort_reverse else " ↑"
             return base_header + sort_indicator
-        
+
         return base_header
 
     def _update_status_bar(self) -> None:
         """Update the status bar with current information."""
-        total_experiments = self.comparison_data.get('total_experiments', 0)
-        param_count = len(self.comparison_data.get('param_columns', []))
-        metric_count = len(self.comparison_data.get('metric_columns', []))
+        total_experiments = self.comparison_data.get("total_experiments", 0)
+        param_count = len(self.comparison_data.get("param_columns", []))
+        metric_count = len(self.comparison_data.get("metric_columns", []))
 
         status_text = (
             f"Experiments: {total_experiments} | "
@@ -350,10 +349,12 @@ class ComparisonTableApp(App):
         """Reverse current sort order."""
         if self.current_sort_key:
             # Reverse the current sort
-            self._sort_table(self.current_sort_key, reverse=not self.current_sort_reverse)
+            self._sort_table(
+                self.current_sort_key, reverse=not self.current_sort_reverse
+            )
         else:
             # If no current sort, just reverse the rows and update state
-            self.comparison_data['rows'].reverse()
+            self.comparison_data["rows"].reverse()
             self.current_sort_reverse = not self.current_sort_reverse
             table = self.query_one(DataTable)
             self._populate_table_data(table)
@@ -374,7 +375,7 @@ class ComparisonTableApp(App):
 
     def _export_to_csv(self, file_path: str) -> None:
         """Export current table data to CSV."""
-        rows = self.comparison_data.get('rows', [])
+        rows = self.comparison_data.get("rows", [])
         if not rows:
             raise ValueError("No data to export")
 
@@ -383,9 +384,9 @@ class ComparisonTableApp(App):
         # For headers, we'll use the display headers we set up
         column_headers = []
         for key in column_keys:
-            if key.startswith('param:'):
+            if key.startswith("param:"):
                 column_headers.append(f"📊 {key[6:]}")
-            elif key.startswith('metric:'):
+            elif key.startswith("metric:"):
                 column_headers.append(f"📈 {key[7:]}")
             elif key == "duration":
                 column_headers.append("Duration")
@@ -400,7 +401,7 @@ class ComparisonTableApp(App):
 
         # Write CSV
         path = Path(file_path)
-        with path.open('w', newline='', encoding='utf-8') as csvfile:
+        with path.open("w", newline="", encoding="utf-8") as csvfile:
             writer = csv.writer(csvfile)
 
             # Write header
@@ -408,36 +409,44 @@ class ComparisonTableApp(App):
 
             # Write data rows
             for row_data in rows:
-                row_values = [row_data.get(key, '-') for key in column_keys]
+                row_values = [row_data.get(key, "-") for key in column_keys]
                 writer.writerow(row_values)
 
-    def _sort_table(self, column_key: str, reverse: bool = False, numeric: bool = False) -> None:
+    def _sort_table(
+        self, column_key: str, reverse: bool = False, numeric: bool = False
+    ) -> None:
         """Sort table by specified column."""
-        rows = self.comparison_data.get('rows', [])
+        rows = self.comparison_data.get("rows", [])
         if not rows:
             return
 
         def sort_key(row_data: Dict[str, Any]) -> Any:
             """Get sort key for a row."""
-            value = row_data.get(column_key, '-')
+            value = row_data.get(column_key, "-")
 
             # Handle missing values
-            if value == '-':
-                return '' if not numeric else float('-inf') if not reverse else float('inf')
+            if value == "-":
+                return (
+                    ""
+                    if not numeric
+                    else float("-inf")
+                    if not reverse
+                    else float("inf")
+                )
 
             # Try numeric conversion if requested
             if numeric:
                 try:
                     return float(value)
                 except (ValueError, TypeError):
-                    return float('-inf') if not reverse else float('inf')
+                    return float("-inf") if not reverse else float("inf")
 
             # Use string comparison
             return str(value).lower()
 
         # Sort the rows
         sorted_rows = sorted(rows, key=sort_key, reverse=reverse)
-        self.comparison_data['rows'] = sorted_rows
+        self.comparison_data["rows"] = sorted_rows
 
         # Update status tracking BEFORE populating table (so headers show indicators)
         self.current_sort_key = column_key
@@ -469,47 +478,47 @@ def run_comparison_table(
 if __name__ == "__main__":
     # Example usage with mock data
     mock_data = {
-        'rows': [
+        "rows": [
             {
-                'run': 'exp001',
-                'operation': 'train.py',
-                'started': '2025-01-01 10:00:00',
-                'time': '01:30:45',
-                'status': 'completed',
-                'label': 'experiment-1',
-                'param:learning_rate': '0.01',
-                'param:epochs': '10',
-                'metric:accuracy': '0.95',
-                'metric:loss': '0.05',
+                "run": "exp001",
+                "operation": "train.py",
+                "started": "2025-01-01 10:00:00",
+                "time": "01:30:45",
+                "status": "completed",
+                "label": "experiment-1",
+                "param:learning_rate": "0.01",
+                "param:epochs": "10",
+                "metric:accuracy": "0.95",
+                "metric:loss": "0.05",
             },
             {
-                'run': 'exp002',
-                'operation': 'train.py',
-                'started': '2025-01-01 12:00:00',
-                'time': '00:45:30',
-                'status': 'failed',
-                'label': 'experiment-2',
-                'param:learning_rate': '0.02',
-                'param:epochs': '5',
-                'metric:accuracy': '0.87',
-                'metric:loss': '0.13',
+                "run": "exp002",
+                "operation": "train.py",
+                "started": "2025-01-01 12:00:00",
+                "time": "00:45:30",
+                "status": "failed",
+                "label": "experiment-2",
+                "param:learning_rate": "0.02",
+                "param:epochs": "5",
+                "metric:accuracy": "0.87",
+                "metric:loss": "0.13",
             },
         ],
-        'param_columns': ['learning_rate', 'epochs'],
-        'metric_columns': ['accuracy', 'loss'],
-        'column_types': {
-            'run': 'string',
-            'operation': 'string',
-            'started': 'datetime',
-            'time': 'string',
-            'status': 'string',
-            'label': 'string',
-            'param:learning_rate': 'numeric',
-            'param:epochs': 'numeric',
-            'metric:accuracy': 'numeric',
-            'metric:loss': 'numeric',
+        "param_columns": ["learning_rate", "epochs"],
+        "metric_columns": ["accuracy", "loss"],
+        "column_types": {
+            "run": "string",
+            "operation": "string",
+            "started": "datetime",
+            "time": "string",
+            "status": "string",
+            "label": "string",
+            "param:learning_rate": "numeric",
+            "param:epochs": "numeric",
+            "metric:accuracy": "numeric",
+            "metric:loss": "numeric",
         },
-        'total_experiments': 2
+        "total_experiments": 2,
     }
 
     run_comparison_table(mock_data)

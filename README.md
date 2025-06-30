@@ -40,7 +40,7 @@ information, and even the Git state of your code repository. You can then compar
 
 - 🔒 **Reproducible**: Automatic Git state tracking ensures every experiment is reproducible
 - 📊 **Interactive Comparison**: Compare experiments side-by-side with an interactive table
-- ⚙️ **Flexible Parameters**: YAML configs with CLI overrides for easy experimentation
+- ⚙️ **Flexible Parameters**: YAML configs with CLI overrides for easy experimentation and syntax for parameter sweeps
 - 📈 **Rich Logging**: Track metrics, artifacts, and figures
 - 🔍 **Powerful Search**: Find experiments by status, parameters, tags, or time ranges
 - 📦 **Zero Dependencies**: No external services required - works offline
@@ -143,7 +143,7 @@ yanex run train.py --param learning_rate=0.01
 ```
 
 ### 2. Explicit Experiment Creation (Advanced)
-For notebooks, parameter sweeps, or when you need fine control:
+For Jupyter notebook usage, or when you need fine control:
 
 ```python
 import yanex
@@ -160,9 +160,8 @@ with yanex.create_experiment(
 
 > **Note:** Don't mix both patterns! Use CLI-first for most cases, explicit creation for advanced scenarios.
 
-## Advanced Usage
 
-### Configuration Files
+## Configuration Files
 
 Create `config.yaml` for default parameters:
 
@@ -180,44 +179,6 @@ data:
 training:
   optimizer: "adam"
   scheduler: "cosine"
-```
-
-### Rich Experiment Tracking
-
-```python
-# vision_transformer.py
-import yanex
-import matplotlib.pyplot as plt
-
-params = yanex.get_params()
-
-# Log metrics over time
-for epoch in range(params.get('epochs', 10)):
-    train_loss, val_accuracy = train_epoch(model)
-    
-    yanex.log_results({
-        "epoch": epoch,
-        "train_loss": train_loss,
-        "val_accuracy": val_accuracy
-    })
-
-# Save model and artifacts
-yanex.log_artifact("model.pth", model_path)
-yanex.log_artifact("config.json", config_path)
-
-# Auto-save matplotlib figures
-fig = plt.figure()
-plt.plot(losses)
-plt.title("Training Loss")
-yanex.log_matplotlib_figure(fig, "loss_curve.png")
-```
-
-```bash
-# Run with yanex CLI
-yanex run vision_transformer.py \
-  --name "vision-transformer-experiment" \
-  --description "Testing ViT on CIFAR-10 with data augmentation" \
-  --param epochs=100
 ```
 
 

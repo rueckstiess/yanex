@@ -2,7 +2,7 @@
 Time parsing utilities for human-readable date specifications.
 """
 
-from datetime import datetime, timezone, date, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 
 import dateparser
@@ -62,7 +62,6 @@ def parse_time_spec(time_spec: str) -> Optional[datetime]:
         # Ensure we have timezone info
         if parsed_dt.tzinfo is None:
             # Add local timezone if not present
-            import time as time_module
 
             local_tz = timezone.utc.replace(tzinfo=timezone.utc).astimezone().tzinfo
             parsed_dt = parsed_dt.replace(tzinfo=local_tz)

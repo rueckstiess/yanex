@@ -4,15 +4,10 @@ Tests for experiment comparison data extraction.
 
 import json
 import tempfile
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from yanex.core.comparison import ExperimentComparisonData
 from yanex.core.manager import ExperimentManager
-from yanex.utils.exceptions import StorageError
 
 
 class TestExperimentComparisonData:
@@ -27,7 +22,9 @@ class TestExperimentComparisonData:
         self.manager = ExperimentManager(self.experiments_dir)
         self.comparison = ExperimentComparisonData(self.manager)
 
-    def _create_test_experiment(self, exp_id: str, metadata: dict, config: dict = None, results: dict = None):
+    def _create_test_experiment(
+        self, exp_id: str, metadata: dict, config: dict = None, results: dict = None
+    ):
         """Create a test experiment with given data."""
         exp_dir = self.experiments_dir / exp_id
         exp_dir.mkdir(parents=True, exist_ok=True)
@@ -94,11 +91,19 @@ class TestExperimentComparisonData:
     def test_discover_columns_auto_discovery(self):
         """Test automatic column discovery."""
         experiments_data = [
-            {"config": {"learning_rate": 0.01, "epochs": 10}, "results": {"accuracy": 0.95, "loss": 0.05}},
-            {"config": {"learning_rate": 0.02, "batch_size": 32}, "results": {"accuracy": 0.92, "f1_score": 0.88}},
+            {
+                "config": {"learning_rate": 0.01, "epochs": 10},
+                "results": {"accuracy": 0.95, "loss": 0.05},
+            },
+            {
+                "config": {"learning_rate": 0.02, "batch_size": 32},
+                "results": {"accuracy": 0.92, "f1_score": 0.88},
+            },
         ]
 
-        param_columns, metric_columns = self.comparison.discover_columns(experiments_data)
+        param_columns, metric_columns = self.comparison.discover_columns(
+            experiments_data
+        )
 
         assert set(param_columns) == {"batch_size", "epochs", "learning_rate"}
         assert set(metric_columns) == {"accuracy", "f1_score", "loss"}
@@ -123,7 +128,10 @@ class TestExperimentComparisonData:
         """Test building comparison matrix."""
         exp_data = {
             "id": "test123",
-            "metadata": {"start_time": "2025-01-01T10:00:00Z", "end_time": "2025-01-01T11:00:00Z"},
+            "metadata": {
+                "start_time": "2025-01-01T10:00:00Z",
+                "end_time": "2025-01-01T11:00:00Z",
+            },
             "name": "test-exp",
             "status": "completed",
             "script_path": "train.py",
@@ -131,7 +139,9 @@ class TestExperimentComparisonData:
             "results": {"accuracy": 0.95},
         }
 
-        rows = self.comparison.build_comparison_matrix([exp_data], ["learning_rate"], ["accuracy"])
+        rows = self.comparison.build_comparison_matrix(
+            [exp_data], ["learning_rate"], ["accuracy"]
+        )
 
         assert len(rows) == 1
         row = rows[0]
@@ -184,7 +194,9 @@ class TestExperimentComparisonData:
         ]
 
         filtered_params, filtered_metrics = self.comparison.filter_different_columns(
-            comparison_rows, ["learning_rate", "epochs", "model_type"], ["accuracy", "loss"]
+            comparison_rows,
+            ["learning_rate", "epochs", "model_type"],
+            ["accuracy", "loss"],
         )
 
         # Only learning_rate should remain (epochs and model_type are identical)
@@ -247,7 +259,9 @@ class TestExperimentComparisonData:
         self._create_test_experiment(exp2_id, exp2_metadata, exp2_config, exp2_results)
 
         # Get comparison data
-        comparison_data = self.comparison.get_comparison_data([exp1_id, exp2_id], only_different=True)
+        comparison_data = self.comparison.get_comparison_data(
+            [exp1_id, exp2_id], only_different=True
+        )
 
         assert comparison_data["total_experiments"] == 2
         assert len(comparison_data["rows"]) == 2

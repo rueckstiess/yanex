@@ -485,6 +485,7 @@ class ExperimentManager:
         # Verify experiment exists
         if not self.storage.experiment_exists(experiment_id):
             from ..utils.exceptions import ExperimentNotFoundError
+
             raise ExperimentNotFoundError(experiment_id)
 
         # Load current metadata
@@ -512,7 +513,7 @@ class ExperimentManager:
         """
         all_experiments = self.storage.list_experiments(include_archived=False)
         staged_experiments = []
-        
+
         for exp_id in all_experiments:
             try:
                 metadata = self.storage.load_metadata(exp_id)
@@ -521,7 +522,7 @@ class ExperimentManager:
             except Exception:
                 # Skip experiments with loading errors
                 continue
-                
+
         return staged_experiments
 
     def find_experiment_by_name(self, name: str) -> Optional[str]:

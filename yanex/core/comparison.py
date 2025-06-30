@@ -27,9 +27,7 @@ class ExperimentComparisonData:
         self.storage = self.manager.storage
 
     def extract_experiment_data(
-        self,
-        experiment_ids: List[str],
-        include_archived: bool = False
+        self, experiment_ids: List[str], include_archived: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Extract complete data for a list of experiments.
@@ -59,9 +57,7 @@ class ExperimentComparisonData:
         return experiments_data
 
     def _extract_single_experiment(
-        self,
-        experiment_id: str,
-        include_archived: bool = False
+        self, experiment_id: str, include_archived: bool = False
     ) -> Optional[Dict[str, Any]]:
         """
         Extract data from a single experiment.
@@ -91,27 +87,31 @@ class ExperimentComparisonData:
 
             # Combine all data
             exp_data = {
-                'id': experiment_id,
-                'metadata': metadata,
-                'config': config,
-                'results': results,
+                "id": experiment_id,
+                "metadata": metadata,
+                "config": config,
+                "results": results,
                 # Extract commonly used fields for easy access
-                'name': metadata.get('name'),
-                'description': metadata.get('description'),
-                'status': metadata.get('status', 'unknown'),
-                'tags': metadata.get('tags', []),
-                'started_at': metadata.get('started_at'),
-                'ended_at': metadata.get('completed_at'),
-                'script_path': metadata.get('script_path', ''),
-                'archived': metadata.get('archived', False),
+                "name": metadata.get("name"),
+                "description": metadata.get("description"),
+                "status": metadata.get("status", "unknown"),
+                "tags": metadata.get("tags", []),
+                "started_at": metadata.get("started_at"),
+                "ended_at": metadata.get("completed_at"),
+                "script_path": metadata.get("script_path", ""),
+                "archived": metadata.get("archived", False),
             }
 
             return exp_data
 
         except Exception as e:
-            raise StorageError(f"Failed to extract experiment {experiment_id}: {e}") from e
+            raise StorageError(
+                f"Failed to extract experiment {experiment_id}: {e}"
+            ) from e
 
-    def _load_results(self, experiment_id: str, include_archived: bool = False) -> Dict[str, Any]:
+    def _load_results(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> Dict[str, Any]:
         """
         Load results from experiment directory.
 
@@ -138,7 +138,7 @@ class ExperimentComparisonData:
         self,
         experiments_data: List[Dict[str, Any]],
         params: Optional[List[str]] = None,
-        metrics: Optional[List[str]] = None
+        metrics: Optional[List[str]] = None,
     ) -> Tuple[List[str], List[str]]:
         """
         Discover available parameter and metric columns.
@@ -161,11 +161,11 @@ class ExperimentComparisonData:
 
         for exp_data in experiments_data:
             # Collect parameter keys
-            config = exp_data.get('config', {})
+            config = exp_data.get("config", {})
             all_params.update(config.keys())
 
             # Collect metric keys
-            results = exp_data.get('results', {})
+            results = exp_data.get("results", {})
             if isinstance(results, dict):
                 all_metrics.update(results.keys())
             elif isinstance(results, list):
@@ -184,7 +184,7 @@ class ExperimentComparisonData:
         self,
         experiments_data: List[Dict[str, Any]],
         param_columns: List[str],
-        metric_columns: List[str]
+        metric_columns: List[str],
     ) -> List[Dict[str, Any]]:
         """
         Build comparison data matrix with unified columns.
@@ -209,7 +209,7 @@ class ExperimentComparisonData:
         self,
         exp_data: Dict[str, Any],
         param_columns: List[str],
-        metric_columns: List[str]
+        metric_columns: List[str],
     ) -> Dict[str, Any]:
         """
         Build a single experiment row for the comparison table.
@@ -222,28 +222,32 @@ class ExperimentComparisonData:
         Returns:
             Row dictionary with all columns
         """
-        config = exp_data.get('config', {})
-        results = exp_data.get('results', {})
+        config = exp_data.get("config", {})
+        results = exp_data.get("results", {})
 
         # Fixed columns
         row = {
-            'id': exp_data['id'],
-            'name': exp_data.get('name') or '[unnamed]',
-            'started': self._format_datetime(exp_data.get('started_at')),
-            'duration': self._calculate_duration(exp_data.get('started_at'), exp_data.get('ended_at'), exp_data.get('metadata', {})),
-            'status': exp_data['status'],
-            'tags': self._format_tags(exp_data.get('tags', [])),
+            "id": exp_data["id"],
+            "name": exp_data.get("name") or "[unnamed]",
+            "started": self._format_datetime(exp_data.get("started_at")),
+            "duration": self._calculate_duration(
+                exp_data.get("started_at"),
+                exp_data.get("ended_at"),
+                exp_data.get("metadata", {}),
+            ),
+            "status": exp_data["status"],
+            "tags": self._format_tags(exp_data.get("tags", [])),
         }
 
         # Parameter columns
         for param in param_columns:
             value = config.get(param)
-            row[f'param:{param}'] = self._format_value(value)
+            row[f"param:{param}"] = self._format_value(value)
 
         # Metric columns
         for metric in metric_columns:
             value = self._extract_metric_value(results, metric)
-            row[f'metric:{metric}'] = self._format_value(value)
+            row[f"metric:{metric}"] = self._format_value(value)
 
         return row
 
@@ -259,30 +263,31 @@ class ExperimentComparisonData:
                     return result_entry[metric_name]
         return None
 
-
     def _format_datetime(self, dt_str: Optional[str]) -> str:
         """Format datetime string for display."""
         if not dt_str:
-            return '-'
+            return "-"
 
         try:
-            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-            return dt.strftime('%Y-%m-%d %H:%M:%S')
+            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
         except (ValueError, AttributeError):
-            return str(dt_str) if dt_str else '-'
+            return str(dt_str) if dt_str else "-"
 
     def _format_tags(self, tags: list) -> str:
         """Format tags list for display."""
         if not tags:
-            return '-'
-        return ', '.join(tags)
+            return "-"
+        return ", ".join(tags)
 
-    def _calculate_duration(self, start_str: Optional[str], end_str: Optional[str], metadata: dict = None) -> str:
+    def _calculate_duration(
+        self, start_str: Optional[str], end_str: Optional[str], metadata: dict = None
+    ) -> str:
         """Calculate and format duration."""
         # Try to use duration from metadata first
-        if metadata and 'duration' in metadata:
+        if metadata and "duration" in metadata:
             try:
-                duration_seconds = float(metadata['duration'])
+                duration_seconds = float(metadata["duration"])
                 hours = int(duration_seconds // 3600)
                 minutes = int((duration_seconds % 3600) // 60)
                 seconds = int(duration_seconds % 60)
@@ -292,14 +297,14 @@ class ExperimentComparisonData:
 
         # Fall back to calculating from start/end times
         if not start_str:
-            return '-'
+            return "-"
 
         if not end_str:
-            return '[running]'
+            return "[running]"
 
         try:
-            start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
-            end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+            start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
             duration = end_dt - start_dt
 
             # Format as HH:MM:SS
@@ -311,12 +316,12 @@ class ExperimentComparisonData:
             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
         except (ValueError, AttributeError):
-            return '-'
+            return "-"
 
     def _format_value(self, value: Any) -> str:
         """Format a value for table display."""
         if value is None:
-            return '-'
+            return "-"
 
         # Handle different types appropriately
         if isinstance(value, bool):
@@ -327,16 +332,16 @@ class ExperimentComparisonData:
                 if abs(value) >= 10000:
                     return f"{value:.2e}"
                 elif abs(value) >= 1:
-                    return f"{value:.4f}".rstrip('0').rstrip('.')
+                    return f"{value:.4f}".rstrip("0").rstrip(".")
                 else:
-                    return f"{value:.6f}".rstrip('0').rstrip('.')
+                    return f"{value:.6f}".rstrip("0").rstrip(".")
             return str(value)
         elif isinstance(value, (list, tuple)):
             # Format lists/tuples as comma-separated strings
-            return ', '.join(str(item) for item in value)
+            return ", ".join(str(item) for item in value)
         elif isinstance(value, dict):
             # Format dicts as key=value pairs
-            return ', '.join(f"{k}={v}" for k, v in value.items())
+            return ", ".join(f"{k}={v}" for k, v in value.items())
         else:
             return str(value)
 
@@ -344,7 +349,7 @@ class ExperimentComparisonData:
         self,
         comparison_rows: List[Dict[str, Any]],
         param_columns: List[str],
-        metric_columns: List[str]
+        metric_columns: List[str],
     ) -> Tuple[List[str], List[str]]:
         """
         Filter out columns where all values are identical.
@@ -365,9 +370,9 @@ class ExperimentComparisonData:
             values = set()
 
             for row in comparison_rows:
-                value = row.get(column_key, '-')
+                value = row.get(column_key, "-")
                 # Skip missing values for difference analysis
-                if value != '-':
+                if value != "-":
                     values.add(value)
 
             # Column is "different" if it has more than one unique non-missing value
@@ -376,14 +381,14 @@ class ExperimentComparisonData:
         # Filter parameter columns
         filtered_params = []
         for param in param_columns:
-            column_key = f'param:{param}'
+            column_key = f"param:{param}"
             if has_different_values(column_key):
                 filtered_params.append(param)
 
         # Filter metric columns
         filtered_metrics = []
         for metric in metric_columns:
-            column_key = f'metric:{metric}'
+            column_key = f"metric:{metric}"
             if has_different_values(column_key):
                 filtered_metrics.append(metric)
 
@@ -393,7 +398,7 @@ class ExperimentComparisonData:
         self,
         comparison_rows: List[Dict[str, Any]],
         param_columns: List[str],
-        metric_columns: List[str]
+        metric_columns: List[str],
     ) -> Dict[str, str]:
         """
         Infer data types for columns to enable proper sorting.
@@ -409,18 +414,21 @@ class ExperimentComparisonData:
         column_types = {}
 
         # Fixed columns - we know their types
-        column_types.update({
-            'id': 'string',
-            'name': 'string',
-            'started': 'datetime',
-            'duration': 'string',  # Duration format
-            'status': 'string',
-            'tags': 'string',
-        })
+        column_types.update(
+            {
+                "id": "string",
+                "name": "string",
+                "started": "datetime",
+                "duration": "string",  # Duration format
+                "status": "string",
+                "tags": "string",
+            }
+        )
 
         # Infer types for parameter and metric columns
-        all_columns = [f'param:{param}' for param in param_columns] + \
-                     [f'metric:{metric}' for metric in metric_columns]
+        all_columns = [f"param:{param}" for param in param_columns] + [
+            f"metric:{metric}" for metric in metric_columns
+        ]
 
         for column_key in all_columns:
             column_type = self._infer_single_column_type(comparison_rows, column_key)
@@ -428,17 +436,19 @@ class ExperimentComparisonData:
 
         return column_types
 
-    def _infer_single_column_type(self, comparison_rows: List[Dict[str, Any]], column_key: str) -> str:
+    def _infer_single_column_type(
+        self, comparison_rows: List[Dict[str, Any]], column_key: str
+    ) -> str:
         """Infer the data type of a single column."""
         # Collect non-missing values
         values = []
         for row in comparison_rows:
-            value = row.get(column_key, '-')
-            if value != '-':
+            value = row.get(column_key, "-")
+            if value != "-":
                 values.append(value)
 
         if not values:
-            return 'string'
+            return "string"
 
         # Try to infer type from values
         numeric_count = 0
@@ -455,7 +465,7 @@ class ExperimentComparisonData:
 
             # Check if datetime
             try:
-                datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+                datetime.fromisoformat(str(value).replace("Z", "+00:00"))
                 datetime_count += 1
                 continue
             except (ValueError, TypeError):
@@ -464,11 +474,11 @@ class ExperimentComparisonData:
         # Determine type based on majority
         total_values = len(values)
         if numeric_count > total_values * 0.8:
-            return 'numeric'
+            return "numeric"
         elif datetime_count > total_values * 0.8:
-            return 'datetime'
+            return "datetime"
         else:
-            return 'string'
+            return "string"
 
     def get_comparison_data(
         self,
@@ -476,7 +486,7 @@ class ExperimentComparisonData:
         params: Optional[List[str]] = None,
         metrics: Optional[List[str]] = None,
         only_different: bool = False,
-        include_archived: bool = False
+        include_archived: bool = False,
     ) -> Dict[str, Any]:
         """
         Get complete comparison data for experiments.
@@ -492,22 +502,28 @@ class ExperimentComparisonData:
             Dictionary containing comparison data and metadata
         """
         # Extract experiment data
-        experiments_data = self.extract_experiment_data(experiment_ids, include_archived)
+        experiments_data = self.extract_experiment_data(
+            experiment_ids, include_archived
+        )
 
         if not experiments_data:
             return {
-                'rows': [],
-                'param_columns': [],
-                'metric_columns': [],
-                'column_types': {},
-                'total_experiments': 0
+                "rows": [],
+                "param_columns": [],
+                "metric_columns": [],
+                "column_types": {},
+                "total_experiments": 0,
             }
 
         # Discover columns
-        param_columns, metric_columns = self.discover_columns(experiments_data, params, metrics)
+        param_columns, metric_columns = self.discover_columns(
+            experiments_data, params, metrics
+        )
 
         # Build comparison matrix
-        comparison_rows = self.build_comparison_matrix(experiments_data, param_columns, metric_columns)
+        comparison_rows = self.build_comparison_matrix(
+            experiments_data, param_columns, metric_columns
+        )
 
         # Filter for different columns if requested
         if only_different:
@@ -515,15 +531,19 @@ class ExperimentComparisonData:
                 comparison_rows, param_columns, metric_columns
             )
             # Rebuild matrix with filtered columns
-            comparison_rows = self.build_comparison_matrix(experiments_data, param_columns, metric_columns)
+            comparison_rows = self.build_comparison_matrix(
+                experiments_data, param_columns, metric_columns
+            )
 
         # Infer column types
-        column_types = self.infer_column_types(comparison_rows, param_columns, metric_columns)
+        column_types = self.infer_column_types(
+            comparison_rows, param_columns, metric_columns
+        )
 
         return {
-            'rows': comparison_rows,
-            'param_columns': param_columns,
-            'metric_columns': metric_columns,
-            'column_types': column_types,
-            'total_experiments': len(experiments_data)
+            "rows": comparison_rows,
+            "param_columns": param_columns,
+            "metric_columns": metric_columns,
+            "column_types": column_types,
+            "total_experiments": len(experiments_data),
         }

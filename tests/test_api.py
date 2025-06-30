@@ -12,6 +12,7 @@ import pytest
 
 import yanex
 from yanex.core.manager import ExperimentManager
+
 # from yanex.utils.exceptions import ExperimentContextError  # Unused import
 
 
@@ -110,16 +111,9 @@ class TestExperimentAPI:
             "model": {
                 "architecture": "resnet",
                 "layers": 18,
-                "optimizer": {
-                    "type": "adam",
-                    "lr": 0.001,
-                    "weight_decay": 1e-4
-                }
+                "optimizer": {"type": "adam", "lr": 0.001, "weight_decay": 1e-4},
             },
-            "data": {
-                "batch_size": 32,
-                "augmentation": True
-            }
+            "data": {"batch_size": 32, "augmentation": True},
         }
         self.manager.storage.save_config(self.experiment_id, config)
 
@@ -293,7 +287,9 @@ class TestExperimentAPI:
         yanex.log_artifact("test.txt", test_file)
 
         # Verify artifact was saved
-        artifact_path = self.experiments_dir / self.experiment_id / "artifacts" / "test.txt"
+        artifact_path = (
+            self.experiments_dir / self.experiment_id / "artifacts" / "test.txt"
+        )
         assert artifact_path.exists()
         assert artifact_path.read_text() == "test content"
 
@@ -306,7 +302,9 @@ class TestExperimentAPI:
         yanex.log_text(content, "output.txt")
 
         # Verify text artifact was saved
-        artifact_path = self.experiments_dir / self.experiment_id / "artifacts" / "output.txt"
+        artifact_path = (
+            self.experiments_dir / self.experiment_id / "artifacts" / "output.txt"
+        )
         assert artifact_path.exists()
         assert artifact_path.read_text() == content
 
@@ -512,7 +510,9 @@ class TestExperimentCreation:
     @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
-    def test_create_experiment(self, mock_capture_env, mock_git_info, mock_validate_git, mock_get_manager):
+    def test_create_experiment(
+        self, mock_capture_env, mock_git_info, mock_validate_git, mock_get_manager
+    ):
         """Test create_experiment function."""
         # Setup mocks
         mock_validate_git.return_value = None

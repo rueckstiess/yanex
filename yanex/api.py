@@ -116,12 +116,12 @@ def get_param(key: str, default: Any = None) -> Any:
         Parameter value or default (default is returned in standalone mode)
     """
     params = get_params()
-    
+
     # Handle dot notation for nested parameters
-    if '.' in key:
-        keys = key.split('.')
+    if "." in key:
+        keys = key.split(".")
         current = params
-        
+
         for k in keys:
             if isinstance(current, dict) and k in current:
                 current = current[k]
@@ -130,7 +130,7 @@ def get_param(key: str, default: Any = None) -> Any:
                     f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
                 )
                 return default
-        
+
         return current
     else:
         # Simple key access
@@ -397,6 +397,12 @@ class ExperimentContext:
                 # Normal exit - mark as completed
                 if not self._manual_exit:
                     self.manager.complete_experiment(self.experiment_id)
+                    # Print completion message like CLI mode
+                    exp_dir = self.manager.storage.get_experiment_directory(
+                        self.experiment_id
+                    )
+                    print(f"✓ Experiment completed successfully: {self.experiment_id}")
+                    print(f"  Directory: {exp_dir}")
             elif exc_type in (
                 _ExperimentCompletedException,
                 _ExperimentFailedException,
@@ -411,12 +417,24 @@ class ExperimentContext:
                 self.manager.cancel_experiment(
                     self.experiment_id, "Interrupted by user (Ctrl+C)"
                 )
+                # Print cancellation message like CLI mode
+                exp_dir = self.manager.storage.get_experiment_directory(
+                    self.experiment_id
+                )
+                print(f"✗ Experiment cancelled: {self.experiment_id}")
+                print(f"  Directory: {exp_dir}")
                 # Re-raise KeyboardInterrupt
                 return False
             else:
                 # Unhandled exception - mark as failed
                 error_message = f"{exc_type.__name__}: {exc_val}"
                 self.manager.fail_experiment(self.experiment_id, error_message)
+                # Print failure message like CLI mode
+                exp_dir = self.manager.storage.get_experiment_directory(
+                    self.experiment_id
+                )
+                print(f"✗ Experiment failed: {self.experiment_id}")
+                print(f"  Directory: {exp_dir}")
                 # Propagate the original exception
                 return False
         finally:
@@ -430,6 +448,7 @@ def create_experiment(
     config: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None,
     description: Optional[str] = None,
+    allow_dirty: bool = False,
 ) -> ExperimentContext:
     """Create a new experiment.
 
@@ -439,6 +458,7 @@ def create_experiment(
         config: Optional experiment configuration
         tags: Optional list of tags
         description: Optional experiment description
+        allow_dirty: Allow running with uncommitted changes (default: False)
 
     Returns:
         ExperimentContext for the new experiment
@@ -454,7 +474,7 @@ def create_experiment(
             "  - Run directly: python script.py\n"
             "  - Or remove experiment.create_experiment() and use: yanex run script.py"
         )
-    
+
     manager = _get_experiment_manager()
     experiment_id = manager.create_experiment(
         script_path=script_path,
@@ -462,6 +482,7 @@ def create_experiment(
         config=config or {},
         tags=tags or [],
         description=description,
+        allow_dirty=allow_dirty,
     )
     return ExperimentContext(experiment_id)
 
@@ -483,16 +504,16 @@ def create_context(experiment_id: str) -> ExperimentContext:
     # Verify experiment exists
     try:
         manager.get_experiment_metadata(experiment_id)
-    except Exception:
-        raise ExperimentNotFoundError(f"Experiment '{experiment_id}' not found")
+    except Exception as e:
+        raise ExperimentNotFoundError(f"Experiment '{experiment_id}' not found") from e
 
     return ExperimentContext(experiment_id)
 
 
 def _is_cli_context() -> bool:
     """Check if currently running in a yanex CLI-managed experiment.
-    
+
     Returns:
         True if running in CLI context, False otherwise
     """
-    return bool(os.environ.get('YANEX_CLI_ACTIVE'))
+    return bool(os.environ.get("YANEX_CLI_ACTIVE"))

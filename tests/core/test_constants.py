@@ -12,13 +12,13 @@ class TestExperimentStatuses:
         """Test EXPERIMENT_STATUSES list contains expected statuses."""
         expected_statuses = [
             "created",
-            "running", 
+            "running",
             "completed",
             "failed",
             "cancelled",
             "staged",
         ]
-        
+
         assert EXPERIMENT_STATUSES == expected_statuses
 
     def test_experiment_statuses_set(self):
@@ -34,12 +34,16 @@ class TestExperimentStatuses:
     def test_all_expected_statuses_present(self):
         """Test all expected statuses are present."""
         required_statuses = {
-            "created", "running", "completed", 
-            "failed", "cancelled", "staged"
+            "created",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "staged",
         }
-        
+
         assert required_statuses.issubset(EXPERIMENT_STATUSES_SET)
-        
+
     def test_no_duplicate_statuses(self):
         """Test no duplicate statuses in the list."""
         assert len(EXPERIMENT_STATUSES) == len(set(EXPERIMENT_STATUSES))

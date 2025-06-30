@@ -2,6 +2,59 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "yanex"
+version = "0.1.0"
+description = "Yet Another Experiment Tracker - A lightweight experiment tracking harness"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Thomas", email = "from+gitgub@tomr.au"}
+]
+keywords = ["experiment", "tracking", "machine-learning", "research", "reproducibility"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "click>=8.0.0",
+    "pyyaml>=6.0",
+    "rich>=12.0.0",
+    "gitpython>=3.1.0",
+    "dateparser>=1.1.0",
+    "textual>=0.45.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+matplotlib = ["matplotlib>=3.5.0"]
+
+[project.scripts]
+yanex = "yanex.cli.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/rueckstiess/yanex"
+Repository = "https://github.com/rueckstiess/yanex"
+Documentation = "https://github.com/rueckstiess/yanex/blob/main/docs/README.md"
+Issues = "https://github.com/rueckstiess/yanex/issues"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
@@ -31,6 +84,8 @@ select = [
 ]
 ignore = [
     "E501",  # line too long, handled by formatter
+    "UP007", # Use `X | Y` for type annotations (requires Python 3.10+)
+    "B904",  # Within an `except` clause, raise exceptions with `raise ... from err`
 ]
 
 [tool.ruff.format]

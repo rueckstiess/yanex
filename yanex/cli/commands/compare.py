@@ -2,14 +2,15 @@
 Compare experiments - interactive table with parameters and metrics.
 """
 
+from typing import Optional
+
 import click
-from typing import List, Optional
 
 from ...core.comparison import ExperimentComparisonData
+from ...core.constants import EXPERIMENT_STATUSES
 from ...ui.compare_table import run_comparison_table
 from ..filters import ExperimentFilter, parse_time_spec
-from ...core.constants import EXPERIMENT_STATUSES
-from .confirm import find_experiments_by_identifiers, find_experiments_by_filters
+from .confirm import find_experiments_by_filters, find_experiments_by_identifiers
 
 
 @click.command("compare")
@@ -311,7 +312,6 @@ def _print_static_table(comparison_data: dict) -> None:
     console.print(table)
 
     # Print summary
-    total_experiments = comparison_data.get("total_experiments", 0)
     param_count = len(comparison_data.get("param_columns", []))
     metric_count = len(comparison_data.get("metric_columns", []))
 

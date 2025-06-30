@@ -658,7 +658,7 @@ class ExperimentStorage:
             if "remove_tags" in updates:
                 current_tags.difference_update(updates["remove_tags"])
 
-            updated_metadata["tags"] = sorted(list(current_tags))
+            updated_metadata["tags"] = sorted(current_tags)
 
         # Handle other field updates
         for key, value in updates.items():

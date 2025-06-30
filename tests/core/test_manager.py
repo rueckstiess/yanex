@@ -4,7 +4,7 @@ Tests for experiment manager core functionality.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -923,7 +923,9 @@ class TestExperimentLifecycle:
             manager.start_experiment(running_id)
 
             # Should still be able to create staged experiment (no concurrency check)
-            staged_id = manager.create_experiment(script_path, name="staged", stage_only=True)
+            staged_id = manager.create_experiment(
+                script_path, name="staged", stage_only=True
+            )
 
             # Verify both exist
             assert manager.get_experiment_status(running_id) == "running"
@@ -993,9 +995,13 @@ class TestExperimentLifecycle:
             script_path = Path(__file__)
 
             # Create different types of experiments
-            staged1_id = manager.create_experiment(script_path, name="staged1", stage_only=True)
+            staged1_id = manager.create_experiment(
+                script_path, name="staged1", stage_only=True
+            )
             regular_id = manager.create_experiment(script_path, name="regular")
-            staged2_id = manager.create_experiment(script_path, name="staged2", stage_only=True)
+            staged2_id = manager.create_experiment(
+                script_path, name="staged2", stage_only=True
+            )
 
             # Complete the regular experiment
             manager.start_experiment(regular_id)
@@ -1003,7 +1009,7 @@ class TestExperimentLifecycle:
 
             # Get staged experiments
             staged = manager.get_staged_experiments()
-            
+
             assert len(staged) == 2
             assert staged1_id in staged
             assert staged2_id in staged
@@ -1030,44 +1036,44 @@ class TestExperimentLifecycle:
             staged = manager.get_staged_experiments()
             assert staged == [staged_id]
 
-    @patch("yanex.core.manager.validate_clean_working_directory") 
+    @patch("yanex.core.manager.validate_clean_working_directory")
     def test_staged_experiment_full_workflow(self, mock_validate_git):
         """Test complete workflow: create staged -> execute -> complete."""
         with tempfile.TemporaryDirectory() as temp_dir:
             manager = ExperimentManager(Path(temp_dir))
             script_path = Path(__file__)
-            
+
             # Step 1: Create staged experiment
             experiment_id = manager.create_experiment(
-                script_path, 
+                script_path,
                 name="workflow-test",
                 config={"param1": "value1"},
                 tags=["test"],
-                stage_only=True
+                stage_only=True,
             )
-            
+
             # Verify initial staged state
             metadata = manager.storage.load_metadata(experiment_id)
             assert metadata["status"] == "staged"
             assert metadata["name"] == "workflow-test"
             assert metadata["tags"] == ["test"]
             assert metadata["started_at"] is None
-            
+
             # Verify config was saved
             config = manager.storage.load_config(experiment_id)
             assert config == {"param1": "value1"}
-            
+
             # Step 2: Execute staged experiment
             manager.execute_staged_experiment(experiment_id)
-            
+
             # Verify running state
             metadata = manager.storage.load_metadata(experiment_id)
             assert metadata["status"] == "running"
             assert metadata["started_at"] is not None
-            
+
             # Step 3: Complete experiment
             manager.complete_experiment(experiment_id)
-            
+
             # Verify final state
             metadata = manager.storage.load_metadata(experiment_id)
             assert metadata["status"] == "completed"
@@ -1088,7 +1094,7 @@ class TestExperimentLifecycle:
                 tags=["staging", "test"],
                 description="Test staged experiment with all options",
                 allow_dirty=True,
-                stage_only=True
+                stage_only=True,
             )
 
             # Verify all metadata was saved correctly
@@ -1097,7 +1103,7 @@ class TestExperimentLifecycle:
             assert metadata["name"] == "full-test"
             assert metadata["description"] == "Test staged experiment with all options"
             assert metadata["tags"] == ["staging", "test"]
-            
+
             # Verify config
             config = manager.storage.load_config(experiment_id)
             assert config == {"lr": 0.01, "epochs": 100}

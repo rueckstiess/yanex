@@ -9,8 +9,8 @@ from typing import Any, Dict, Optional
 
 import git
 
-from .git_utils import get_git_repo, get_current_commit_info, get_repository_info
 from ..utils.exceptions import GitError
+from .git_utils import get_current_commit_info, get_git_repo, get_repository_info
 
 
 def capture_python_environment() -> Dict[str, Any]:

@@ -42,15 +42,15 @@ class TestStandaloneMode:
         assert yanex.get_param("model.learning_rate", 0.001) == 0.001
         assert yanex.get_param("model.architecture", "resnet") == "resnet"
         assert yanex.get_param("data.batch_size", 32) == 32
-        
+
         # Test multi-level nesting
         assert yanex.get_param("model.optimizer.type", "adam") == "adam"
         assert yanex.get_param("model.optimizer.lr", 1e-3) == 1e-3
-        
+
         # Should return None for non-existent nested param without default
         assert yanex.get_param("model.nonexistent") is None
         assert yanex.get_param("nonexistent.nested.path") is None
-        
+
         # Should not fail with deep nesting
         assert yanex.get_param("a.b.c.d.e.f", "deep_default") == "deep_default"
 
@@ -184,7 +184,6 @@ class TestContextMode:
         assert metadata["id"] == self.experiment_id
         assert metadata["status"] == "running"
         assert metadata["name"] == "test-experiment"
-
 
 
 class TestModeTransition:
