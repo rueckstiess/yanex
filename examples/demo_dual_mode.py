@@ -12,7 +12,7 @@ all the key API features working seamlessly in both contexts.
 
 import time
 from pathlib import Path
-import yanex.experiment as experiment
+import yanex
 
 
 def simulate_training(learning_rate, epochs, model_type):
@@ -42,7 +42,7 @@ def simulate_training(learning_rate, epochs, model_type):
         print(f"   Epoch {epoch:2d}: accuracy={accuracy:.3f}, loss={loss:.3f}")
 
         # Log results - works in both modes!
-        experiment.log_results(
+        yanex.log_results(
             {
                 "epoch": epoch,
                 "accuracy": accuracy,
@@ -68,40 +68,40 @@ def main():
 
     # 🔍 MODE DETECTION - Key feature!
     print(f"\n📊 Mode Detection:")
-    print(f"   is_standalone(): {experiment.is_standalone()}")
-    print(f"   has_context():   {experiment.has_context()}")
+    print(f"   is_standalone(): {yanex.is_standalone()}")
+    print(f"   has_context():   {yanex.has_context()}")
 
-    if experiment.is_standalone():
+    if yanex.is_standalone():
         print("   🔧 Running in STANDALONE mode")
         print("   📝 Parameters will use defaults")
         print("   📋 Logging will be silent (no tracking)")
     else:
         print("   🎯 Running in YANEX EXPERIMENT mode")
-        print(f"   📝 Experiment ID: {experiment.get_experiment_id()}")
-        print(f"   📋 Status: {experiment.get_status()}")
+        print(f"   📝 Experiment ID: {yanex.get_experiment_id()}")
+        print(f"   📋 Status: {yanex.get_status()}")
 
     # 🔧 PARAMETER ACCESS - Works seamlessly in both modes
     print(f"\n🔧 Parameter Access:")
-    learning_rate = experiment.get_param("learning_rate", 0.01)
-    epochs = experiment.get_param("epochs", 5)
-    model_type = experiment.get_param("model_type", "neural_network")
-    batch_size = experiment.get_param("batch_size", 32)
+    learning_rate = yanex.get_param("learning_rate", 0.01)
+    epochs = yanex.get_param("epochs", 5)
+    model_type = yanex.get_param("model_type", "neural_network")
+    batch_size = yanex.get_param("batch_size", 32)
 
     print(
-        f"   learning_rate: {learning_rate} {'(from yanex)' if not experiment.is_standalone() else '(default)'}"
+        f"   learning_rate: {learning_rate} {'(from yanex)' if not yanex.is_standalone() else '(default)'}"
     )
     print(
-        f"   epochs:        {epochs} {'(from yanex)' if not experiment.is_standalone() else '(default)'}"
+        f"   epochs:        {epochs} {'(from yanex)' if not yanex.is_standalone() else '(default)'}"
     )
     print(
-        f"   model_type:    {model_type} {'(from yanex)' if not experiment.is_standalone() else '(default)'}"
+        f"   model_type:    {model_type} {'(from yanex)' if not yanex.is_standalone() else '(default)'}"
     )
     print(
-        f"   batch_size:    {batch_size} {'(from yanex)' if not experiment.is_standalone() else '(default)'}"
+        f"   batch_size:    {batch_size} {'(from yanex)' if not yanex.is_standalone() else '(default)'}"
     )
 
     # Show all available params
-    all_params = experiment.get_params()
+    all_params = yanex.get_params()
     if all_params:
         print(f"   📋 All params: {all_params}")
     else:
@@ -117,7 +117,7 @@ def main():
     final_accuracy = results[-1]["accuracy"]
     final_loss = results[-1]["loss"]
 
-    experiment.log_results(
+    yanex.log_results(
         {
             "final_accuracy": final_accuracy,
             "final_loss": final_loss,
@@ -143,10 +143,10 @@ Final Results:
 Training completed successfully!
 """
 
-    experiment.log_text(summary_text.strip(), "training_summary.txt")
+    yanex.log_text(summary_text.strip(), "training_summary.txt")
 
     # Log config as artifact (if in yanex mode)
-    if not experiment.is_standalone():
+    if not yanex.is_standalone():
         print("   📄 Logged training summary to training_summary.txt")
         print("   📊 Logged final results and metrics")
     else:
@@ -155,14 +155,14 @@ Training completed successfully!
 
     # 🎯 EXPERIMENT INFO
     print(f"\n🎯 Experiment Information:")
-    if experiment.is_standalone():
+    if yanex.is_standalone():
         print("   📋 No experiment tracking (standalone mode)")
         print("   💾 Results not saved")
         print("   🔍 No experiment ID")
     else:
-        metadata = experiment.get_metadata()
-        print(f"   📋 Experiment ID: {experiment.get_experiment_id()}")
-        print(f"   📊 Status: {experiment.get_status()}")
+        metadata = yanex.get_metadata()
+        print(f"   📋 Experiment ID: {yanex.get_experiment_id()}")
+        print(f"   📊 Status: {yanex.get_status()}")
         if metadata.get("name"):
             print(f"   🏷️  Name: {metadata.get('name')}")
         if metadata.get("tags"):
@@ -170,7 +170,7 @@ Training completed successfully!
         if metadata.get("description"):
             print(f"   📝 Description: {metadata.get('description')}")
         print(
-            f"   💾 Results saved to: ~/.yanex/experiments/{experiment.get_experiment_id()}"
+            f"   💾 Results saved to: ~/.yanex/experiments/{yanex.get_experiment_id()}"
         )
 
     print(f"\n✅ Demo completed successfully!")

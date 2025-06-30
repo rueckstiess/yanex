@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-import yanex.experiment as experiment
+import yanex
 
 
 def create_training_plots(epochs, train_accuracy, val_accuracy, train_loss, val_loss):
@@ -84,7 +84,7 @@ def simulate_training(epochs, learning_rate):
 
 
 def main():
-    with experiment.create_experiment(
+    with yanex.create_experiment(
         script_path=Path(__file__),
         name="matplotlib-plotting-example",
         config={
@@ -97,11 +97,11 @@ def main():
         tags=["example", "plotting", "visualization"],
         description="Example demonstrating matplotlib figure logging",
     ):
-        exp_id = experiment.get_experiment_id()
+        exp_id = yanex.get_experiment_id()
         print(f"Started experiment: {exp_id}")
 
-        epochs = experiment.get_param("epochs")
-        learning_rate = experiment.get_param("learning_rate")
+        epochs = yanex.get_param("epochs")
+        learning_rate = yanex.get_param("learning_rate")
 
         print(f"Simulating training for {epochs} epochs with lr={learning_rate}")
 
@@ -113,7 +113,7 @@ def main():
 
         # Log metrics for each epoch
         for i, epoch in enumerate(epoch_list):
-            experiment.log_results(
+            yanex.log_results(
                 {
                     "epoch": epoch,
                     "train_accuracy": round(train_acc[i], 4),
@@ -132,13 +132,13 @@ def main():
 
             if combined_fig and accuracy_fig:
                 # Log the combined training curves
-                experiment.log_matplotlib_figure(
+                yanex.log_matplotlib_figure(
                     combined_fig, "training_curves.png", dpi=150, bbox_inches="tight"
                 )
                 print("Logged combined training curves plot")
 
                 # Log just the accuracy plot
-                experiment.log_matplotlib_figure(
+                yanex.log_matplotlib_figure(
                     accuracy_fig, "accuracy_plot.png", dpi=150, bbox_inches="tight"
                 )
                 print("Logged accuracy plot")
@@ -157,7 +157,7 @@ def main():
                 scatter_ax.legend()
                 scatter_ax.grid(True, alpha=0.3)
 
-                experiment.log_matplotlib_figure(
+                yanex.log_matplotlib_figure(
                     scatter_fig, "accuracy_correlation.png", dpi=150
                 )
                 print("Logged accuracy correlation plot")
@@ -176,7 +176,7 @@ def main():
             "best_val_accuracy_epoch": val_acc.index(max(val_acc)) + 1,
         }
 
-        experiment.log_results(final_results)
+        yanex.log_results(final_results)
 
         # Create training log
         log_content = f"""Training Completed Successfully
@@ -185,8 +185,8 @@ def main():
 Configuration:
 - Epochs: {epochs}
 - Learning Rate: {learning_rate}
-- Model: {experiment.get_param("model")}
-- Dataset: {experiment.get_param("dataset")}
+- Model: {yanex.get_param("model")}
+- Dataset: {yanex.get_param("dataset")}
 
 Final Results:
 - Training Accuracy: {final_results["final_train_accuracy"]:.4f}
@@ -199,7 +199,7 @@ Artifacts Generated:
 - accuracy_correlation.png: Training vs validation accuracy scatter plot
 """
 
-        experiment.log_text(log_content, "training_log.txt")
+        yanex.log_text(log_content, "training_log.txt")
 
         print(f"Training simulation completed!")
         print(f"Final validation accuracy: {final_results['final_val_accuracy']:.4f}")

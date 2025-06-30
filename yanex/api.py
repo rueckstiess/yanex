@@ -106,21 +106,39 @@ def get_params() -> Dict[str, Any]:
 
 
 def get_param(key: str, default: Any = None) -> Any:
-    """Get a specific experiment parameter.
+    """Get a specific experiment parameter with support for dot notation.
 
     Args:
-        key: Parameter key to retrieve
+        key: Parameter key to retrieve. Supports dot notation (e.g., "model.learning_rate")
         default: Default value if key not found
 
     Returns:
         Parameter value or default (default is returned in standalone mode)
     """
     params = get_params()
-    if key not in params:
-        print(
-            f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
-        )
-    return params.get(key, default)
+    
+    # Handle dot notation for nested parameters
+    if '.' in key:
+        keys = key.split('.')
+        current = params
+        
+        for k in keys:
+            if isinstance(current, dict) and k in current:
+                current = current[k]
+            else:
+                print(
+                    f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
+                )
+                return default
+        
+        return current
+    else:
+        # Simple key access
+        if key not in params:
+            print(
+                f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
+            )
+        return params.get(key, default)
 
 
 def get_status() -> Optional[str]:

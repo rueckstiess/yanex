@@ -65,17 +65,16 @@ def sample_experiment_script(temp_dir: Path) -> Path:
     """Create a sample experiment script."""
     script_path = temp_dir / "experiment.py"
     script_content = """
-from yanex import experiment
+import yanex
 
-params = experiment.get_params()
+params = yanex.get_params()
 
-with experiment.run():
-    result = {
-        "accuracy": 0.95,
-        "loss": 0.05,
-        "docs_processed": params.get("n_docs", 1000)
-    }
-    experiment.log_results(result)
+result = {
+    "accuracy": 0.95,
+    "loss": 0.05,
+    "docs_processed": params.get("n_docs", 1000)
+}
+yanex.log_results(result)
 """
     script_path.write_text(script_content)
     return script_path

@@ -11,7 +11,7 @@ This example demonstrates the core functionality of yanex including:
 import time
 from pathlib import Path
 
-import yanex.experiment as experiment
+import yanex
 
 
 def train_model(learning_rate, epochs):
@@ -43,7 +43,7 @@ def train_model(learning_rate, epochs):
 
 def main():
     # Create and run an experiment
-    with experiment.create_experiment(
+    with yanex.create_experiment(
         script_path=Path(__file__),
         name="basic-training-example",
         config={
@@ -55,12 +55,12 @@ def main():
         tags=["example", "basic", "training"],
         description="Basic training example to demonstrate yanex functionality",
     ):
-        print(f"Started experiment: {experiment.get_experiment_id()}")
+        print(f"Started experiment: {yanex.get_experiment_id()}")
 
         # Access experiment parameters
-        params = experiment.get_params()
-        lr = experiment.get_param("learning_rate")
-        epochs = experiment.get_param("epochs")
+        params = yanex.get_params()
+        lr = yanex.get_param("learning_rate")
+        epochs = yanex.get_param("epochs")
 
         print(f"Using parameters: {params}")
 
@@ -69,7 +69,7 @@ def main():
 
         # Log results for each epoch
         for result in results:
-            experiment.log_results(
+            yanex.log_results(
                 {"accuracy": result["accuracy"], "loss": result["loss"]},
                 step=result["epoch"],
             )
@@ -77,7 +77,7 @@ def main():
         # Log summary results
         final_accuracy = results[-1]["accuracy"]
         final_loss = results[-1]["loss"]
-        experiment.log_results(
+        yanex.log_results(
             {
                 "final_accuracy": final_accuracy,
                 "final_loss": final_loss,
@@ -88,14 +88,14 @@ def main():
         # Log training summary as text artifact
         summary = f"""Training Summary
 ================
-Model Type: {experiment.get_param("model_type")}
-Dataset: {experiment.get_param("dataset")}
+Model Type: {yanex.get_param("model_type")}
+Dataset: {yanex.get_param("dataset")}
 Learning Rate: {lr}
 Epochs: {epochs}
 Final Accuracy: {final_accuracy}
 Final Loss: {final_loss}
 """
-        experiment.log_text(summary, "training_summary.txt")
+        yanex.log_text(summary, "training_summary.txt")
 
         # Log results as CSV artifact
         import io
@@ -107,9 +107,9 @@ Final Loss: {final_loss}
                 f"{result['epoch']},{result['accuracy']},{result['loss']}\n"
             )
 
-        experiment.log_text(csv_content.getvalue(), "results.csv")
+        yanex.log_text(csv_content.getvalue(), "results.csv")
 
-        print(f"Experiment completed: {experiment.get_experiment_id()}")
+        print(f"Experiment completed: {yanex.get_experiment_id()}")
         print("Check ~/.yanex/experiments/ for saved results")
 
 
