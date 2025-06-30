@@ -238,13 +238,17 @@ def _execute_experiment(
         # Handle experiment result based on exit code
         if return_code == 0:
             manager.complete_experiment(experiment_id)
+            exp_dir = manager.storage.get_experiment_directory(experiment_id)
             click.echo(f"✓ Experiment completed successfully: {experiment_id}")
+            click.echo(f"  Directory: {exp_dir}")
         else:
             error_msg = f"Script exited with code {return_code}"
             if stderr_text:
                 error_msg += f": {stderr_text.strip()}"
             manager.fail_experiment(experiment_id, error_msg)
+            exp_dir = manager.storage.get_experiment_directory(experiment_id)
             click.echo(f"✗ Experiment failed: {experiment_id}")
+            click.echo(f"  Directory: {exp_dir}")
             click.echo(f"Error: {error_msg}")
             raise click.Abort()
 

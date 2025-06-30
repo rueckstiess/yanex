@@ -154,6 +154,13 @@ def display_experiment_details(
     header_text.append(f"({experiment_id})", style="dim")
     header_text.append(f"\nStatus: {status_emoji} ", style="")
     header_text.append(f"{status}", style=f"bold {status_color}")
+    
+    # Add directory path
+    try:
+        exp_dir = manager.storage.get_experiment_dir(experiment_id, include_archived)
+        header_text.append(f"\nDirectory: {exp_dir}", style="dim cyan")
+    except Exception:
+        pass  # Skip directory path if not available
 
     # Add timing information
     created_at = experiment.get("created_at")
