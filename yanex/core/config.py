@@ -2,9 +2,12 @@
 Configuration management for experiments.
 """
 
+from __future__ import annotations
+
 import copy
+import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
@@ -112,12 +115,14 @@ def parse_param_overrides(param_strings: list[str]) -> Dict[str, Any]:
 def _parse_parameter_value(value_str: str) -> Any:
     """
     Parse parameter value string to appropriate Python type.
+    
+    Supports sweep syntax: range(), linspace(), logspace(), list()
 
     Args:
         value_str: String value to parse
 
     Returns:
-        Parsed value with appropriate type
+        Parsed value with appropriate type (including SweepParameter instances)
     """
     value_str = value_str.strip()
 
@@ -128,6 +133,11 @@ def _parse_parameter_value(value_str: str) -> Any:
     # Handle null/none
     if value_str.lower() in ("null", "none", "~"):
         return None
+
+    # Check for sweep syntax first
+    sweep_result = _parse_sweep_syntax(value_str)
+    if sweep_result is not None:
+        return sweep_result
 
     # Try to parse as number first (before booleans)
     try:
@@ -158,6 +168,135 @@ def _parse_parameter_value(value_str: str) -> Any:
             return items
         except Exception:
             pass
+
+    # Return as string
+    return value_str
+
+
+def _parse_sweep_syntax(value_str: str) -> Optional[SweepParameter]:
+    """
+    Parse sweep syntax into SweepParameter objects.
+    
+    Supported syntax:
+    - range(start, stop, step)
+    - linspace(start, stop, count)
+    - logspace(start, stop, count)
+    - list(item1, item2, ...)
+    
+    Args:
+        value_str: String value to parse
+        
+    Returns:
+        SweepParameter instance or None if not sweep syntax
+    """
+    # Regular expressions for sweep function parsing
+    range_pattern = r'range\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*\)'
+    linspace_pattern = r'linspace\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*\)'
+    logspace_pattern = r'logspace\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*\)'
+    list_pattern = r'list\(\s*([^)]*)\s*\)'
+    
+    # Try range() syntax
+    match = re.match(range_pattern, value_str)
+    if match:
+        try:
+            start = _parse_numeric_value(match.group(1))
+            stop = _parse_numeric_value(match.group(2))
+            step = _parse_numeric_value(match.group(3))
+            return RangeSweep(start, stop, step)
+        except Exception as e:
+            raise ConfigError(f"Invalid range() syntax: {value_str}. Error: {e}")
+    
+    # Try linspace() syntax
+    match = re.match(linspace_pattern, value_str)
+    if match:
+        try:
+            start = _parse_numeric_value(match.group(1))
+            stop = _parse_numeric_value(match.group(2))
+            count = int(_parse_numeric_value(match.group(3)))
+            return LinspaceSweep(start, stop, count)
+        except Exception as e:
+            raise ConfigError(f"Invalid linspace() syntax: {value_str}. Error: {e}")
+    
+    # Try logspace() syntax
+    match = re.match(logspace_pattern, value_str)
+    if match:
+        try:
+            start = _parse_numeric_value(match.group(1))
+            stop = _parse_numeric_value(match.group(2))
+            count = int(_parse_numeric_value(match.group(3)))
+            return LogspaceSweep(start, stop, count)
+        except Exception as e:
+            raise ConfigError(f"Invalid logspace() syntax: {value_str}. Error: {e}")
+    
+    # Try list() syntax
+    match = re.match(list_pattern, value_str)
+    if match:
+        try:
+            content = match.group(1).strip()
+            if not content:
+                raise ConfigError("List sweep cannot be empty")
+            
+            # Parse comma-separated items
+            items = []
+            for item_str in content.split(','):
+                item_str = item_str.strip()
+                if not item_str:
+                    continue
+                # Parse each item as a regular parameter value (recursive, but won't match sweep syntax)
+                parsed_item = _parse_non_sweep_value(item_str)
+                items.append(parsed_item)
+            
+            if not items:
+                raise ConfigError("List sweep cannot be empty")
+            
+            return ListSweep(items)
+        except Exception as e:
+            raise ConfigError(f"Invalid list() syntax: {value_str}. Error: {e}")
+    
+    return None
+
+
+def _parse_numeric_value(value_str: str) -> Union[int, float]:
+    """Parse a string as a numeric value (int or float)."""
+    value_str = value_str.strip()
+    
+    try:
+        # Try integer first
+        if "." not in value_str and "e" not in value_str.lower():
+            return int(value_str)
+        else:
+            return float(value_str)
+    except ValueError:
+        raise ConfigError(f"Expected numeric value, got: {value_str}")
+
+
+def _parse_non_sweep_value(value_str: str) -> Any:
+    """Parse parameter value without sweep syntax detection."""
+    value_str = value_str.strip()
+
+    # Handle quoted strings
+    if (value_str.startswith('"') and value_str.endswith('"')) or \
+       (value_str.startswith("'") and value_str.endswith("'")):
+        return value_str[1:-1]
+
+    # Handle null/none
+    if value_str.lower() in ("null", "none", "~"):
+        return None
+
+    # Try to parse as number
+    try:
+        if "." not in value_str and "e" not in value_str.lower():
+            return int(value_str)
+        else:
+            return float(value_str)
+    except ValueError:
+        pass
+
+    # Handle boolean values
+    if value_str.lower() in ("true", "yes", "on"):
+        return True
+    if value_str.lower() in ("false", "no", "off"):
+        return False
 
     # Return as string
     return value_str
@@ -254,3 +393,190 @@ def resolve_config(
         config = merge_configs(config, override_config)
 
     return config
+
+
+# Parameter Sweep Classes and Functions
+
+class SweepParameter:
+    """Base class for parameter sweep definitions."""
+    
+    def generate_values(self) -> List[Any]:
+        """Generate list of values for this sweep parameter."""
+        raise NotImplementedError
+
+
+class RangeSweep(SweepParameter):
+    """Range-based parameter sweep: range(start, stop, step)"""
+    
+    def __init__(self, start: Union[int, float], stop: Union[int, float], step: Union[int, float]):
+        self.start = start
+        self.stop = stop
+        self.step = step
+        
+        if step == 0:
+            raise ConfigError("Range step cannot be zero")
+        if (stop - start) * step < 0:
+            raise ConfigError("Range step direction doesn't match start/stop values")
+    
+    def generate_values(self) -> List[Union[int, float]]:
+        """Generate range values."""
+        values = []
+        current = self.start
+        
+        if self.step > 0:
+            while current < self.stop:
+                values.append(current)
+                current += self.step
+        else:
+            while current > self.stop:
+                values.append(current)
+                current += self.step
+        
+        return values
+    
+    def __repr__(self) -> str:
+        return f"RangeSweep({self.start}, {self.stop}, {self.step})"
+
+
+class LinspaceSweep(SweepParameter):
+    """Linear space parameter sweep: linspace(start, stop, count)"""
+    
+    def __init__(self, start: Union[int, float], stop: Union[int, float], count: int):
+        self.start = start
+        self.stop = stop
+        self.count = count
+        
+        if count <= 0:
+            raise ConfigError("Linspace count must be positive")
+    
+    def generate_values(self) -> List[float]:
+        """Generate linearly spaced values."""
+        if self.count == 1:
+            return [float(self.start)]
+        
+        step = (self.stop - self.start) / (self.count - 1)
+        return [self.start + i * step for i in range(self.count)]
+    
+    def __repr__(self) -> str:
+        return f"LinspaceSweep({self.start}, {self.stop}, {self.count})"
+
+
+class LogspaceSweep(SweepParameter):
+    """Logarithmic space parameter sweep: logspace(start, stop, count)"""
+    
+    def __init__(self, start: Union[int, float], stop: Union[int, float], count: int):
+        self.start = start
+        self.stop = stop
+        self.count = count
+        
+        if count <= 0:
+            raise ConfigError("Logspace count must be positive")
+    
+    def generate_values(self) -> List[float]:
+        """Generate logarithmically spaced values."""
+        if self.count == 1:
+            return [10.0 ** self.start]
+        
+        step = (self.stop - self.start) / (self.count - 1)
+        return [10.0 ** (self.start + i * step) for i in range(self.count)]
+    
+    def __repr__(self) -> str:
+        return f"LogspaceSweep({self.start}, {self.stop}, {self.count})"
+
+
+class ListSweep(SweepParameter):
+    """Explicit list parameter sweep: list(item1, item2, ...)"""
+    
+    def __init__(self, items: List[Any]):
+        if not items:
+            raise ConfigError("List sweep cannot be empty")
+        self.items = items
+    
+    def generate_values(self) -> List[Any]:
+        """Return the explicit list of values."""
+        return self.items.copy()
+    
+    def __repr__(self) -> str:
+        return f"ListSweep({self.items})"
+
+
+def has_sweep_parameters(config: Dict[str, Any]) -> bool:
+    """
+    Check if configuration contains any sweep parameters.
+    
+    Args:
+        config: Configuration dictionary to check
+        
+    Returns:
+        True if any values are SweepParameter instances
+    """
+    def check_dict(d: Dict[str, Any]) -> bool:
+        for value in d.values():
+            if isinstance(value, SweepParameter):
+                return True
+            elif isinstance(value, dict):
+                if check_dict(value):
+                    return True
+        return False
+    
+    return check_dict(config)
+
+
+def expand_parameter_sweeps(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Expand parameter sweeps into individual configurations.
+    
+    Generates cross-product of all sweep parameters while keeping regular parameters.
+    
+    Args:
+        config: Configuration dictionary potentially containing SweepParameter instances
+        
+    Returns:
+        List of configuration dictionaries with sweep parameters expanded
+        
+    Example:
+        Input: {"lr": RangeSweep(0.01, 0.03, 0.01), "batch_size": 32}
+        Output: [
+            {"lr": 0.01, "batch_size": 32},
+            {"lr": 0.02, "batch_size": 32}
+        ]
+    """
+    if not has_sweep_parameters(config):
+        return [config]
+    
+    # Find all sweep parameters and their paths
+    sweep_params = []
+    
+    def find_sweeps(d: Dict[str, Any], path: str = "") -> None:
+        for key, value in d.items():
+            current_path = f"{path}.{key}" if path else key
+            
+            if isinstance(value, SweepParameter):
+                sweep_params.append((current_path, value))
+            elif isinstance(value, dict):
+                find_sweeps(value, current_path)
+    
+    find_sweeps(config)
+    
+    if not sweep_params:
+        return [config]
+    
+    # Generate all combinations using itertools.product
+    import itertools
+    
+    sweep_paths, sweep_objects = zip(*sweep_params)
+    sweep_value_lists = [sweep_obj.generate_values() for sweep_obj in sweep_objects]
+    
+    # Generate cross-product of all sweep parameter values
+    expanded_configs = []
+    for value_combination in itertools.product(*sweep_value_lists):
+        # Create a deep copy of the original config
+        expanded_config = copy.deepcopy(config)
+        
+        # Replace sweep parameters with concrete values
+        for path, value in zip(sweep_paths, value_combination):
+            _set_nested_key(expanded_config, path, value)
+        
+        expanded_configs.append(expanded_config)
+    
+    return expanded_configs

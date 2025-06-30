@@ -13,6 +13,7 @@ from typing import Dict, Any, List, Optional
 import click
 
 from ...core.manager import ExperimentManager
+from ...core.config import has_sweep_parameters, expand_parameter_sweeps
 
 
 @click.command()
@@ -78,6 +79,21 @@ def run(
       # With parameter overrides
       yanex run train.py --param learning_rate=0.01 --param epochs=100
 
+      # Parameter sweeps (requires --stage)
+      yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --stage
+      yanex run train.py --param "lr=linspace(0.001, 0.1, 5)" --stage
+      yanex run train.py --param "lr=logspace(-3, -1, 3)" --stage
+      yanex run train.py --param "batch_size=list(16, 32, 64)" --stage
+
+      # Multi-parameter sweep (cross-product)
+      yanex run train.py \\
+        --param "lr=range(0.01, 0.1, 0.01)" \\
+        --param "batch_size=list(16, 32, 64)" \\
+        --stage
+
+      # Execute staged experiments
+      yanex run --staged
+
       # Full experiment setup
       yanex run train.py \\
         --config config.yaml \\
@@ -89,6 +105,7 @@ def run(
     from .._utils import (
         load_and_merge_config,
         validate_experiment_config,
+        validate_sweep_requirements,
     )
 
     verbose = ctx.obj.get("verbose", False)
@@ -133,6 +150,9 @@ def run(
             description=description,
             config=merged_config,
         )
+
+        # Validate sweep requirements
+        validate_sweep_requirements(merged_config, stage)
 
         if dry_run:
             click.echo("✓ Configuration validation passed")
@@ -312,26 +332,64 @@ def _stage_experiment(
     verbose: bool = False,
     ignore_dirty: bool = False,
 ) -> None:
-    """Stage experiment for later execution."""
+    """Stage experiment(s) for later execution, expanding parameter sweeps."""
     
     manager = ExperimentManager()
-    experiment_id = manager.create_experiment(
-        script_path=script,
-        name=name,
-        config=config,
-        tags=tags,
-        description=description,
-        allow_dirty=ignore_dirty,
-        stage_only=True,
-    )
-
-    if verbose:
-        click.echo(f"Staged experiment: {experiment_id}")
+    
+    # Check if this is a parameter sweep
+    if has_sweep_parameters(config):
+        # Expand parameter sweeps into individual configurations
+        expanded_configs = expand_parameter_sweeps(config)
         
-    exp_dir = manager.storage.get_experiment_directory(experiment_id)
-    click.echo(f"✓ Experiment staged: {experiment_id}")
-    click.echo(f"  Directory: {exp_dir}")
-    click.echo(f"  Use 'yanex run --staged' to execute staged experiments")
+        click.echo(f"✓ Parameter sweep detected: expanding into {len(expanded_configs)} experiments")
+        
+        experiment_ids = []
+        for i, expanded_config in enumerate(expanded_configs):
+            # Generate unique name for each sweep experiment
+            sweep_name = name
+            if sweep_name:
+                sweep_name = f"{name}-sweep-{i+1:03d}"
+            
+            experiment_id = manager.create_experiment(
+                script_path=script,
+                name=sweep_name,
+                config=expanded_config,
+                tags=tags,
+                description=description,
+                allow_dirty=ignore_dirty,
+                stage_only=True,
+            )
+            
+            experiment_ids.append(experiment_id)
+            
+            if verbose:
+                click.echo(f"  Staged sweep experiment {i+1}/{len(expanded_configs)}: {experiment_id}")
+                click.echo(f"    Config: {expanded_config}")
+        
+        # Show summary
+        click.echo(f"✓ Staged {len(experiment_ids)} sweep experiments")
+        click.echo(f"  IDs: {', '.join(experiment_ids)}")
+        click.echo(f"  Use 'yanex run --staged' to execute all staged experiments")
+        
+    else:
+        # Single experiment (no sweeps)
+        experiment_id = manager.create_experiment(
+            script_path=script,
+            name=name,
+            config=config,
+            tags=tags,
+            description=description,
+            allow_dirty=ignore_dirty,
+            stage_only=True,
+        )
+
+        if verbose:
+            click.echo(f"Staged experiment: {experiment_id}")
+            
+        exp_dir = manager.storage.get_experiment_directory(experiment_id)
+        click.echo(f"✓ Experiment staged: {experiment_id}")
+        click.echo(f"  Directory: {exp_dir}")
+        click.echo(f"  Use 'yanex run --staged' to execute staged experiments")
 
 
 def _execute_staged_experiments(verbose: bool = False) -> None:
