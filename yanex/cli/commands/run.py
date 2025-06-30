@@ -76,7 +76,6 @@ def run(
     """
     from .._utils import (
         load_and_merge_config,
-        parse_param_overrides,
         validate_experiment_config,
     )
 
@@ -90,12 +89,9 @@ def run(
             click.echo(f"Parameter overrides: {param}")
 
     try:
-        # Parse parameter overrides
-        param_overrides = parse_param_overrides(param)
-
         # Load and merge configuration
         merged_config = load_and_merge_config(
-            config_path=config, param_overrides=param_overrides, verbose=verbose
+            config_path=config, param_overrides=list(param), verbose=verbose
         )
 
         if verbose:

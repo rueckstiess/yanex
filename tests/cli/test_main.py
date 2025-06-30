@@ -112,7 +112,7 @@ class TestCLIMain:
                 ],
             )
             assert result.exit_code != 0
-            assert "must be in format 'key=value'" in result.output
+            assert "Expected 'key=value'" in result.output
         finally:
             script_path.unlink()
 

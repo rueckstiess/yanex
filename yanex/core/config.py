@@ -125,17 +125,11 @@ def _parse_parameter_value(value_str: str) -> Any:
     if not value_str:
         return ""
 
-    # Handle boolean values
-    if value_str.lower() in ("true", "yes", "1", "on"):
-        return True
-    if value_str.lower() in ("false", "no", "0", "off"):
-        return False
-
     # Handle null/none
     if value_str.lower() in ("null", "none", "~"):
         return None
 
-    # Try to parse as number
+    # Try to parse as number first (before booleans)
     try:
         # Try integer first
         if "." not in value_str and "e" not in value_str.lower():
@@ -144,6 +138,12 @@ def _parse_parameter_value(value_str: str) -> Any:
             return float(value_str)
     except ValueError:
         pass
+
+    # Handle boolean values (after numbers, so "1" and "0" are treated as numbers)
+    if value_str.lower() in ("true", "yes", "on"):
+        return True
+    if value_str.lower() in ("false", "no", "off"):
+        return False
 
     # Try to parse as JSON-like structures
     if value_str.startswith("[") and value_str.endswith("]"):
