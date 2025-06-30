@@ -1,66 +1,243 @@
 # Yanex - Yet Another Experiment Tracker
 
-A lightweight experiment tracking harness for Python that focuses on reproducibility and organization.
+A lightweight, Git-aware experiment tracking system for Python that makes reproducible research effortless.
 
-## Features
+## Why Yanex?
 
-- **Reproducible Experiments**: Automatic git commit tracking and clean state validation
-- **Parameter Management**: YAML configuration with CLI override support
-- **Result Logging**: Step-based result tracking with automatic timestamping
-- **Artifact Storage**: Automatic file and matplotlib figure management
-- **Rich CLI**: Interactive experiment listing, comparison, and management
-- **Context Manager API**: Clean Python API using `with` statements
+**Stop losing track of your experiments.** Yanex automatically tracks parameters, results, and code state so you can focus on what matters - your research.
+
+```python
+import yanex
+
+# read parameters from config file or CLI arguments
+lr = yanex.get_param('lr', default=0.001)
+epochs = yanex.get_param('epochs', default=10)
+
+# access nested parameters with dot notation
+model_lr = yanex.get_param('model.learning_rate', default=0.001)
+optimizer_type = yanex.get_param('model.optimizer.type', default='adam')
+
+# your experiment code
+# ...
+
+# log results, artifacts and figures
+yanex.log_results({"step": epoch, "loss", loss, "accuracy": accuracy})
+yanex.log_artifact("model.pth", model_path)
+yanex.log_matplotlib_figure(fig, "loss_curve.png")
+```
+
+Run from the command line:
+
+```bash
+# Run with yanex CLI for automatic tracking
+yanex run train.py --name "my-experiment" --tag testing --param lr=0.001 --param epochs=10
+```
+
+That's it. Yanex tracks the experiment, saves the logged results and files, stdout and stderr outptus, Python environment
+information, and even the Git state of your code repository. You can then compare results, search experiments, and reproduce them with ease.
+
+## Key Features
+
+- 🔒 **Reproducible**: Automatic Git state tracking ensures every experiment is reproducible
+- 📊 **Interactive Comparison**: Compare experiments side-by-side with an interactive table
+- ⚙️ **Flexible Parameters**: YAML configs with CLI overrides for easy experimentation
+- 📈 **Rich Logging**: Track metrics, artifacts, and figures
+- 🔍 **Powerful Search**: Find experiments by status, parameters, tags, or time ranges
+- 📦 **Zero Dependencies**: No external services required - works offline
 
 ## Quick Start
 
-### Installation
-
+### Install
 ```bash
 pip install yanex
 ```
 
-### Basic Usage
+### 1. Run Your First Experiment
 
-1. Create a configuration file `config.yaml`:
-```yaml
-n_docs: 1000
-batch_size: 32
-learning_rate: 0.001
-```
-
-2. Write your experiment script:
 ```python
-from yanex import experiment
+# experiment.py
+import yanex
 
-params = experiment.get_params()
+params = yanex.get_params()
+print(f"Learning rate: {params.get('learning_rate', 0.001)}")
 
-with experiment.run():
-    # Your experiment code here
-    result = {"accuracy": 0.95, "loss": 0.05}
-    experiment.log_results(result)
-    experiment.log_artifact("model.pkl", "path/to/model.pkl")
+# Simulate training
+accuracy = 0.85 + (params.get('learning_rate', 0.001) * 10)
+
+yanex.log_results({
+    "accuracy": accuracy,
+    "loss": 1 - accuracy
+})
 ```
-
-3. Run your experiment:
-```bash
-yanex run my_experiment.py --param learning_rate=0.01
-```
-
-## CLI Commands
-
-- `yanex run <script>` - Run an experiment
-- `yanex list` - List experiments with filtering
-- `yanex rerun <id>` - Re-run an experiment
-- `yanex compare <id1> <id2>` - Compare experiment results
-- `yanex archive <id>` - Archive an experiment
-
-## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest
+# Run with default parameters
+yanex run experiment.py
+
+# Override parameters
+yanex run experiment.py --param learning_rate=0.01 --param epochs=50
+
+# Add tags for organization
+yanex run experiment.py --tag baseline --tag "quick-test"
 ```
+
+### 2. Compare Results
+
+```bash
+# Interactive comparison table
+yanex compare
+
+# Compare specific experiments
+yanex compare exp1 exp2 exp3
+
+# Filter and compare
+yanex compare --status completed --tag baseline
+```
+
+### 3. Track Everything
+
+List, search, and manage your experiments:
+
+```bash
+# List recent experiments
+yanex list
+
+# Find experiments by criteria
+yanex list --status completed --tag production
+yanex list --started-after "1 week ago"
+
+# Show detailed experiment info
+yanex show exp_id
+
+# Archive old experiments
+yanex archive --started-before "1 month ago"
+```
+
+## Two Ways to Use Yanex
+
+Yanex supports two usage patterns:
+
+### 1. CLI-First (Recommended)
+Write scripts that work both standalone and with yanex tracking:
+
+```python
+# train.py - Works both ways!
+import yanex
+
+params = yanex.get_params()  # Gets parameters or defaults
+lr = params.get('learning_rate', 0.001)
+
+# Your training code
+accuracy = train_model(lr=lr)
+
+# Logging works in both contexts
+yanex.log_results({"accuracy": accuracy})
+```
+
+```bash
+# Run standalone (no tracking)
+python train.py
+
+# Run with yanex (full tracking)
+yanex run train.py --param learning_rate=0.01
+```
+
+### 2. Explicit Experiment Creation (Advanced)
+For notebooks, parameter sweeps, or when you need fine control:
+
+```python
+import yanex
+from pathlib import Path
+
+with yanex.create_experiment(
+    script_path=Path(__file__),
+    name="my-experiment",
+    config={"learning_rate": 0.01}
+) as exp:
+    # Your code here
+    exp.log_results({"accuracy": 0.95})
+```
+
+> **Note:** Don't mix both patterns! Use CLI-first for most cases, explicit creation for advanced scenarios.
+
+## Advanced Usage
+
+### Configuration Files
+
+Create `config.yaml` for default parameters:
+
+```yaml
+# config.yaml
+model:
+  learning_rate: 0.001
+  batch_size: 32
+  epochs: 100
+
+data:
+  dataset: "cifar10"
+  augmentation: true
+
+training:
+  optimizer: "adam"
+  scheduler: "cosine"
+```
+
+### Rich Experiment Tracking
+
+```python
+# vision_transformer.py
+import yanex
+import matplotlib.pyplot as plt
+
+params = yanex.get_params()
+
+# Log metrics over time
+for epoch in range(params.get('epochs', 10)):
+    train_loss, val_accuracy = train_epoch(model)
+    
+    yanex.log_results({
+        "epoch": epoch,
+        "train_loss": train_loss,
+        "val_accuracy": val_accuracy
+    })
+
+# Save model and artifacts
+yanex.log_artifact("model.pth", model_path)
+yanex.log_artifact("config.json", config_path)
+
+# Auto-save matplotlib figures
+fig = plt.figure()
+plt.plot(losses)
+plt.title("Training Loss")
+yanex.log_matplotlib_figure(fig, "loss_curve.png")
+```
+
+```bash
+# Run with yanex CLI
+yanex run vision_transformer.py \
+  --name "vision-transformer-experiment" \
+  --description "Testing ViT on CIFAR-10 with data augmentation" \
+  --param epochs=100
+```
+
+
+## Documentation
+
+📚 **[Complete Documentation](docs/README.md)** - Detailed guides and API reference
+
+**Quick Links:**
+- [CLI Commands](docs/cli-commands.md) - All yanex commands with examples
+- [Python API](docs/python-api.md) - Complete Python API reference  
+- [Configuration](docs/configuration.md) - Parameter management and config files
+- [Comparison Tool](docs/compare.md) - Interactive experiment comparison
+- [Best Practices](docs/best-practices.md) - Tips for effective experiment tracking
+
+
+## Contributing
+
+Yanex is open source and welcomes contributions! See our [contributing guidelines](CONTRIBUTING.md) for details.
 
 ## License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) for details.
+
