@@ -198,6 +198,8 @@ training:
 
 Yanex is open source and welcomes contributions! See our [contributing guidelines](CONTRIBUTING.md) for details.
 
+**Built with assistance from [Claude](https://claude.ai).**
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
