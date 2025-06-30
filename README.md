@@ -30,7 +30,7 @@ Run from the command line:
 
 ```bash
 # Run with yanex CLI for automatic tracking
-yanex run train.py --name "my-experiment" --tag testing --param lr=0.001 --param epochs=10
+yanex run train.py --name "my-exp" --tag testing --param lr=10e-3 --param epochs=10
 ```
 
 That's it. Yanex tracks the experiment, saves the logged results and files, stdout and stderr outptus, Python environment

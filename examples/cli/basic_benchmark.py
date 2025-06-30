@@ -7,7 +7,7 @@ This script demonstrates:
 - Logging benchmark results with log_results()
 
 Run with yanex:
-    yanex run basic_benchmark.py --query_count 20 --query_type SELECT
+    yanex run basic_benchmark.py --param query_count=20 --param query_type=SELECT
 """
 
 import random
