@@ -6,11 +6,12 @@ import json
 import os
 import subprocess
 import sys
-import click
+import threading
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from ...core.config import resolve_config
+import click
+
 from ...core.manager import ExperimentManager
 
 
@@ -51,20 +52,20 @@ def run(
 ) -> None:
     """
     Run a script as a tracked experiment.
-    
+
     SCRIPT is the path to the Python script to execute.
-    
+
     Examples:
-    
+
       # Basic run
       yanex run train.py
-      
+
       # With configuration file
       yanex run train.py --config config.yaml
-      
+
       # With parameter overrides
       yanex run train.py --param learning_rate=0.01 --param epochs=100
-      
+
       # Full experiment setup
       yanex run train.py \\
         --config config.yaml \\
@@ -74,8 +75,8 @@ def run(
         --description "Learning rate optimization"
     """
     from .._utils import (
-        parse_param_overrides,
         load_and_merge_config,
+        parse_param_overrides,
         validate_experiment_config,
     )
 
@@ -132,7 +133,7 @@ def run(
 
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 def _execute_experiment(
@@ -178,50 +179,80 @@ def _execute_experiment(
         if verbose:
             click.echo(f"Starting script execution: {script}")
 
-        # Execute script in subprocess
-        result = subprocess.run(
+        # Execute script with real-time output streaming
+        stdout_capture = []
+        stderr_capture = []
+
+        process = subprocess.Popen(
             [sys.executable, str(script.resolve())],
             env=env,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             cwd=Path.cwd(),
         )
 
-        # Log script output as artifacts
-        if result.stdout:
+        def stream_output(pipe, capture_list, output_stream):
+            """Stream output line by line while capturing it."""
+            for line in iter(pipe.readline, ''):
+                # Display in real-time
+                output_stream.write(line)
+                output_stream.flush()
+                # Capture for later saving
+                capture_list.append(line)
+            pipe.close()
+
+        # Start threads for stdout and stderr streaming
+        stdout_thread = threading.Thread(
+            target=stream_output,
+            args=(process.stdout, stdout_capture, sys.stdout)
+        )
+        stderr_thread = threading.Thread(
+            target=stream_output,
+            args=(process.stderr, stderr_capture, sys.stderr)
+        )
+
+        stdout_thread.start()
+        stderr_thread.start()
+
+        # Wait for process completion
+        return_code = process.wait()
+
+        # Wait for output threads to finish
+        stdout_thread.join()
+        stderr_thread.join()
+
+        # Save captured output as artifacts
+        stdout_text = ''.join(stdout_capture)
+        stderr_text = ''.join(stderr_capture)
+
+        if stdout_text:
             manager.storage.save_text_artifact(
-                experiment_id, "stdout.txt", result.stdout
+                experiment_id, "stdout.txt", stdout_text
             )
-        if result.stderr:
+        if stderr_text:
             manager.storage.save_text_artifact(
-                experiment_id, "stderr.txt", result.stderr
+                experiment_id, "stderr.txt", stderr_text
             )
 
         # Handle experiment result based on exit code
-        if result.returncode == 0:
+        if return_code == 0:
             manager.complete_experiment(experiment_id)
             click.echo(f"✓ Experiment completed successfully: {experiment_id}")
-            if verbose and result.stdout:
-                click.echo("Script output:")
-                click.echo(result.stdout)
         else:
-            error_msg = f"Script exited with code {result.returncode}"
-            if result.stderr:
-                error_msg += f": {result.stderr.strip()}"
+            error_msg = f"Script exited with code {return_code}"
+            if stderr_text:
+                error_msg += f": {stderr_text.strip()}"
             manager.fail_experiment(experiment_id, error_msg)
             click.echo(f"✗ Experiment failed: {experiment_id}")
             click.echo(f"Error: {error_msg}")
-            if result.stderr:
-                click.echo("Error output:")
-                click.echo(result.stderr)
             raise click.Abort()
 
-    except subprocess.TimeoutExpired:
-        manager.fail_experiment(experiment_id, "Script execution timed out")
-        click.echo(f"✗ Experiment timed out: {experiment_id}")
-        raise click.Abort()
-
     except KeyboardInterrupt:
+        # Terminate the process and wait for threads
+        if 'process' in locals():
+            process.terminate()
+            process.wait()
         manager.cancel_experiment(experiment_id, "Interrupted by user (Ctrl+C)")
         click.echo(f"✗ Experiment cancelled: {experiment_id}")
         raise
@@ -230,4 +261,4 @@ def _execute_experiment(
         manager.fail_experiment(experiment_id, f"Unexpected error: {str(e)}")
         click.echo(f"✗ Experiment failed: {experiment_id}")
         click.echo(f"Error: {e}")
-        raise click.Abort()
+        raise click.Abort() from e
