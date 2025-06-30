@@ -893,3 +893,211 @@ class TestExperimentLifecycle:
             assert final_metadata["started_at"] is not None
             assert final_metadata["completed_at"] is not None
             assert final_metadata["duration"] is not None
+
+    # STAGING FUNCTIONALITY TESTS
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_create_experiment_staged(self, mock_validate_git):
+        """Test creating experiment with stage_only=True creates staged status."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            script_path = Path(__file__)
+
+            experiment_id = manager.create_experiment(script_path, stage_only=True)
+
+            # Verify experiment was created with staged status
+            metadata = manager.storage.load_metadata(experiment_id)
+            assert metadata["status"] == "staged"
+            assert metadata["started_at"] is None
+            assert metadata["completed_at"] is None
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_create_experiment_staged_skips_concurrency_check(self, mock_validate_git):
+        """Test staged experiments skip concurrency check."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            script_path = Path(__file__)
+
+            # Create running experiment first
+            running_id = manager.create_experiment(script_path, name="running")
+            manager.start_experiment(running_id)
+
+            # Should still be able to create staged experiment (no concurrency check)
+            staged_id = manager.create_experiment(script_path, name="staged", stage_only=True)
+
+            # Verify both exist
+            assert manager.get_experiment_status(running_id) == "running"
+            assert manager.get_experiment_status(staged_id) == "staged"
+            assert running_id != staged_id
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_execute_staged_experiment_success(self, mock_validate_git):
+        """Test executing a staged experiment transitions to running state."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            script_path = Path(__file__)
+
+            # Create staged experiment
+            experiment_id = manager.create_experiment(script_path, stage_only=True)
+            assert manager.get_experiment_status(experiment_id) == "staged"
+
+            # Execute staged experiment
+            manager.execute_staged_experiment(experiment_id)
+
+            # Verify status transition
+            metadata = manager.storage.load_metadata(experiment_id)
+            assert metadata["status"] == "running"
+            assert metadata["started_at"] is not None
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_execute_staged_experiment_not_found(self, mock_validate_git):
+        """Test executing non-existent staged experiment raises error."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+
+            with pytest.raises(ExperimentNotFoundError):
+                manager.execute_staged_experiment("nonexistent")
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_execute_staged_experiment_wrong_status(self, mock_validate_git):
+        """Test executing non-staged experiment raises error."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            script_path = Path(__file__)
+
+            # Create regular experiment (created status)
+            experiment_id = manager.create_experiment(script_path)
+            assert manager.get_experiment_status(experiment_id) == "created"
+
+            # Try to execute as staged experiment
+            with pytest.raises(ValueError) as exc_info:
+                manager.execute_staged_experiment(experiment_id)
+
+            assert "Expected status 'staged'" in str(exc_info.value)
+            assert "got 'created'" in str(exc_info.value)
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_get_staged_experiments_empty(self, mock_validate_git):
+        """Test get_staged_experiments returns empty list when no staged experiments."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+
+            staged = manager.get_staged_experiments()
+            assert staged == []
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_get_staged_experiments_multiple(self, mock_validate_git):
+        """Test get_staged_experiments returns only staged experiments."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            script_path = Path(__file__)
+
+            # Create different types of experiments
+            staged1_id = manager.create_experiment(script_path, name="staged1", stage_only=True)
+            regular_id = manager.create_experiment(script_path, name="regular")
+            staged2_id = manager.create_experiment(script_path, name="staged2", stage_only=True)
+
+            # Complete the regular experiment
+            manager.start_experiment(regular_id)
+            manager.complete_experiment(regular_id)
+
+            # Get staged experiments
+            staged = manager.get_staged_experiments()
+            
+            assert len(staged) == 2
+            assert staged1_id in staged
+            assert staged2_id in staged
+            assert regular_id not in staged
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_get_staged_experiments_ignores_corrupted(self, mock_validate_git):
+        """Test get_staged_experiments ignores experiments with corrupted metadata."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            script_path = Path(__file__)
+
+            # Create valid staged experiment
+            staged_id = manager.create_experiment(script_path, stage_only=True)
+
+            # Create corrupted experiment directory
+            corrupted_id = "corrupt1"
+            corrupted_dir = manager.storage.experiments_dir / corrupted_id
+            corrupted_dir.mkdir(parents=True)
+            metadata_path = corrupted_dir / "metadata.json"
+            metadata_path.write_text("invalid json")
+
+            # Should only return valid staged experiment
+            staged = manager.get_staged_experiments()
+            assert staged == [staged_id]
+
+    @patch("yanex.core.manager.validate_clean_working_directory") 
+    def test_staged_experiment_full_workflow(self, mock_validate_git):
+        """Test complete workflow: create staged -> execute -> complete."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            script_path = Path(__file__)
+            
+            # Step 1: Create staged experiment
+            experiment_id = manager.create_experiment(
+                script_path, 
+                name="workflow-test",
+                config={"param1": "value1"},
+                tags=["test"],
+                stage_only=True
+            )
+            
+            # Verify initial staged state
+            metadata = manager.storage.load_metadata(experiment_id)
+            assert metadata["status"] == "staged"
+            assert metadata["name"] == "workflow-test"
+            assert metadata["tags"] == ["test"]
+            assert metadata["started_at"] is None
+            
+            # Verify config was saved
+            config = manager.storage.load_config(experiment_id)
+            assert config == {"param1": "value1"}
+            
+            # Step 2: Execute staged experiment
+            manager.execute_staged_experiment(experiment_id)
+            
+            # Verify running state
+            metadata = manager.storage.load_metadata(experiment_id)
+            assert metadata["status"] == "running"
+            assert metadata["started_at"] is not None
+            
+            # Step 3: Complete experiment
+            manager.complete_experiment(experiment_id)
+            
+            # Verify final state
+            metadata = manager.storage.load_metadata(experiment_id)
+            assert metadata["status"] == "completed"
+            assert metadata["completed_at"] is not None
+            assert metadata["duration"] is not None
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    def test_staged_experiment_with_all_options(self, mock_validate_git):
+        """Test staged experiment creation with all options."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ExperimentManager(Path(temp_dir))
+            script_path = Path(__file__)
+
+            experiment_id = manager.create_experiment(
+                script_path=script_path,
+                name="full-test",
+                config={"lr": 0.01, "epochs": 100},
+                tags=["staging", "test"],
+                description="Test staged experiment with all options",
+                allow_dirty=True,
+                stage_only=True
+            )
+
+            # Verify all metadata was saved correctly
+            metadata = manager.storage.load_metadata(experiment_id)
+            assert metadata["status"] == "staged"
+            assert metadata["name"] == "full-test"
+            assert metadata["description"] == "Test staged experiment with all options"
+            assert metadata["tags"] == ["staging", "test"]
+            
+            # Verify config
+            config = manager.storage.load_config(experiment_id)
+            assert config == {"lr": 0.01, "epochs": 100}

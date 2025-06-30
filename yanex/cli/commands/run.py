@@ -16,7 +16,7 @@ from ...core.manager import ExperimentManager
 
 
 @click.command()
-@click.argument("script", type=click.Path(exists=True, path_type=Path))
+@click.argument("script", type=click.Path(exists=True, path_type=Path), required=False)
 @click.option(
     "--config",
     "-c",
@@ -38,10 +38,20 @@ from ...core.manager import ExperimentManager
     is_flag=True,
     help="Allow running with uncommitted changes (bypasses git cleanliness check)",
 )
+@click.option(
+    "--stage",
+    is_flag=True,
+    help="Stage experiment for later execution instead of running immediately",
+)
+@click.option(
+    "--staged",
+    is_flag=True,
+    help="Execute staged experiments",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
-    script: Path,
+    script: Optional[Path],
     config: Optional[Path],
     param: List[str],
     name: Optional[str],
@@ -49,6 +59,8 @@ def run(
     description: Optional[str],
     dry_run: bool,
     ignore_dirty: bool,
+    stage: bool,
+    staged: bool,
 ) -> None:
     """
     Run a script as a tracked experiment.
@@ -80,6 +92,22 @@ def run(
     )
 
     verbose = ctx.obj.get("verbose", False)
+
+    # Handle mutually exclusive flags
+    if stage and staged:
+        click.echo("Error: Cannot use both --stage and --staged flags", err=True)
+        raise click.Abort()
+
+    if staged:
+        # Execute staged experiments
+        _execute_staged_experiments(verbose)
+        return
+
+    # Validate script is provided when not using --staged
+    if script is None:
+        click.echo("Error: Missing argument 'SCRIPT'", err=True)
+        click.echo("Try 'yanex run --help' for help.", err=True)
+        raise click.Abort()
 
     if verbose:
         click.echo(f"Running script: {script}")
@@ -116,16 +144,27 @@ def run(
             click.echo(f"  Config: {merged_config}")
             return
 
-        # Phase 3: Execute experiment
-        _execute_experiment(
-            script=script,
-            name=name,
-            tags=list(tag),
-            description=description,
-            config=merged_config,
-            verbose=verbose,
-            ignore_dirty=ignore_dirty,
-        )
+        # Phase 3: Execute or stage experiment
+        if stage:
+            _stage_experiment(
+                script=script,
+                name=name,
+                tags=list(tag),
+                description=description,
+                config=merged_config,
+                verbose=verbose,
+                ignore_dirty=ignore_dirty,
+            )
+        else:
+            _execute_experiment(
+                script=script,
+                name=name,
+                tags=list(tag),
+                description=description,
+                config=merged_config,
+                verbose=verbose,
+                ignore_dirty=ignore_dirty,
+            )
 
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
@@ -181,6 +220,193 @@ def _execute_experiment(
 
         process = subprocess.Popen(
             [sys.executable, str(script.resolve())],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=Path.cwd(),
+        )
+
+        def stream_output(pipe, capture_list, output_stream):
+            """Stream output line by line while capturing it."""
+            for line in iter(pipe.readline, ''):
+                # Display in real-time
+                output_stream.write(line)
+                output_stream.flush()
+                # Capture for later saving
+                capture_list.append(line)
+            pipe.close()
+
+        # Start threads for stdout and stderr streaming
+        stdout_thread = threading.Thread(
+            target=stream_output,
+            args=(process.stdout, stdout_capture, sys.stdout)
+        )
+        stderr_thread = threading.Thread(
+            target=stream_output,
+            args=(process.stderr, stderr_capture, sys.stderr)
+        )
+
+        stdout_thread.start()
+        stderr_thread.start()
+
+        # Wait for process completion
+        return_code = process.wait()
+
+        # Wait for output threads to finish
+        stdout_thread.join()
+        stderr_thread.join()
+
+        # Save captured output as artifacts
+        stdout_text = ''.join(stdout_capture)
+        stderr_text = ''.join(stderr_capture)
+
+        if stdout_text:
+            manager.storage.save_text_artifact(
+                experiment_id, "stdout.txt", stdout_text
+            )
+        if stderr_text:
+            manager.storage.save_text_artifact(
+                experiment_id, "stderr.txt", stderr_text
+            )
+
+        # Handle experiment result based on exit code
+        if return_code == 0:
+            manager.complete_experiment(experiment_id)
+            exp_dir = manager.storage.get_experiment_directory(experiment_id)
+            click.echo(f"✓ Experiment completed successfully: {experiment_id}")
+            click.echo(f"  Directory: {exp_dir}")
+        else:
+            error_msg = f"Script exited with code {return_code}"
+            if stderr_text:
+                error_msg += f": {stderr_text.strip()}"
+            manager.fail_experiment(experiment_id, error_msg)
+            exp_dir = manager.storage.get_experiment_directory(experiment_id)
+            click.echo(f"✗ Experiment failed: {experiment_id}")
+            click.echo(f"  Directory: {exp_dir}")
+            click.echo(f"Error: {error_msg}")
+            raise click.Abort()
+
+    except KeyboardInterrupt:
+        # Terminate the process and wait for threads
+        if 'process' in locals():
+            process.terminate()
+            process.wait()
+        manager.cancel_experiment(experiment_id, "Interrupted by user (Ctrl+C)")
+        click.echo(f"✗ Experiment cancelled: {experiment_id}")
+        raise
+
+    except Exception as e:
+        manager.fail_experiment(experiment_id, f"Unexpected error: {str(e)}")
+        click.echo(f"✗ Experiment failed: {experiment_id}")
+        click.echo(f"Error: {e}")
+        raise click.Abort() from e
+
+
+def _stage_experiment(
+    script: Path,
+    name: Optional[str],
+    tags: List[str],
+    description: Optional[str],
+    config: Dict[str, Any],
+    verbose: bool = False,
+    ignore_dirty: bool = False,
+) -> None:
+    """Stage experiment for later execution."""
+    
+    manager = ExperimentManager()
+    experiment_id = manager.create_experiment(
+        script_path=script,
+        name=name,
+        config=config,
+        tags=tags,
+        description=description,
+        allow_dirty=ignore_dirty,
+        stage_only=True,
+    )
+
+    if verbose:
+        click.echo(f"Staged experiment: {experiment_id}")
+        
+    exp_dir = manager.storage.get_experiment_directory(experiment_id)
+    click.echo(f"✓ Experiment staged: {experiment_id}")
+    click.echo(f"  Directory: {exp_dir}")
+    click.echo(f"  Use 'yanex run --staged' to execute staged experiments")
+
+
+def _execute_staged_experiments(verbose: bool = False) -> None:
+    """Execute all staged experiments."""
+    
+    manager = ExperimentManager()
+    staged_experiments = manager.get_staged_experiments()
+    
+    if not staged_experiments:
+        click.echo("No staged experiments found")
+        return
+    
+    if verbose:
+        click.echo(f"Found {len(staged_experiments)} staged experiments")
+    
+    for experiment_id in staged_experiments:
+        try:
+            if verbose:
+                click.echo(f"Executing staged experiment: {experiment_id}")
+            
+            # Load experiment metadata to get script path and config
+            metadata = manager.storage.load_metadata(experiment_id)
+            config = manager.storage.load_config(experiment_id)
+            script_path = Path(metadata["script_path"])
+            
+            # Transition to running state
+            manager.execute_staged_experiment(experiment_id)
+            
+            # Execute the script using the same logic as _execute_experiment
+            _execute_staged_script(
+                experiment_id=experiment_id,
+                script_path=script_path,
+                config=config,
+                manager=manager,
+                verbose=verbose,
+            )
+            
+        except Exception as e:
+            click.echo(f"✗ Failed to execute staged experiment {experiment_id}: {e}", err=True)
+            try:
+                manager.fail_experiment(experiment_id, f"Staged execution failed: {str(e)}")
+            except Exception:
+                pass  # Best effort to record failure
+
+
+def _execute_staged_script(
+    experiment_id: str,
+    script_path: Path,
+    config: Dict[str, Any],
+    manager: ExperimentManager,
+    verbose: bool = False,
+) -> None:
+    """Execute the script for a staged experiment."""
+    
+    try:
+        # Prepare environment for subprocess (same as _execute_experiment)
+        env = os.environ.copy()
+        env["YANEX_EXPERIMENT_ID"] = experiment_id
+        env["YANEX_CLI_ACTIVE"] = "1"
+
+        # Add parameters as environment variables
+        for key, value in config.items():
+            env[f"YANEX_PARAM_{key}"] = (
+                json.dumps(value) if not isinstance(value, str) else value
+            )
+
+        if verbose:
+            click.echo(f"Starting script execution: {script_path}")
+
+        # Execute script with real-time output streaming (same logic as _execute_experiment)
+        stdout_capture = []
+        stderr_capture = []
+
+        process = subprocess.Popen(
+            [sys.executable, str(script_path.resolve())],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

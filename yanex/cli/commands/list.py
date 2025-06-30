@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from ..filters import ExperimentFilter, parse_time_spec
 from ..formatters import ExperimentTableFormatter
+from ...core.constants import EXPERIMENT_STATUSES
 
 
 @click.command()
@@ -19,9 +20,7 @@ from ..formatters import ExperimentTableFormatter
 @click.option("-n", "--limit", type=int, help="Maximum number of experiments to show")
 @click.option(
     "--status",
-    type=click.Choice(
-        ["created", "running", "completed", "failed", "cancelled"], case_sensitive=False
-    ),
+    type=click.Choice(EXPERIMENT_STATUSES, case_sensitive=False),
     help="Filter by experiment status",
 )
 @click.option(

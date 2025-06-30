@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...core.manager import ExperimentManager
+from ...core.constants import EXPERIMENT_STATUSES_SET
 
 
 class ExperimentFilter:
@@ -44,7 +45,7 @@ class ExperimentFilter:
         Filter experiments based on multiple criteria.
 
         Args:
-            status: Filter by experiment status (created/running/completed/failed/cancelled)
+            status: Filter by experiment status (created/running/completed/failed/cancelled/staged)
             name_pattern: Filter by name using glob patterns (e.g., "*tuning*")
             tags: List of tags - experiments must have ALL specified tags
             started_after: Filter experiments started after this time
@@ -63,10 +64,9 @@ class ExperimentFilter:
         """
         # Validate status if provided
         if status is not None:
-            valid_statuses = {"created", "running", "completed", "failed", "cancelled"}
-            if status not in valid_statuses:
+            if status not in EXPERIMENT_STATUSES_SET:
                 raise ValueError(
-                    f"Invalid status '{status}'. Valid options: {', '.join(sorted(valid_statuses))}"
+                    f"Invalid status '{status}'. Valid options: {', '.join(sorted(EXPERIMENT_STATUSES_SET))}"
                 )
 
         # Get all experiments

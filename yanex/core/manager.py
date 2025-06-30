@@ -361,6 +361,7 @@ class ExperimentManager:
         tags: Optional[List[str]] = None,
         description: Optional[str] = None,
         allow_dirty: bool = False,
+        stage_only: bool = False,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -371,6 +372,7 @@ class ExperimentManager:
             tags: List of tags for the experiment
             description: Optional experiment description
             allow_dirty: Allow running with uncommitted changes
+            stage_only: If True, create experiment with "staged" status for later execution
 
         Returns:
             Experiment ID
@@ -378,15 +380,16 @@ class ExperimentManager:
         Raises:
             DirtyWorkingDirectoryError: If git working directory is not clean and allow_dirty=False
             ValidationError: If input parameters are invalid
-            ExperimentAlreadyRunningError: If another experiment is running
+            ExperimentAlreadyRunningError: If another experiment is running (unless stage_only=True)
             StorageError: If experiment creation fails
         """
         # Validate git working directory is clean (unless explicitly allowed)
         if not allow_dirty:
             validate_clean_working_directory()
 
-        # Prevent concurrent execution
-        self.prevent_concurrent_execution()
+        # Prevent concurrent execution (unless staging only)
+        if not stage_only:
+            self.prevent_concurrent_execution()
 
         # Set defaults
         if config is None:
@@ -409,7 +412,7 @@ class ExperimentManager:
 
         # Build and save metadata
         metadata = self.build_metadata(
-            experiment_id, script_path, name, tags, description
+            experiment_id, script_path, name, tags, description, stage_only
         )
         self.storage.save_metadata(experiment_id, metadata)
 
@@ -425,6 +428,7 @@ class ExperimentManager:
         name: Optional[str],
         tags: List[str],
         description: Optional[str],
+        stage_only: bool = False,
     ) -> Dict[str, Any]:
         """Build complete experiment metadata.
 
@@ -434,6 +438,7 @@ class ExperimentManager:
             name: Optional experiment name
             tags: List of experiment tags
             description: Optional experiment description
+            stage_only: If True, create with "staged" status
 
         Returns:
             Complete metadata dictionary
@@ -448,13 +453,14 @@ class ExperimentManager:
         environment_info = capture_full_environment()
 
         # Build metadata
+        status = "staged" if stage_only else "created"
         metadata = {
             "id": experiment_id,
             "name": name,
             "script_path": str(script_path.resolve()),
             "tags": tags,
             "description": description,
-            "status": "created",
+            "status": status,
             "created_at": timestamp,
             "started_at": None,
             "completed_at": None,
@@ -464,6 +470,59 @@ class ExperimentManager:
         }
 
         return metadata
+
+    def execute_staged_experiment(self, experiment_id: str) -> None:
+        """Execute a staged experiment.
+
+        Args:
+            experiment_id: Experiment identifier
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist
+            ValueError: If experiment is not in 'staged' state
+            StorageError: If metadata update fails
+        """
+        # Verify experiment exists
+        if not self.storage.experiment_exists(experiment_id):
+            from ..utils.exceptions import ExperimentNotFoundError
+            raise ExperimentNotFoundError(experiment_id)
+
+        # Load current metadata
+        metadata = self.storage.load_metadata(experiment_id)
+
+        # Verify experiment is in staged state
+        if metadata.get("status") != "staged":
+            current_status = metadata.get("status", "unknown")
+            raise ValueError(
+                f"Cannot execute experiment {experiment_id}. "
+                f"Expected status 'staged', got '{current_status}'"
+            )
+
+        # Transition to running state
+        now = datetime.utcnow().isoformat()
+        metadata["status"] = "running"
+        metadata["started_at"] = now
+        self.storage.save_metadata(experiment_id, metadata)
+
+    def get_staged_experiments(self) -> List[str]:
+        """Get list of staged experiment IDs.
+
+        Returns:
+            List of experiment IDs with status 'staged'
+        """
+        all_experiments = self.storage.list_experiments(include_archived=False)
+        staged_experiments = []
+        
+        for exp_id in all_experiments:
+            try:
+                metadata = self.storage.load_metadata(exp_id)
+                if metadata.get("status") == "staged":
+                    staged_experiments.append(exp_id)
+            except Exception:
+                # Skip experiments with loading errors
+                continue
+                
+        return staged_experiments
 
     def find_experiment_by_name(self, name: str) -> Optional[str]:
         """Find experiment ID by name.

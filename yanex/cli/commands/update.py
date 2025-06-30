@@ -11,6 +11,7 @@ from .confirm import (
     find_experiments_by_identifiers,
     find_experiments_by_filters,
 )
+from ...core.constants import EXPERIMENT_STATUSES
 
 
 @click.command("update")
@@ -18,7 +19,7 @@ from .confirm import (
 @click.option(
     "--status",
     "filter_status",
-    type=click.Choice(["created", "running", "completed", "failed", "cancelled"]),
+    type=click.Choice(EXPERIMENT_STATUSES),
     help="Filter experiments by status for bulk updates",
 )
 @click.option(
@@ -57,7 +58,7 @@ from .confirm import (
 @click.option(
     "--set-status",
     "new_status",
-    type=click.Choice(["created", "running", "completed", "failed", "cancelled"]),
+    type=click.Choice(EXPERIMENT_STATUSES),
     help="Set experiment status",
 )
 @click.option(

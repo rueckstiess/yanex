@@ -11,13 +11,14 @@ from .confirm import (
     find_experiments_by_identifiers,
     find_experiments_by_filters,
 )
+from ...core.constants import EXPERIMENT_STATUSES
 
 
 @click.command("delete")
 @click.argument("experiment_identifiers", nargs=-1)
 @click.option(
     "--status",
-    type=click.Choice(["created", "running", "completed", "failed", "cancelled"]),
+    type=click.Choice(EXPERIMENT_STATUSES),
     help="Delete experiments with specific status",
 )
 @click.option(

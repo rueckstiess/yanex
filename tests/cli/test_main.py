@@ -150,3 +150,119 @@ class TestCLIMain:
             assert "No configuration file found" in result.output
         finally:
             script_path.unlink()
+
+    def test_run_stage_flag(self):
+        """Test run with --stage flag creates staged experiment."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("print('staged experiment')")
+            script_path = Path(f.name)
+
+        try:
+            result = self.runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(script_path),
+                    "--stage",
+                    "--param",
+                    "test_param=value",
+                    "--name",
+                    "staged-test",
+                    "--ignore-dirty",  # Allow dirty working directory in tests
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Experiment staged:" in result.output
+            assert "Directory:" in result.output
+            assert "Use 'yanex run --staged' to execute" in result.output
+        finally:
+            script_path.unlink()
+
+    def test_run_stage_and_staged_flags_conflict(self):
+        """Test run with both --stage and --staged flags shows error."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("print('test')")
+            script_path = Path(f.name)
+
+        try:
+            result = self.runner.invoke(
+                cli,
+                [
+                    "run", 
+                    str(script_path),
+                    "--stage",
+                    "--staged",
+                    "--ignore-dirty",
+                ],
+            )
+            assert result.exit_code != 0
+            assert "Cannot use both --stage and --staged flags" in result.output
+        finally:
+            script_path.unlink()
+
+    def test_run_staged_flag_no_script(self):
+        """Test run with --staged flag doesn't require script argument."""
+        result = self.runner.invoke(cli, ["run", "--staged"])
+        # Should succeed - either find no staged experiments or successfully execute any that exist
+        assert result.exit_code == 0
+        # Check for expected messages (could be no staged experiments or successful execution)
+        assert "No staged experiments found" in result.output or "Experiment completed successfully" in result.output or "Experiment failed" in result.output
+
+    def test_run_staged_flag_with_script_error(self):
+        """Test run with --staged flag and script argument shows error."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("print('test')")
+            script_path = Path(f.name)
+
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Use isolated experiment directory for this test
+                import os
+                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
+                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
+                
+                try:
+                    # This should work - script argument is optional when using --staged
+                    result = self.runner.invoke(cli, ["run", str(script_path), "--staged"])
+                    assert result.exit_code == 0
+                    assert "No staged experiments found" in result.output
+                finally:
+                    if old_yanex_dir:
+                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
+                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
+                        del os.environ['YANEX_EXPERIMENTS_DIR']
+        finally:
+            script_path.unlink()
+
+    def test_run_missing_script_without_staged(self):
+        """Test run without script and without --staged shows error."""
+        result = self.runner.invoke(cli, ["run"])
+        assert result.exit_code != 0
+        assert "Missing argument 'SCRIPT'" in result.output
+
+    def test_stage_experiment_dry_run(self):
+        """Test staging experiment with dry-run flag."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("print('dry run test')")
+            script_path = Path(f.name)
+
+        try:
+            result = self.runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(script_path),
+                    "--stage",
+                    "--dry-run",
+                    "--param",
+                    "learning_rate=0.01",
+                    "--ignore-dirty",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Configuration validation passed" in result.output
+            assert "Dry run completed" in result.output
+            # Should not create staged experiment in dry-run mode
+            assert "Experiment staged:" not in result.output
+        finally:
+            script_path.unlink()

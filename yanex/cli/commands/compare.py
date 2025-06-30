@@ -8,6 +8,7 @@ from typing import List, Optional
 from ...core.comparison import ExperimentComparisonData
 from ...ui.compare_table import run_comparison_table
 from ..filters import ExperimentFilter, parse_time_spec
+from ...core.constants import EXPERIMENT_STATUSES
 from .confirm import find_experiments_by_identifiers, find_experiments_by_filters
 
 
@@ -15,7 +16,7 @@ from .confirm import find_experiments_by_identifiers, find_experiments_by_filter
 @click.argument("experiment_identifiers", nargs=-1)
 @click.option(
     "--status",
-    type=click.Choice(["created", "running", "completed", "failed", "cancelled"]),
+    type=click.Choice(EXPERIMENT_STATUSES),
     help="Compare experiments with specific status",
 )
 @click.option(
