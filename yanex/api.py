@@ -126,18 +126,14 @@ def get_param(key: str, default: Any = None) -> Any:
             if isinstance(current, dict) and k in current:
                 current = current[k]
             else:
-                print(
-                    f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
-                )
+                print(f"Warning: Parameter '{key}' not found in config. Using default value: {default}")
                 return default
 
         return current
     else:
         # Simple key access
         if key not in params:
-            print(
-                f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
-            )
+            print(f"Warning: Parameter '{key}' not found in config. Using default value: {default}")
         return params.get(key, default)
 
 
@@ -398,9 +394,7 @@ class ExperimentContext:
                 if not self._manual_exit:
                     self.manager.complete_experiment(self.experiment_id)
                     # Print completion message like CLI mode
-                    exp_dir = self.manager.storage.get_experiment_directory(
-                        self.experiment_id
-                    )
+                    exp_dir = self.manager.storage.get_experiment_directory(self.experiment_id)
                     print(f"✓ Experiment completed successfully: {self.experiment_id}")
                     print(f"  Directory: {exp_dir}")
             elif exc_type in (
@@ -414,13 +408,9 @@ class ExperimentContext:
                 return True
             elif exc_type is KeyboardInterrupt:
                 # User interruption - mark as cancelled
-                self.manager.cancel_experiment(
-                    self.experiment_id, "Interrupted by user (Ctrl+C)"
-                )
+                self.manager.cancel_experiment(self.experiment_id, "Interrupted by user (Ctrl+C)")
                 # Print cancellation message like CLI mode
-                exp_dir = self.manager.storage.get_experiment_directory(
-                    self.experiment_id
-                )
+                exp_dir = self.manager.storage.get_experiment_directory(self.experiment_id)
                 print(f"✗ Experiment cancelled: {self.experiment_id}")
                 print(f"  Directory: {exp_dir}")
                 # Re-raise KeyboardInterrupt
@@ -430,9 +420,7 @@ class ExperimentContext:
                 error_message = f"{exc_type.__name__}: {exc_val}"
                 self.manager.fail_experiment(self.experiment_id, error_message)
                 # Print failure message like CLI mode
-                exp_dir = self.manager.storage.get_experiment_directory(
-                    self.experiment_id
-                )
+                exp_dir = self.manager.storage.get_experiment_directory(self.experiment_id)
                 print(f"✗ Experiment failed: {self.experiment_id}")
                 print(f"  Directory: {exp_dir}")
                 # Propagate the original exception
@@ -469,10 +457,10 @@ def create_experiment(
     # Check for CLI context conflict
     if _is_cli_context():
         raise ExperimentContextError(
-            "Cannot use experiment.create_experiment() when script is run via 'yanex run'. "
+            "Cannot use yanex.create_experiment() when script is run via 'yanex run'. "
             "Either:\n"
             "  - Run directly: python script.py\n"
-            "  - Or remove experiment.create_experiment() and use: yanex run script.py"
+            "  - Or remove yanex.create_experiment() and use: yanex run script.py"
         )
 
     manager = _get_experiment_manager()

@@ -146,29 +146,27 @@ yanex run train.py --tag "new-architecture"
 
 ## Script Integration
 
-Your Python script should use the Yanex API:
+Your Python script can make use of the Yanex API to access parameters, log results, and manage artifacts.
 
 ```python
 # train.py
-from yanex import experiment
+import yanex
 
 # Load parameters
 params = experiment.get_params()
 
-# Run experiment
-with experiment.run() as exp:
-    # Your training code
-    model = create_model(params['model'])
-    accuracy = train_model(model, params['training'])
-    
-    # Log results
-    exp.log_results({
-        "final_accuracy": accuracy,
-        "epochs_trained": params['training']['epochs']
-    })
-    
-    # Save artifacts
-    exp.log_artifact("model.pth", "path/to/saved/model.pth")
+# Your training code
+model = create_model(params['model'])
+accuracy = train_model(model, params['training'])
+
+# Log results
+yanex.log_results({
+    "final_accuracy": accuracy,
+    "epochs_trained": params['training']['epochs']
+})
+
+# Save artifacts
+yanex.log_artifact("model.pth", "path/to/saved/model.pth")
 ```
 
 ## Command Options
@@ -201,31 +199,30 @@ with experiment.run() as exp:
 
 ```python
 # train.py
-from yanex import experiment
+import yanex
 import torch
 
 def main():
-    params = experiment.get_params()
+    params = yanex.get_params()
     
-    with experiment.run() as exp:
-        # Model setup
-        model = create_model(
-            lr=params.get('learning_rate', 0.001),
-            layers=params.get('num_layers', 3)
-        )
-        
-        # Training loop
-        for epoch in range(params.get('epochs', 10)):
-            loss = train_epoch(model)
-            exp.log_results({"epoch": epoch, "loss": loss})
-        
-        # Final results
-        accuracy = evaluate_model(model)
-        exp.log_results({"final_accuracy": accuracy})
-        
-        # Save model
-        torch.save(model.state_dict(), "model.pth")
-        exp.log_artifact("model.pth", "model.pth")
+    # Model setup
+    model = create_model(
+        lr=params.get('learning_rate', 0.001),
+        layers=params.get('num_layers', 3)
+    )
+    
+    # Training loop
+    for epoch in range(params.get('epochs', 10)):
+        loss = train_epoch(model)
+        yanex.log_results({"epoch": epoch, "loss": loss})
+    
+    # Final results
+    accuracy = evaluate_model(model)
+    yanex.log_results({"final_accuracy": accuracy})
+    
+    # Save model
+    torch.save(model.state_dict(), "model.pth")
+    yanex.log_artifact("model.pth", "model.pth")
 
 if __name__ == "__main__":
     main()
@@ -268,30 +265,29 @@ yanex run train.py \
 
 ```python
 # process_data.py
-from yanex import experiment
+import yanex 
 import pandas as pd
 
 def main():
-    params = experiment.get_params()
+    params = yanex.get_params()
     
-    with experiment.run() as exp:
-        # Load and process data
-        df = pd.read_csv(params['input_file'])
-        
-        # Processing steps
-        df_clean = clean_data(df)
-        df_features = extract_features(df_clean)
-        
-        # Log statistics
-        exp.log_results({
-            "input_rows": len(df),
-            "output_rows": len(df_features),
-            "features_created": len(df_features.columns)
-        })
-        
-        # Save processed data
-        df_features.to_csv("processed_data.csv", index=False)
-        exp.log_artifact("processed_data.csv", "processed_data.csv")
+    # Load and process data
+    df = pd.read_csv(params['input_file'])
+    
+    # Processing steps
+    df_clean = clean_data(df)
+    df_features = extract_features(df_clean)
+    
+    # Log statistics
+    yanex.log_results({
+        "input_rows": len(df),
+        "output_rows": len(df_features),
+        "features_created": len(df_features.columns)
+    })
+    
+    # Save processed data
+    df_features.to_csv("processed_data.csv", index=False)
+    yanex.log_artifact("processed_data.csv", "processed_data.csv")
 
 if __name__ == "__main__":
     main()
@@ -302,186 +298,6 @@ yanex run process_data.py \
     --param input_file=raw_data.csv \
     --tag data-processing \
     --name "data-prep-v2"
-```
-
-## Advanced Usage
-
-### Environment Variables
-
-```bash
-# Set parameters via environment
-export YANEX_PARAM_learning_rate=0.005
-export YANEX_PARAM_batch_size=128
-
-yanex run train.py  # Uses environment parameters
-```
-
-### Multiple Configs
-
-```yaml
-# base_config.yaml
-model:
-  architecture: "resnet"
-  layers: 18
-
-training:
-  epochs: 100
-```
-
-```yaml
-# experiment_config.yaml  
-model:
-  layers: 50  # Override base config
-
-training:
-  learning_rate: 0.01  # Add new parameter
-```
-
-```bash
-# Layer configs (experiment_config overrides base_config)
-yanex run train.py --config base_config.yaml --config experiment_config.yaml
-```
-
-### Script Arguments
-
-You can pass additional arguments to your script:
-
-```bash
-# Pass arguments after --
-yanex run script.py --param lr=0.01 -- --verbose --debug
-```
-
-```python
-# script.py
-import sys
-from yanex import experiment
-
-# Get yanex parameters
-params = experiment.get_params()
-
-# Get script arguments
-script_args = sys.argv[1:]  # Arguments after --
-verbose = "--verbose" in script_args
-```
-
-### Complex Parameter Types
-
-```yaml
-# config.yaml
-model:
-  layers: [64, 128, 256, 512]  # List
-  dropout_rates: [0.1, 0.2, 0.3, 0.4]  # List
-  use_batch_norm: true  # Boolean
-  activation: "relu"  # String
-
-optimizer:
-  type: "adam"
-  params:
-    lr: 0.001
-    weight_decay: 0.0001
-```
-
-```python
-# Access in script
-params = experiment.get_params()
-
-layers = params['model']['layers']  # [64, 128, 256, 512]
-dropout = params['model']['dropout_rates'][0]  # 0.1
-use_bn = params['model']['use_batch_norm']  # True
-```
-
-## Error Handling
-
-### Experiment Failures
-
-```python
-# robust_experiment.py
-from yanex import experiment
-
-def main():
-    params = experiment.get_params()
-    
-    with experiment.run() as exp:
-        try:
-            # Your experiment code
-            result = train_model(params)
-            exp.log_results({"accuracy": result.accuracy})
-            exp.add_tag("completed")
-            
-        except Exception as e:
-            # Log error information
-            exp.log_results({
-                "error": str(e),
-                "error_type": type(e).__name__
-            })
-            exp.add_tag("failed")
-            
-            # Re-raise to maintain normal error handling
-            raise
-
-if __name__ == "__main__":
-    main()
-```
-
-### Git State Issues
-
-```bash
-# Check Git status
-git status
-
-# Clean working directory
-git add .
-git commit -m "Clean up before experiment"
-
-# Or force dirty state (not recommended)
-yanex run script.py --force-dirty
-```
-
-## Best Practices
-
-### 1. Reproducible Experiments
-
-```bash
-# Always commit changes before important experiments
-git add .
-git commit -m "Implement new feature"
-yanex run experiment.py --tag "feature-test"
-```
-
-### 2. Meaningful Names and Tags
-
-```bash
-yanex run train.py \
-    --name "resnet50-imagenet-baseline" \
-    --description "ResNet-50 baseline on ImageNet with standard augmentation" \
-    --tag baseline \
-    --tag resnet \
-    --tag imagenet
-```
-
-### 3. Parameter Documentation
-
-```yaml
-# config.yaml - Document your parameters
-# Model architecture parameters
-model:
-  learning_rate: 0.001  # Initial learning rate for Adam optimizer
-  batch_size: 32       # Training batch size
-  num_layers: 12       # Number of transformer layers
-
-# Training parameters  
-training:
-  epochs: 100          # Maximum training epochs
-  early_stopping: 10   # Stop if no improvement for N epochs
-```
-
-### 4. Organized Experiments
-
-```bash
-# Use consistent tagging scheme
-yanex run train.py --tag "phase1" --tag "baseline"
-yanex run train.py --tag "phase1" --tag "ablation" --tag "no-dropout"
-yanex run train.py --tag "phase2" --tag "improved-arch"
 ```
 
 ---

@@ -49,10 +49,10 @@ data:
 ### Accessing Configuration
 
 ```python
-from yanex import experiment
+import yanex
 
 # Load configuration
-params = experiment.get_params()
+params = yanex.get_params()
 
 # Access parameters
 lr = params['model']['learning_rate']  # 0.001
@@ -230,7 +230,7 @@ training:
 ### Accessing Complex Types
 
 ```python
-params = experiment.get_params()
+params = yanex.get_params()
 
 # Lists
 layer_sizes = params['model']['layer_sizes']  # [64, 128, 256, 512]
@@ -249,7 +249,7 @@ first_conv_filters = conv_layers[0]['filters']  # 64
 ### Parameter Validation in Scripts
 
 ```python
-from yanex import experiment
+import yanex
 
 def validate_params(params):
     """Validate experiment parameters."""
@@ -266,12 +266,11 @@ def validate_params(params):
         raise ValueError("Batch size must be one of: 16, 32, 64, 128")
 
 def main():
-    params = experiment.get_params()
+    params = yanex.get_params()
     validate_params(params)
     
-    with experiment.run():
-        # Your experiment code
-        pass
+    # Your experiment code
+      
 ```
 
 ### Default Values Pattern
@@ -367,90 +366,9 @@ def main():
     assert params['batch_size'] > 0, "Batch size must be positive"
     assert params['epochs'] > 0, "Epochs must be positive"
     
-    with experiment.run():
-        # Your experiment code
-        pass
+    # Your experiment code
 ```
 
-### 5. Parameter Sweeps
-
-```bash
-# Systematic parameter exploration
-learning_rates=(0.001 0.01 0.1)
-batch_sizes=(16 32 64)
-
-for lr in "${learning_rates[@]}"; do
-    for bs in "${batch_sizes[@]}"; do
-        yanex run train.py \
-            --param learning_rate=$lr \
-            --param batch_size=$bs \
-            --tag "sweep" \
-            --name "lr${lr}-bs${bs}"
-    done
-done
-
-# Analyze results
-yanex compare --tag sweep --only-different
-```
-
-## Common Patterns
-
-### Machine Learning Config
-
-```yaml
-# ml_config.yaml
-model:
-  type: "transformer"
-  num_layers: 12
-  hidden_size: 768
-  num_heads: 12
-  dropout: 0.1
-  activation: "gelu"
-
-training:
-  learning_rate: 5e-4
-  batch_size: 32
-  epochs: 100
-  warmup_steps: 10000
-  weight_decay: 0.01
-  gradient_clip: 1.0
-
-optimization:
-  optimizer: "adamw"
-  scheduler: "cosine"
-  lr_decay: 0.95
-
-data:
-  dataset: "wikitext-103"
-  seq_length: 512
-  vocab_size: 50000
-  train_split: 0.8
-  validation_split: 0.1
-  test_split: 0.1
-```
-
-### Experimental Config
-
-```yaml
-# experiment_config.yaml
-experiment:
-  name: "transformer-baseline"
-  description: "Baseline transformer on WikiText-103"
-  tags: ["baseline", "transformer", "wikitext"]
-
-# Include model config by reference
-model: !include model_configs/transformer_base.yaml
-
-# Override specific parameters
-training:
-  epochs: 50  # Shorter for initial experiment
-  
-# Add experiment-specific parameters
-logging:
-  log_interval: 100
-  save_interval: 1000
-  metrics: ["loss", "perplexity", "accuracy"]
-```
 
 ## Troubleshooting
 
