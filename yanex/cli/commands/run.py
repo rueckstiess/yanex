@@ -323,6 +323,82 @@ def _execute_experiment(
         raise click.Abort() from e
 
 
+def _generate_sweep_experiment_name(base_name: Optional[str], config: Dict[str, Any]) -> str:
+    """
+    Generate a descriptive name for a sweep experiment based on its parameters.
+    
+    Args:
+        base_name: Base experiment name (can be None)
+        config: Configuration dictionary with parameter values
+        
+    Returns:
+        Generated experiment name with parameter suffixes
+    """
+    # Start with base name or default
+    if base_name:
+        name_parts = [base_name]
+    else:
+        name_parts = ["sweep"]
+    
+    # Extract parameter name-value pairs
+    param_parts = []
+    
+    def extract_params(d: Dict[str, Any], prefix: str = "") -> None:
+        for key, value in d.items():
+            if isinstance(value, dict):
+                # Handle nested parameters
+                new_prefix = f"{prefix}_{key}" if prefix else key
+                extract_params(value, new_prefix)
+            else:
+                # Format parameter name
+                param_name = f"{prefix}_{key}" if prefix else key
+                
+                # Format parameter value
+                if isinstance(value, bool):
+                    param_value = str(value).lower()
+                elif isinstance(value, (int, float)):
+                    # Format numbers with reasonable precision
+                    if isinstance(value, float):
+                        # Remove trailing zeros and unnecessary decimal point
+                        if value == int(value):
+                            param_value = str(int(value))
+                        else:
+                            formatted = f"{value:.6g}"  # Up to 6 significant digits
+                            # Replace dots with 'p' and handle scientific notation
+                            param_value = formatted.replace(".", "p").replace("e", "e").replace("+", "").replace("-", "m")
+                    else:
+                        param_value = str(value)
+                else:
+                    # String values
+                    param_value = str(value)
+                
+                param_parts.append(f"{param_name}_{param_value}")
+    
+    extract_params(config)
+    
+    # Combine name parts
+    if param_parts:
+        name_parts.extend(param_parts)
+    
+    result = "-".join(name_parts)
+    
+    # Ensure name isn't too long (limit to 100 characters)
+    if len(result) > 100:
+        # Truncate but keep the base name and at least one parameter
+        if base_name:
+            base_len = len(base_name)
+            remaining = 97 - base_len  # Leave room for "-..."
+            if param_parts:
+                truncated_params = param_parts[0][:remaining]
+                result = f"{base_name}-{truncated_params}..."
+            else:
+                result = base_name[:97] + "..."
+        else:
+            result = result[:97] + "..."
+    
+    return result
+
+
 def _stage_experiment(
     script: Path,
     name: Optional[str],
@@ -345,10 +421,8 @@ def _stage_experiment(
         
         experiment_ids = []
         for i, expanded_config in enumerate(expanded_configs):
-            # Generate unique name for each sweep experiment
-            sweep_name = name
-            if sweep_name:
-                sweep_name = f"{name}-sweep-{i+1:03d}"
+            # Generate descriptive name for each sweep experiment
+            sweep_name = _generate_sweep_experiment_name(name, expanded_config)
             
             experiment_id = manager.create_experiment(
                 script_path=script,

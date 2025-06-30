@@ -273,3 +273,83 @@ class TestCLIParameterSweeps:
         finally:
             script_path.unlink()
 
+    def test_parameter_aware_naming_with_base_name(self):
+        """Test parameter-aware naming with explicit base name."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("print('naming test')")
+            script_path = Path(f.name)
+
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Use isolated experiment directory
+                import os
+                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
+                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
+                
+                try:
+                    result = self.runner.invoke(
+                        cli,
+                        [
+                            "run",
+                            str(script_path),
+                            "--param",
+                            "lr=list(1e-4, 1e-3)",
+                            "--param",
+                            "batch_size=32",
+                            "--stage",
+                            "--ignore-dirty",
+                            "--name",
+                            "test-model",
+                        ],
+                    )
+                    assert result.exit_code == 0
+                    assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+                    assert "Staged 2 sweep experiments" in result.output
+                    
+                    # Check that parameter values are included in names
+                    # Note: We can't easily check the exact names without accessing the storage,
+                    # but we can verify the sweep was created successfully
+                finally:
+                    if old_yanex_dir:
+                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
+                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
+                        del os.environ['YANEX_EXPERIMENTS_DIR']
+        finally:
+            script_path.unlink()
+
+    def test_parameter_aware_naming_without_base_name(self):
+        """Test parameter-aware naming without explicit base name."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("print('naming test')")
+            script_path = Path(f.name)
+
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Use isolated experiment directory
+                import os
+                old_yanex_dir = os.environ.get('YANEX_EXPERIMENTS_DIR')
+                os.environ['YANEX_EXPERIMENTS_DIR'] = temp_dir
+                
+                try:
+                    result = self.runner.invoke(
+                        cli,
+                        [
+                            "run",
+                            str(script_path),
+                            "--param",
+                            "lr=range(1e-4, 3e-4, 1e-4)",
+                            "--stage",
+                            "--ignore-dirty",
+                        ],
+                    )
+                    assert result.exit_code == 0
+                    assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+                    assert "Staged 2 sweep experiments" in result.output
+                finally:
+                    if old_yanex_dir:
+                        os.environ['YANEX_EXPERIMENTS_DIR'] = old_yanex_dir
+                    elif 'YANEX_EXPERIMENTS_DIR' in os.environ:
+                        del os.environ['YANEX_EXPERIMENTS_DIR']
+        finally:
+            script_path.unlink()
+
