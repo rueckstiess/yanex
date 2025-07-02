@@ -66,7 +66,7 @@ addopts = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py38"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [
@@ -80,7 +80,6 @@ select = [
 ]
 ignore = [
     "E501",  # line too long, handled by formatter
-    "UP007", # Use `X | Y` for type annotations (requires Python 3.10+)
     "B904",  # Within an `except` clause, raise exceptions with `raise ... from err`
 ]
 
@@ -91,7 +90,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

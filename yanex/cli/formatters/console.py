@@ -3,7 +3,7 @@ Rich console formatting for experiment data.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -52,7 +52,7 @@ class ExperimentTableFormatter:
         """
         self.console = console or Console()
 
-    def format_experiments_table(self, experiments: List[Dict[str, Any]]) -> Table:
+    def format_experiments_table(self, experiments: list[dict[str, Any]]) -> Table:
         """
         Format experiments as a rich table.
 
@@ -87,7 +87,7 @@ class ExperimentTableFormatter:
         return table
 
     def print_experiments_table(
-        self, experiments: List[Dict[str, Any]], title: str = None
+        self, experiments: list[dict[str, Any]], title: str = None
     ) -> None:
         """
         Print experiments table to console.
@@ -109,7 +109,7 @@ class ExperimentTableFormatter:
 
     def print_summary(
         self,
-        experiments: List[Dict[str, Any]],
+        experiments: list[dict[str, Any]],
         total_count: int = None,
         show_help: bool = True,
     ) -> None:
@@ -157,7 +157,7 @@ class ExperimentTableFormatter:
 
         return Text(f"{symbol} {status}", style=color)
 
-    def _format_duration(self, experiment: Dict[str, Any]) -> Text:
+    def _format_duration(self, experiment: dict[str, Any]) -> Text:
         """Format experiment duration."""
         started_at = experiment.get("started_at")
         status = experiment.get("status", "")
@@ -205,7 +205,7 @@ class ExperimentTableFormatter:
         except Exception:
             return Text("unknown", style="dim")
 
-    def _format_tags(self, tags: List[str]) -> Text:
+    def _format_tags(self, tags: list[str]) -> Text:
         """Format tags list."""
         if not tags:
             return Text("-", style="dim")
@@ -248,7 +248,7 @@ class ExperimentTableFormatter:
         return dt.strftime("%Y-%m-%d %H:%M:%S")
 
     def _calculate_duration(
-        self, start_time: str, end_time: Optional[str] = None
+        self, start_time: str, end_time: str | None = None
     ) -> str:
         """Calculate and format duration between two times."""
         if isinstance(start_time, str):

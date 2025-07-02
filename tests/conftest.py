@@ -4,8 +4,8 @@ Pytest configuration and shared fixtures.
 
 import shutil
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 import git
 import pytest

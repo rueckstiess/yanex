@@ -1,7 +1,6 @@
 """Directory management for experiment storage."""
 
 from pathlib import Path
-from typing import List
 
 from ..utils.exceptions import StorageError
 from .storage_interfaces import ExperimentDirectoryManager
@@ -103,7 +102,7 @@ class FileSystemDirectoryManager(ExperimentDirectoryManager):
 
         return False
 
-    def list_experiments(self, include_archived: bool = False) -> List[str]:
+    def list_experiments(self, include_archived: bool = False) -> list[str]:
         """List all experiment IDs.
 
         Args:

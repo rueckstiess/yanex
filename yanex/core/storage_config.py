@@ -1,6 +1,6 @@
 """Configuration storage for experiments."""
 
-from typing import Any, Dict
+from typing import Any
 
 from ..utils.exceptions import StorageError
 from .config import load_yaml_config, save_yaml_config
@@ -18,7 +18,7 @@ class FileSystemConfigurationStorage(ConfigurationStorage):
         """
         self.directory_manager = directory_manager
 
-    def save_config(self, experiment_id: str, config: Dict[str, Any]) -> None:
+    def save_config(self, experiment_id: str, config: dict[str, Any]) -> None:
         """Save experiment configuration.
 
         Args:
@@ -38,7 +38,7 @@ class FileSystemConfigurationStorage(ConfigurationStorage):
 
     def load_config(
         self, experiment_id: str, include_archived: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Load experiment configuration.
 
         Args:

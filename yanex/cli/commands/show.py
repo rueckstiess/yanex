@@ -2,7 +2,7 @@
 Show detailed information about a specific experiment.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import click
 
@@ -21,7 +21,7 @@ from yanex.core.manager import ExperimentManager
 @click.option("--archived", is_flag=True, help="Include archived experiments in search")
 @click.pass_context
 def show_experiment(
-    ctx, experiment_identifier: str, show_metrics: Optional[str], archived: bool
+    ctx, experiment_identifier: str, show_metrics: str | None, archived: bool
 ):
     """
     Show detailed information about an experiment.
@@ -82,7 +82,7 @@ def show_experiment(
 
 def find_experiment(
     filter_obj: ExperimentFilter, identifier: str, include_archived: bool = False
-) -> Optional[Dict[str, Any] | List[Dict[str, Any]]]:
+) -> dict[str, Any] | list[dict[str, Any]] | None:
     """
     Find experiment by ID or name.
 
@@ -128,9 +128,9 @@ def find_experiment(
 
 def display_experiment_details(
     manager: ExperimentManager,
-    experiment: Dict[str, Any],
+    experiment: dict[str, Any],
     formatter: ExperimentTableFormatter,
-    requested_metrics: Optional[List[str]] = None,
+    requested_metrics: list[str] | None = None,
     include_archived: bool = False,
 ):
     """Display comprehensive experiment details."""
@@ -227,7 +227,7 @@ def display_experiment_details(
 
             for key, value in config.items():
                 # Format value for display
-                if isinstance(value, (dict, list)):
+                if isinstance(value, dict | list):
                     value_str = str(value)
                     if len(value_str) > 50:
                         value_str = value_str[:47] + "..."

@@ -5,7 +5,7 @@ Environment capture utilities.
 import platform
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import git
 
@@ -13,7 +13,7 @@ from ..utils.exceptions import GitError
 from .git_utils import get_current_commit_info, get_git_repo, get_repository_info
 
 
-def capture_python_environment() -> Dict[str, Any]:
+def capture_python_environment() -> dict[str, Any]:
     """
     Capture Python environment information.
 
@@ -33,7 +33,7 @@ def capture_python_environment() -> Dict[str, Any]:
     }
 
 
-def capture_system_environment() -> Dict[str, Any]:
+def capture_system_environment() -> dict[str, Any]:
     """
     Capture system environment information.
 
@@ -54,7 +54,7 @@ def capture_system_environment() -> Dict[str, Any]:
     }
 
 
-def capture_git_environment(repo_path: Optional[Path] = None) -> Dict[str, Any]:
+def capture_git_environment(repo_path: Path | None = None) -> dict[str, Any]:
     """
     Capture git environment information.
 
@@ -85,7 +85,7 @@ def capture_git_environment(repo_path: Optional[Path] = None) -> Dict[str, Any]:
         }
 
 
-def capture_dependencies() -> Dict[str, Any]:
+def capture_dependencies() -> dict[str, Any]:
     """
     Capture dependency information.
 
@@ -127,7 +127,7 @@ def capture_dependencies() -> Dict[str, Any]:
     return deps_info
 
 
-def capture_full_environment(repo_path: Optional[Path] = None) -> Dict[str, Any]:
+def capture_full_environment(repo_path: Path | None = None) -> dict[str, Any]:
     """
     Capture complete environment information.
 

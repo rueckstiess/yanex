@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..utils.exceptions import StorageError
 from .storage_interfaces import ExperimentDirectoryManager, ResultsStorage
@@ -19,7 +19,7 @@ class FileSystemResultsStorage(ResultsStorage):
         """
         self.directory_manager = directory_manager
 
-    def save_results(self, experiment_id: str, results: List[Dict[str, Any]]) -> None:
+    def save_results(self, experiment_id: str, results: list[dict[str, Any]]) -> None:
         """Save experiment results.
 
         Args:
@@ -40,7 +40,7 @@ class FileSystemResultsStorage(ResultsStorage):
 
     def load_results(
         self, experiment_id: str, include_archived: bool = False
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Load experiment results.
 
         Args:
@@ -71,8 +71,8 @@ class FileSystemResultsStorage(ResultsStorage):
     def add_result_step(
         self,
         experiment_id: str,
-        result_data: Dict[str, Any],
-        step: Optional[int] = None,
+        result_data: dict[str, Any],
+        step: int | None = None,
     ) -> int:
         """Add a result step to experiment results.
 

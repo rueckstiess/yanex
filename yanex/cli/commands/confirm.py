@@ -2,7 +2,7 @@
 Confirmation utilities for bulk operations on experiments.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import click
 
@@ -11,7 +11,7 @@ from ..formatters.console import ExperimentTableFormatter
 
 
 def confirm_experiment_operation(
-    experiments: List[Dict[str, Any]],
+    experiments: list[dict[str, Any]],
     operation: str,
     force: bool = False,
     operation_verb: str = None,
@@ -63,10 +63,10 @@ def confirm_experiment_operation(
 
 def find_experiments_by_identifiers(
     filter_obj: ExperimentFilter,
-    identifiers: List[str],
+    identifiers: list[str],
     include_archived: bool = False,
     archived_only: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Find experiments by list of identifiers (IDs or names).
 
@@ -161,13 +161,13 @@ def find_experiments_by_filters(
     filter_obj: ExperimentFilter,
     status: str = None,
     name_pattern: str = None,
-    tags: List[str] = None,
+    tags: list[str] = None,
     started_after=None,
     started_before=None,
     ended_after=None,
     ended_before=None,
     include_archived: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Find experiments using filter criteria.
 

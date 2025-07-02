@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Union
+from typing import Any
 
 from ..utils.exceptions import ConfigError
 from .config import LinspaceSweep, ListSweep, LogspaceSweep, RangeSweep, SweepParameter
@@ -46,7 +46,7 @@ class NullParser(ParameterParser):
         """Check if value represents null/none."""
         return value_str.strip().lower() in ("null", "none", "~", "")
 
-    def parse(self, value_str: str) -> Optional[str]:
+    def parse(self, value_str: str) -> str | None:
         """Parse null/none values."""
         stripped = value_str.strip()
         if not stripped:
@@ -132,7 +132,7 @@ class SweepParameterParser(ParameterParser):
 
         raise ConfigError(f"Invalid sweep syntax: {value_str}")
 
-    def _parse_numeric_value(self, value_str: str) -> Union[int, float]:
+    def _parse_numeric_value(self, value_str: str) -> int | float:
         """Parse a string as a numeric value (int or float)."""
         value_str = value_str.strip()
 
@@ -161,7 +161,7 @@ class NumericParser(ParameterParser):
         except ValueError:
             return False
 
-    def parse(self, value_str: str) -> Union[int, float]:
+    def parse(self, value_str: str) -> int | float:
         """Parse numeric values."""
         value_str = value_str.strip()
         try:

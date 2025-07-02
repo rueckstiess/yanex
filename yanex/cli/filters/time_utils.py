@@ -3,7 +3,6 @@ Time parsing utilities for human-readable date specifications.
 """
 
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Optional
 
 import dateparser
 
@@ -15,7 +14,7 @@ from ...utils.datetime_utils import (
 )
 
 
-def parse_time_spec(time_spec: str) -> Optional[datetime]:
+def parse_time_spec(time_spec: str) -> datetime | None:
     """
     Parse human-readable time specification into datetime object.
 
@@ -81,7 +80,7 @@ def parse_time_spec(time_spec: str) -> Optional[datetime]:
 
 
 # Delegate to centralized datetime utilities for consistency
-def format_duration(start_time: datetime, end_time: Optional[datetime] = None) -> str:
+def format_duration(start_time: datetime, end_time: datetime | None = None) -> str:
     """Format duration between two times in human-readable format.
 
     This function delegates to the centralized datetime utilities.

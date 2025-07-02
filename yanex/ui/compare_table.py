@@ -7,7 +7,7 @@ with sorting, navigation, and export functionality.
 
 import csv
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -165,9 +165,9 @@ class ComparisonTableApp(App):
 
     def __init__(
         self,
-        comparison_data: Dict[str, Any],
+        comparison_data: dict[str, Any],
         title: str = "yanex compare",
-        export_path: Optional[str] = None,
+        export_path: str | None = None,
     ):
         """
         Initialize the comparison table app.
@@ -253,7 +253,7 @@ class ComparisonTableApp(App):
             # Restore cursor position
             table.move_cursor(row=new_cursor_row, column=new_cursor_column)
 
-    def _get_column_keys(self) -> List[str]:
+    def _get_column_keys(self) -> list[str]:
         """Get column keys from data."""
         rows = self.comparison_data.get("rows", [])
         if not rows:
@@ -364,7 +364,7 @@ class ComparisonTableApp(App):
         """Export data to CSV."""
         self.push_screen(ExportScreen(self.export_path), self._handle_export)
 
-    def _handle_export(self, export_path: Optional[str]) -> None:
+    def _handle_export(self, export_path: str | None) -> None:
         """Handle export screen result."""
         if export_path:
             try:
@@ -420,7 +420,7 @@ class ComparisonTableApp(App):
         if not rows:
             return
 
-        def sort_key(row_data: Dict[str, Any]) -> Any:
+        def sort_key(row_data: dict[str, Any]) -> Any:
             """Get sort key for a row."""
             value = row_data.get(column_key, "-")
 
@@ -459,9 +459,9 @@ class ComparisonTableApp(App):
 
 
 def run_comparison_table(
-    comparison_data: Dict[str, Any],
+    comparison_data: dict[str, Any],
     title: str = "yanex compare",
-    export_path: Optional[str] = None,
+    export_path: str | None = None,
 ) -> None:
     """
     Run the interactive comparison table.

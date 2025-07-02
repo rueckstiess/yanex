@@ -1,10 +1,9 @@
 """Centralized date/time parsing and formatting utilities for Yanex."""
 
 from datetime import datetime, timezone
-from typing import Optional
 
 
-def parse_iso_timestamp(timestamp: str) -> Optional[datetime]:
+def parse_iso_timestamp(timestamp: str) -> datetime | None:
     """Parse ISO format timestamp with proper timezone handling.
 
     Handles various ISO timestamp formats commonly found in experiment data:
@@ -77,7 +76,7 @@ def ensure_timezone_aware(
     return dt
 
 
-def format_duration(start_time: datetime, end_time: Optional[datetime] = None) -> str:
+def format_duration(start_time: datetime, end_time: datetime | None = None) -> str:
     """Format duration between two times in human-readable format.
 
     Args:
@@ -181,7 +180,7 @@ def format_relative_time(dt: datetime) -> str:
         return dt.strftime("%Y-%m-%d")
 
 
-def calculate_duration_seconds(start_str: str, end_str: str) -> Optional[float]:
+def calculate_duration_seconds(start_str: str, end_str: str) -> float | None:
     """Calculate duration in seconds between two ISO timestamp strings.
 
     Args:

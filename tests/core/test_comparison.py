@@ -116,7 +116,7 @@ class TestExperimentComparisonData:
         """Test automatic column discovery with various experiment types."""
         experiments_data = []
 
-        for config_type, result_type in zip(config_types, result_types):
+        for config_type, result_type in zip(config_types, result_types, strict=False):
             exp_data = {
                 "config": TestDataFactory.create_experiment_config(
                     config_type=config_type

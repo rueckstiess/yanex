@@ -3,7 +3,7 @@ Utility functions for yanex CLI.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import click
 
@@ -11,8 +11,8 @@ from ..core.config import has_sweep_parameters, resolve_config
 
 
 def load_and_merge_config(
-    config_path: Optional[Path], param_overrides: List[str], verbose: bool = False
-) -> Dict[str, Any]:
+    config_path: Path | None, param_overrides: list[str], verbose: bool = False
+) -> dict[str, Any]:
     """
     Load and merge configuration from various sources.
 
@@ -50,10 +50,10 @@ def load_and_merge_config(
 
 def validate_experiment_config(
     script: Path,
-    name: Optional[str],
-    tags: List[str],
-    description: Optional[str],
-    config: Dict[str, Any],
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    config: dict[str, Any],
 ) -> None:
     """
     Validate experiment configuration before execution.
@@ -96,7 +96,7 @@ def validate_experiment_config(
         raise click.ClickException("Description too long (max 1000 characters)")
 
 
-def validate_sweep_requirements(config: Dict[str, Any], stage_flag: bool) -> None:
+def validate_sweep_requirements(config: dict[str, Any], stage_flag: bool) -> None:
     """
     Validate that parameter sweeps are used with --stage flag.
 

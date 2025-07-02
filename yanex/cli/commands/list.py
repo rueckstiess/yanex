@@ -2,7 +2,6 @@
 List command implementation for yanex CLI.
 """
 
-from typing import List, Optional
 
 import click
 
@@ -53,14 +52,14 @@ from ..formatters import ExperimentTableFormatter
 def list_experiments(
     ctx: click.Context,
     show_all: bool,
-    limit: Optional[int],
-    status: Optional[str],
-    name_pattern: Optional[str],
-    tags: List[str],
-    started_after: Optional[str],
-    started_before: Optional[str],
-    ended_after: Optional[str],
-    ended_before: Optional[str],
+    limit: int | None,
+    status: str | None,
+    name_pattern: str | None,
+    tags: list[str],
+    started_after: str | None,
+    started_before: str | None,
+    ended_after: str | None,
+    ended_before: str | None,
     archived: bool,
 ) -> None:
     """
@@ -226,13 +225,13 @@ def list_experiments(
 
 
 def _show_filter_suggestions(
-    status: Optional[str],
-    name_pattern: Optional[str],
-    tags: List[str],
-    started_after: Optional[str],
-    started_before: Optional[str],
-    ended_after: Optional[str],
-    ended_before: Optional[str],
+    status: str | None,
+    name_pattern: str | None,
+    tags: list[str],
+    started_after: str | None,
+    started_before: str | None,
+    ended_after: str | None,
+    ended_before: str | None,
 ) -> None:
     """Show helpful suggestions when no experiments are found."""
 

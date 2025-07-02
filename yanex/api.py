@@ -8,7 +8,7 @@ and thread-local storage for safe concurrent usage.
 import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .core.manager import ExperimentManager
 from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
@@ -17,7 +17,7 @@ from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
 _local = threading.local()
 
 
-def _get_current_experiment_id() -> Optional[str]:
+def _get_current_experiment_id() -> str | None:
     """Get current experiment ID from thread-local storage or environment.
 
     Returns:
@@ -74,7 +74,7 @@ def has_context() -> bool:
     return _get_current_experiment_id() is not None
 
 
-def get_params() -> Dict[str, Any]:
+def get_params() -> dict[str, Any]:
     """Get experiment parameters.
 
     Returns:
@@ -141,7 +141,7 @@ def get_param(key: str, default: Any = None) -> Any:
         return params.get(key, default)
 
 
-def get_status() -> Optional[str]:
+def get_status() -> str | None:
     """Get current experiment status.
 
     Returns:
@@ -155,7 +155,7 @@ def get_status() -> Optional[str]:
     return manager.get_experiment_status(experiment_id)
 
 
-def get_experiment_id() -> Optional[str]:
+def get_experiment_id() -> str | None:
     """Get current experiment ID.
 
     Returns:
@@ -164,7 +164,7 @@ def get_experiment_id() -> Optional[str]:
     return _get_current_experiment_id()
 
 
-def get_metadata() -> Dict[str, Any]:
+def get_metadata() -> dict[str, Any]:
     """Get complete experiment metadata.
 
     Returns:
@@ -178,7 +178,7 @@ def get_metadata() -> Dict[str, Any]:
     return manager.get_experiment_metadata(experiment_id)
 
 
-def log_results(data: Dict[str, Any], step: Optional[int] = None) -> None:
+def log_results(data: dict[str, Any], step: int | None = None) -> None:
     """Log experiment results for current step.
 
     Args:
@@ -444,10 +444,10 @@ class ExperimentContext:
 
 def create_experiment(
     script_path: Path,
-    name: Optional[str] = None,
-    config: Optional[Dict[str, Any]] = None,
-    tags: Optional[List[str]] = None,
-    description: Optional[str] = None,
+    name: str | None = None,
+    config: dict[str, Any] | None = None,
+    tags: list[str] | None = None,
+    description: str | None = None,
     allow_dirty: bool = False,
 ) -> ExperimentContext:
     """Create a new experiment.

@@ -1,7 +1,8 @@
 """Centralized error handling utilities for CLI commands."""
 
 import functools
-from typing import Any, Callable, List, Optional, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import click
 
@@ -45,7 +46,7 @@ class CLIErrorHandler:
 
     @staticmethod
     def validate_targeting_options(
-        experiment_identifiers: List[str],
+        experiment_identifiers: list[str],
         has_filters: bool,
         operation_name: str = "operation",
     ) -> None:
@@ -75,10 +76,10 @@ class CLIErrorHandler:
 
     @staticmethod
     def parse_time_filters(
-        started_after: Optional[str] = None,
-        started_before: Optional[str] = None,
-        ended_after: Optional[str] = None,
-        ended_before: Optional[str] = None,
+        started_after: str | None = None,
+        started_before: str | None = None,
+        ended_after: str | None = None,
+        ended_before: str | None = None,
     ) -> tuple:
         """
         Parse time filter specifications with consistent error handling.
@@ -202,8 +203,8 @@ class BulkOperationReporter:
 
 def validate_experiment_state(
     experiment_id: str,
-    required_status: Optional[str] = None,
-    forbidden_status: Optional[str] = None,
+    required_status: str | None = None,
+    forbidden_status: str | None = None,
     operation_name: str = "operation",
 ) -> None:
     """

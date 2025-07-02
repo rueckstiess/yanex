@@ -9,7 +9,7 @@ import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import Mock
 
 from click.testing import CliRunner
@@ -25,9 +25,9 @@ class TestDataFactory:
     def create_experiment_metadata(
         experiment_id: str,
         status: str = "completed",
-        name: Optional[str] = None,
+        name: str | None = None,
         **overrides: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create standard experiment metadata for testing.
 
@@ -70,7 +70,7 @@ class TestDataFactory:
     @staticmethod
     def create_experiment_config(
         config_type: str = "ml_training", **overrides: Any
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create standard experiment configuration for testing.
 
@@ -109,7 +109,7 @@ class TestDataFactory:
     @staticmethod
     def create_experiment_results(
         result_type: str = "ml_metrics", **overrides: Any
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create standard experiment results for testing.
 
@@ -147,7 +147,7 @@ class TestDataFactory:
         return base_results
 
     @staticmethod
-    def create_result_entry(step: int, **metrics: Any) -> Dict[str, Any]:
+    def create_result_entry(step: int, **metrics: Any) -> dict[str, Any]:
         """
         Create a standardized result entry for testing.
 
@@ -166,7 +166,7 @@ class TestDataFactory:
         return result
 
     @staticmethod
-    def create_comparison_data(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def create_comparison_data(rows: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Create comparison data structure for testing.
 
@@ -200,7 +200,7 @@ class TestAssertions:
     """Custom assertion helpers for domain-specific validation."""
 
     @staticmethod
-    def assert_valid_experiment_metadata(metadata: Dict[str, Any]) -> None:
+    def assert_valid_experiment_metadata(metadata: dict[str, Any]) -> None:
         """
         Assert that experiment metadata has required structure.
 
@@ -230,7 +230,7 @@ class TestAssertions:
         )
 
     @staticmethod
-    def assert_valid_experiment_config(config: Dict[str, Any]) -> None:
+    def assert_valid_experiment_config(config: dict[str, Any]) -> None:
         """
         Assert that experiment configuration is valid.
 
@@ -241,7 +241,7 @@ class TestAssertions:
         assert len(config) > 0, "Config cannot be empty"
 
     @staticmethod
-    def assert_valid_experiment_results(results: Dict[str, Any]) -> None:
+    def assert_valid_experiment_results(results: dict[str, Any]) -> None:
         """
         Assert that experiment results are valid.
 
@@ -305,7 +305,7 @@ class TestAssertions:
 
     @staticmethod
     def assert_metadata_fields(
-        metadata: Dict[str, Any], required_fields: List[str]
+        metadata: dict[str, Any], required_fields: list[str]
     ) -> None:
         """
         Assert that metadata contains all required fields.
@@ -397,7 +397,7 @@ raise ValueError("Test failure")
 
     @staticmethod
     def create_config_file(
-        temp_dir: Path, config_data: Dict[str, Any], filename: str = "config.yaml"
+        temp_dir: Path, config_data: dict[str, Any], filename: str = "config.yaml"
     ) -> Path:
         """
         Create a configuration file with specified data.
@@ -442,7 +442,7 @@ raise ValueError("Test failure")
 
     @staticmethod
     def create_multiple_experiment_directories(
-        storage: ExperimentStorage, experiment_ids: List[str]
+        storage: ExperimentStorage, experiment_ids: list[str]
     ) -> None:
         """
         Create multiple experiment directories with metadata using storage.
@@ -462,9 +462,9 @@ raise ValueError("Test failure")
     @staticmethod
     def create_experiment_files(
         experiment_dir: Path,
-        metadata: Dict[str, Any],
-        config: Optional[Dict[str, Any]] = None,
-        results: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any],
+        config: dict[str, Any] | None = None,
+        results: dict[str, Any] | None = None,
     ) -> None:
         """
         Create complete experiment files in a directory.
@@ -572,7 +572,7 @@ def create_isolated_storage(temp_dir: Path) -> ExperimentStorage:
     return ExperimentStorage(temp_dir)
 
 
-def create_isolated_manager(temp_dir: Optional[Path] = None) -> ExperimentManager:
+def create_isolated_manager(temp_dir: Path | None = None) -> ExperimentManager:
     """
     Create an isolated ExperimentManager instance for testing.
 

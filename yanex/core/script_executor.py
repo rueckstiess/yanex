@@ -6,7 +6,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import click
 
@@ -28,7 +28,7 @@ class ScriptExecutor:
         self,
         experiment_id: str,
         script_path: Path,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         verbose: bool = False,
     ) -> None:
         """Execute a script for an experiment with proper output handling.
@@ -77,8 +77,8 @@ class ScriptExecutor:
             raise click.Abort() from e
 
     def _prepare_environment(
-        self, experiment_id: str, config: Dict[str, Any]
-    ) -> Dict[str, str]:
+        self, experiment_id: str, config: dict[str, Any]
+    ) -> dict[str, str]:
         """Prepare environment variables for script execution.
 
         Args:
@@ -101,8 +101,8 @@ class ScriptExecutor:
         return env
 
     def _execute_with_streaming(
-        self, script_path: Path, env: Dict[str, str]
-    ) -> Tuple[int, str, str]:
+        self, script_path: Path, env: dict[str, str]
+    ) -> tuple[int, str, str]:
         """Execute script with real-time output streaming.
 
         Args:
@@ -112,8 +112,8 @@ class ScriptExecutor:
         Returns:
             Tuple of (return_code, stdout_text, stderr_text).
         """
-        stdout_capture: List[str] = []
-        stderr_capture: List[str] = []
+        stdout_capture: list[str] = []
+        stderr_capture: list[str] = []
 
         process = subprocess.Popen(
             [sys.executable, str(script_path.resolve())],
@@ -125,7 +125,7 @@ class ScriptExecutor:
         )
 
         def stream_output(
-            pipe: Any, capture_list: List[str], output_stream: Any
+            pipe: Any, capture_list: list[str], output_stream: Any
         ) -> None:
             """Stream output line by line while capturing it."""
             for line in iter(pipe.readline, ""):

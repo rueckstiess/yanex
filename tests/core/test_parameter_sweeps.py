@@ -337,5 +337,5 @@ class TestParameterSweepIntegration:
 
         # Expanded configs should have concrete values
         for expanded_config in expanded:
-            assert isinstance(expanded_config["lr"], (int, float))
+            assert isinstance(expanded_config["lr"], int | float)
             assert expanded_config["nested"]["value"] == 42

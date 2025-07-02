@@ -6,7 +6,7 @@ for comparison views, including parameter and metric analysis.
 """
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from ..utils.datetime_utils import calculate_duration_seconds, parse_iso_timestamp
 from ..utils.exceptions import StorageError
@@ -16,7 +16,7 @@ from .manager import ExperimentManager
 class ExperimentComparisonData:
     """Handles data extraction and processing for experiment comparison."""
 
-    def __init__(self, manager: Optional[ExperimentManager] = None):
+    def __init__(self, manager: ExperimentManager | None = None):
         """
         Initialize comparison data processor.
 
@@ -27,8 +27,8 @@ class ExperimentComparisonData:
         self.storage = self.manager.storage
 
     def extract_experiment_data(
-        self, experiment_ids: List[str], include_archived: bool = False
-    ) -> List[Dict[str, Any]]:
+        self, experiment_ids: list[str], include_archived: bool = False
+    ) -> list[dict[str, Any]]:
         """
         Extract complete data for a list of experiments.
 
@@ -58,7 +58,7 @@ class ExperimentComparisonData:
 
     def _extract_single_experiment(
         self, experiment_id: str, include_archived: bool = False
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Extract data from a single experiment.
 
@@ -111,7 +111,7 @@ class ExperimentComparisonData:
 
     def _load_results(
         self, experiment_id: str, include_archived: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Load results from experiment directory.
 
@@ -136,10 +136,10 @@ class ExperimentComparisonData:
 
     def discover_columns(
         self,
-        experiments_data: List[Dict[str, Any]],
-        params: Optional[List[str]] = None,
-        metrics: Optional[List[str]] = None,
-    ) -> Tuple[List[str], List[str]]:
+        experiments_data: list[dict[str, Any]],
+        params: list[str] | None = None,
+        metrics: list[str] | None = None,
+    ) -> tuple[list[str], list[str]]:
         """
         Discover available parameter and metric columns.
 
@@ -182,10 +182,10 @@ class ExperimentComparisonData:
 
     def build_comparison_matrix(
         self,
-        experiments_data: List[Dict[str, Any]],
-        param_columns: List[str],
-        metric_columns: List[str],
-    ) -> List[Dict[str, Any]]:
+        experiments_data: list[dict[str, Any]],
+        param_columns: list[str],
+        metric_columns: list[str],
+    ) -> list[dict[str, Any]]:
         """
         Build comparison data matrix with unified columns.
 
@@ -207,10 +207,10 @@ class ExperimentComparisonData:
 
     def _build_experiment_row(
         self,
-        exp_data: Dict[str, Any],
-        param_columns: List[str],
-        metric_columns: List[str],
-    ) -> Dict[str, Any]:
+        exp_data: dict[str, Any],
+        param_columns: list[str],
+        metric_columns: list[str],
+    ) -> dict[str, Any]:
         """
         Build a single experiment row for the comparison table.
 
@@ -263,7 +263,7 @@ class ExperimentComparisonData:
                     return result_entry[metric_name]
         return None
 
-    def _format_datetime(self, dt_str: Optional[str]) -> str:
+    def _format_datetime(self, dt_str: str | None) -> str:
         """Format datetime string for display."""
         if not dt_str:
             return "-"
@@ -280,7 +280,7 @@ class ExperimentComparisonData:
         return ", ".join(tags)
 
     def _calculate_duration(
-        self, start_str: Optional[str], end_str: Optional[str], metadata: dict = None
+        self, start_str: str | None, end_str: str | None, metadata: dict = None
     ) -> str:
         """Calculate and format duration."""
         # Try to use duration from metadata first
@@ -321,7 +321,7 @@ class ExperimentComparisonData:
         # Handle different types appropriately
         if isinstance(value, bool):
             return str(value).lower()
-        elif isinstance(value, (int, float)):
+        elif isinstance(value, int | float):
             if isinstance(value, float):
                 # Format floats with reasonable precision
                 if abs(value) >= 10000:
@@ -331,7 +331,7 @@ class ExperimentComparisonData:
                 else:
                     return f"{value:.6f}".rstrip("0").rstrip(".")
             return str(value)
-        elif isinstance(value, (list, tuple)):
+        elif isinstance(value, list | tuple):
             # Format lists/tuples as comma-separated strings
             return ", ".join(str(item) for item in value)
         elif isinstance(value, dict):
@@ -342,10 +342,10 @@ class ExperimentComparisonData:
 
     def filter_different_columns(
         self,
-        comparison_rows: List[Dict[str, Any]],
-        param_columns: List[str],
-        metric_columns: List[str],
-    ) -> Tuple[List[str], List[str]]:
+        comparison_rows: list[dict[str, Any]],
+        param_columns: list[str],
+        metric_columns: list[str],
+    ) -> tuple[list[str], list[str]]:
         """
         Filter out columns where all values are identical.
 
@@ -391,10 +391,10 @@ class ExperimentComparisonData:
 
     def infer_column_types(
         self,
-        comparison_rows: List[Dict[str, Any]],
-        param_columns: List[str],
-        metric_columns: List[str],
-    ) -> Dict[str, str]:
+        comparison_rows: list[dict[str, Any]],
+        param_columns: list[str],
+        metric_columns: list[str],
+    ) -> dict[str, str]:
         """
         Infer data types for columns to enable proper sorting.
 
@@ -432,7 +432,7 @@ class ExperimentComparisonData:
         return column_types
 
     def _infer_single_column_type(
-        self, comparison_rows: List[Dict[str, Any]], column_key: str
+        self, comparison_rows: list[dict[str, Any]], column_key: str
     ) -> str:
         """Infer the data type of a single column."""
         # Collect non-missing values
@@ -474,12 +474,12 @@ class ExperimentComparisonData:
 
     def get_comparison_data(
         self,
-        experiment_ids: List[str],
-        params: Optional[List[str]] = None,
-        metrics: Optional[List[str]] = None,
+        experiment_ids: list[str],
+        params: list[str] | None = None,
+        metrics: list[str] | None = None,
         only_different: bool = False,
         include_archived: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get complete comparison data for experiments.
 

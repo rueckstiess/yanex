@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from ..utils.exceptions import StorageError
 from .storage_interfaces import ExperimentDirectoryManager, MetadataStorage
@@ -22,7 +22,7 @@ class FileSystemMetadataStorage(MetadataStorage):
     def save_metadata(
         self,
         experiment_id: str,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         include_archived: bool = False,
     ) -> None:
         """Save experiment metadata.
@@ -52,7 +52,7 @@ class FileSystemMetadataStorage(MetadataStorage):
 
     def load_metadata(
         self, experiment_id: str, include_archived: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Load experiment metadata.
 
         Args:
@@ -82,9 +82,9 @@ class FileSystemMetadataStorage(MetadataStorage):
     def update_experiment_metadata(
         self,
         experiment_id: str,
-        updates: Dict[str, Any],
+        updates: dict[str, Any],
         include_archived: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Update experiment metadata with new values.
 
         Args:

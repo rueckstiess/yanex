@@ -3,7 +3,7 @@ Run command implementation for yanex CLI.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import click
 
@@ -48,12 +48,12 @@ from ...core.script_executor import ScriptExecutor
 @click.pass_context
 def run(
     ctx: click.Context,
-    script: Optional[Path],
-    config: Optional[Path],
-    param: List[str],
-    name: Optional[str],
-    tag: List[str],
-    description: Optional[str],
+    script: Path | None,
+    config: Path | None,
+    param: list[str],
+    name: str | None,
+    tag: list[str],
+    description: str | None,
     dry_run: bool,
     ignore_dirty: bool,
     stage: bool,
@@ -189,10 +189,10 @@ def run(
 
 def _execute_experiment(
     script: Path,
-    name: Optional[str],
-    tags: List[str],
-    description: Optional[str],
-    config: Dict[str, Any],
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    config: dict[str, Any],
     verbose: bool = False,
     ignore_dirty: bool = False,
 ) -> None:
@@ -221,7 +221,7 @@ def _execute_experiment(
 
 
 def _generate_sweep_experiment_name(
-    base_name: Optional[str], config: Dict[str, Any]
+    base_name: str | None, config: dict[str, Any]
 ) -> str:
     """
     Generate a descriptive name for a sweep experiment based on its parameters.
@@ -242,7 +242,7 @@ def _generate_sweep_experiment_name(
     # Extract parameter name-value pairs
     param_parts = []
 
-    def extract_params(d: Dict[str, Any], prefix: str = "") -> None:
+    def extract_params(d: dict[str, Any], prefix: str = "") -> None:
         for key, value in d.items():
             if isinstance(value, dict):
                 # Handle nested parameters
@@ -255,7 +255,7 @@ def _generate_sweep_experiment_name(
                 # Format parameter value
                 if isinstance(value, bool):
                     param_value = str(value).lower()
-                elif isinstance(value, (int, float)):
+                elif isinstance(value, int | float):
                     # Format numbers with reasonable precision
                     if isinstance(value, float):
                         # Remove trailing zeros and unnecessary decimal point
@@ -305,10 +305,10 @@ def _generate_sweep_experiment_name(
 
 def _stage_experiment(
     script: Path,
-    name: Optional[str],
-    tags: List[str],
-    description: Optional[str],
-    config: Dict[str, Any],
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    config: dict[str, Any],
     verbose: bool = False,
     ignore_dirty: bool = False,
 ) -> None:
@@ -424,7 +424,7 @@ def _execute_staged_experiments(verbose: bool = False) -> None:
 def _execute_staged_script(
     experiment_id: str,
     script_path: Path,
-    config: Dict[str, Any],
+    config: dict[str, Any],
     manager: ExperimentManager,
     verbose: bool = False,
 ) -> None:

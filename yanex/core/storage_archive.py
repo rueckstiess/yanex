@@ -2,7 +2,6 @@
 
 import shutil
 from pathlib import Path
-from typing import List, Optional
 
 from ..utils.exceptions import StorageError
 from .storage_interfaces import ArchiveStorage, ExperimentDirectoryManager
@@ -21,7 +20,7 @@ class FileSystemArchiveStorage(ArchiveStorage):
         self.experiments_dir = directory_manager.experiments_dir
 
     def archive_experiment(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> Path:
         """Archive an experiment by moving it to archive directory.
 
@@ -54,7 +53,7 @@ class FileSystemArchiveStorage(ArchiveStorage):
         return archive_path
 
     def unarchive_experiment(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> Path:
         """Unarchive an experiment by moving it back to experiments directory.
 
@@ -103,7 +102,7 @@ class FileSystemArchiveStorage(ArchiveStorage):
             raise StorageError(f"Failed to delete experiment: {e}") from e
 
     def delete_archived_experiment(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> None:
         """Permanently delete an archived experiment directory.
 
@@ -127,8 +126,8 @@ class FileSystemArchiveStorage(ArchiveStorage):
             raise StorageError(f"Failed to delete archived experiment: {e}") from e
 
     def list_archived_experiments(
-        self, archive_dir: Optional[Path] = None
-    ) -> List[str]:
+        self, archive_dir: Path | None = None
+    ) -> list[str]:
         """List all archived experiment IDs.
 
         Args:
@@ -152,7 +151,7 @@ class FileSystemArchiveStorage(ArchiveStorage):
         return sorted(experiment_ids)
 
     def archived_experiment_exists(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> bool:
         """Check if archived experiment exists.
 
@@ -170,7 +169,7 @@ class FileSystemArchiveStorage(ArchiveStorage):
         return archive_path.exists() and archive_path.is_dir()
 
     def get_archived_experiment_directory(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> Path:
         """Get path to archived experiment directory.
 
