@@ -213,8 +213,12 @@ class TestSweepSyntaxParsing:
         """Test invalid sweep syntax raises errors."""
         sweep_parser = SweepParameterParser()
         # Incomplete syntax should match can_parse (based on pattern) but fail during parsing
-        assert sweep_parser.can_parse("range(0.01, 0.1)")  # missing step - matches pattern
-        assert sweep_parser.can_parse("linspace(0.01)")  # missing arguments - matches pattern
+        assert sweep_parser.can_parse(
+            "range(0.01, 0.1)"
+        )  # missing step - matches pattern
+        assert sweep_parser.can_parse(
+            "linspace(0.01)"
+        )  # missing arguments - matches pattern
 
         # Incomplete syntax should raise errors during parsing
         with pytest.raises(ConfigError, match="Invalid sweep syntax"):
@@ -333,5 +337,5 @@ class TestParameterSweepIntegration:
 
         # Expanded configs should have concrete values
         for expanded_config in expanded:
-            assert isinstance(expanded_config["lr"], (int, float))
+            assert isinstance(expanded_config["lr"], int | float)
             assert expanded_config["nested"]["value"] == 42

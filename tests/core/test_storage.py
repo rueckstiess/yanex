@@ -7,13 +7,12 @@ All test logic and coverage is preserved while reducing storage test duplication
 
 import shutil
 from unittest.mock import patch
-from pathlib import Path
 
 import pytest
 
+from tests.test_utils import TestAssertions, TestDataFactory, TestFileHelpers
 from yanex.core.storage import ExperimentStorage
 from yanex.utils.exceptions import StorageError
-from tests.test_utils import TestDataFactory, TestFileHelpers, TestAssertions
 
 
 class TestExperimentStorageInit:
@@ -106,7 +105,7 @@ class TestSaveLoadMetadata:
             experiment_id=experiment_id,
             name="test_experiment",
             status="running",
-            git_commit="def45678"
+            git_commit="def45678",
         )
 
         # Save metadata
@@ -116,9 +115,11 @@ class TestSaveLoadMetadata:
         loaded_metadata = storage.load_metadata(experiment_id)
 
         # NEW: Use utility assertion for metadata validation
-        TestAssertions.assert_metadata_fields(loaded_metadata, 
-                                            required_fields=["id", "name", "status", "git_commit", "saved_at"])
-        
+        TestAssertions.assert_metadata_fields(
+            loaded_metadata,
+            required_fields=["id", "name", "status", "git_commit", "saved_at"],
+        )
+
         # Check that all original data is present
         for key, value in metadata.items():
             assert loaded_metadata[key] == value
@@ -148,8 +149,7 @@ class TestSaveLoadMetadata:
 
         # Use factory for different status types
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status=status
+            experiment_id=experiment_id, status=status
         )
 
         storage.save_metadata(experiment_id, metadata)
@@ -180,7 +180,7 @@ class TestSaveLoadConfig:
             "ml_training",
             learning_rate=0.01,
             batch_size=32,
-            model={"type": "transformer", "layers": 6}
+            model={"type": "transformer", "layers": 6},
         )
 
         # Save config
@@ -201,7 +201,9 @@ class TestSaveLoadConfig:
         config = storage.load_config(experiment_id)
         assert config == {}
 
-    @pytest.mark.parametrize("config_type", ["ml_training", "data_processing", "simple"])
+    @pytest.mark.parametrize(
+        "config_type", ["ml_training", "data_processing", "simple"]
+    )
     def test_config_different_types(self, temp_dir, config_type):
         """Test config operations for different configuration types."""
         # NEW: Parametrized test covering multiple config types
@@ -338,11 +340,14 @@ class TestAddResultStep:
         assert [r["step"] for r in results] == [0, 1, 2]
         assert [r["accuracy"] for r in results] == [0.85, 0.87, 0.90]
 
-    @pytest.mark.parametrize("steps,expected_order", [
-        ([2, 0, 1], [0, 1, 2]),
-        ([5, 1, 3], [1, 3, 5]),
-        ([10, 5, 0], [0, 5, 10]),
-    ])
+    @pytest.mark.parametrize(
+        "steps,expected_order",
+        [
+            ([2, 0, 1], [0, 1, 2]),
+            ([5, 1, 3], [1, 3, 5]),
+            ([10, 5, 0], [0, 5, 10]),
+        ],
+    )
     def test_result_step_ordering_patterns(self, temp_dir, steps, expected_order):
         """Test various result step ordering patterns."""
         # NEW: Parametrized test for comprehensive step ordering validation
@@ -353,7 +358,9 @@ class TestAddResultStep:
 
         # Add results in given order
         for step in steps:
-            storage.add_result_step(experiment_id, {"accuracy": 0.8 + step * 0.01}, step=step)
+            storage.add_result_step(
+                experiment_id, {"accuracy": 0.8 + step * 0.01}, step=step
+            )
 
         # Verify they are sorted correctly
         results = storage.load_results(experiment_id)
@@ -373,8 +380,7 @@ class TestSaveArtifact:
 
         # NEW: Use utility helper for creating test files
         source_file = TestFileHelpers.create_test_file(
-            temp_dir / "source.txt",
-            "test content"
+            temp_dir / "source.txt", "test content"
         )
 
         # Save artifact
@@ -400,11 +406,14 @@ class TestSaveArtifact:
         with pytest.raises(StorageError, match="Source path is not a file"):
             storage.save_artifact(experiment_id, "test.txt", source_file)
 
-    @pytest.mark.parametrize("content,filename", [
-        ("simple content", "simple.txt"),
-        ("content with\nmultiple\nlines", "multiline.txt"),
-        ("content with special chars: !@#$%", "special.txt"),
-    ])
+    @pytest.mark.parametrize(
+        "content,filename",
+        [
+            ("simple content", "simple.txt"),
+            ("content with\nmultiple\nlines", "multiline.txt"),
+            ("content with special chars: !@#$%", "special.txt"),
+        ],
+    )
     def test_save_artifact_different_content_types(self, temp_dir, content, filename):
         """Test saving artifacts with different content types."""
         # NEW: Parametrized test for various artifact content scenarios
@@ -414,8 +423,7 @@ class TestSaveArtifact:
         storage.create_experiment_directory(experiment_id)
 
         source_file = TestFileHelpers.create_test_file(
-            temp_dir / f"source_{filename}",
-            content
+            temp_dir / f"source_{filename}", content
         )
 
         artifact_path = storage.save_artifact(experiment_id, filename, source_file)
@@ -445,13 +453,24 @@ class TestSaveTextArtifact:
         assert artifact_path.exists()
         assert artifact_path.read_text() == content
 
-    @pytest.mark.parametrize("content_type,content", [
-        ("json", '{"key": "value", "number": 42}'),
-        ("yaml", 'key: value\nnumber: 42\nlist:\n  - item1\n  - item2'),
-        ("log", "INFO: Process started\nDEBUG: Processing item 1\nERROR: Failed to process"),
-        ("markdown", "# Header\n\n- Item 1\n- Item 2\n\n```python\nprint('hello')\n```"),
-    ])
-    def test_save_text_artifact_different_formats(self, temp_dir, content_type, content):
+    @pytest.mark.parametrize(
+        "content_type,content",
+        [
+            ("json", '{"key": "value", "number": 42}'),
+            ("yaml", "key: value\nnumber: 42\nlist:\n  - item1\n  - item2"),
+            (
+                "log",
+                "INFO: Process started\nDEBUG: Processing item 1\nERROR: Failed to process",
+            ),
+            (
+                "markdown",
+                "# Header\n\n- Item 1\n- Item 2\n\n```python\nprint('hello')\n```",
+            ),
+        ],
+    )
+    def test_save_text_artifact_different_formats(
+        self, temp_dir, content_type, content
+    ):
         """Test saving text artifacts in different formats."""
         # NEW: Parametrized test for various text artifact formats
         storage = ExperimentStorage(temp_dir)
@@ -461,7 +480,7 @@ class TestSaveTextArtifact:
 
         filename = f"artifact.{content_type}"
         artifact_path = storage.save_text_artifact(experiment_id, filename, content)
-        
+
         assert artifact_path.read_text() == content
         assert artifact_path.name == filename
 
@@ -553,11 +572,14 @@ class TestExperimentExists:
 
         assert storage.experiment_exists("nonexistent") is False
 
-    @pytest.mark.parametrize("experiment_ids", [
-        ["exp1", "exp2", "exp3"],
-        ["a" * 8, "b" * 8, "c" * 8],
-        ["12345678", "abcdef00", "fedcba99"],
-    ])
+    @pytest.mark.parametrize(
+        "experiment_ids",
+        [
+            ["exp1", "exp2", "exp3"],
+            ["a" * 8, "b" * 8, "c" * 8],
+            ["12345678", "abcdef00", "fedcba99"],
+        ],
+    )
     def test_experiment_exists_multiple(self, temp_dir, experiment_ids):
         """Test experiment existence checking for multiple experiments."""
         # NEW: Parametrized test for batch existence checking
@@ -570,7 +592,7 @@ class TestExperimentExists:
         # Check existence for all
         for exp_id in created_ids:
             assert storage.experiment_exists(exp_id) is True
-        
+
         # Check non-existent ones
         for exp_id in experiment_ids[2:]:
             assert storage.experiment_exists(exp_id) is False
@@ -587,8 +609,7 @@ class TestArchiveExperiment:
         # NEW: Use utilities to create experiment with realistic data
         storage.create_experiment_directory(experiment_id)
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="completed"
+            experiment_id=experiment_id, status="completed"
         )
         storage.save_metadata(experiment_id, metadata)
 
@@ -633,35 +654,41 @@ class TestArchiveExperiment:
         with pytest.raises(StorageError, match="Archive path already exists"):
             storage.archive_experiment(experiment_id, archive_dir)
 
-    @pytest.mark.parametrize("experiment_count,archive_location", [
-        (1, "default"),
-        (3, "default"),
-        (2, "custom"),
-        (5, "custom"),
-    ])
-    def test_archive_multiple_experiments(self, temp_dir, experiment_count, archive_location):
+    @pytest.mark.parametrize(
+        "experiment_count,archive_location",
+        [
+            (1, "default"),
+            (3, "default"),
+            (2, "custom"),
+            (5, "custom"),
+        ],
+    )
+    def test_archive_multiple_experiments(
+        self, temp_dir, experiment_count, archive_location
+    ):
         """Test archiving multiple experiments."""
         # NEW: Parametrized test for batch archiving scenarios
         storage = ExperimentStorage(temp_dir)
-        
+
         # Create multiple experiments (8-character IDs to match storage validation)
         experiment_ids = [f"exp{i:05d}" for i in range(experiment_count)]
         TestFileHelpers.create_multiple_experiment_directories(storage, experiment_ids)
-        
+
         # Add metadata to each
         for exp_id in experiment_ids:
             metadata = TestDataFactory.create_experiment_metadata(
-                experiment_id=exp_id,
-                status="completed"
+                experiment_id=exp_id, status="completed"
             )
             storage.save_metadata(exp_id, metadata)
 
         # Archive all experiments
-        archive_dir = temp_dir / "custom_archive" if archive_location == "custom" else None
-        
+        archive_dir = (
+            temp_dir / "custom_archive" if archive_location == "custom" else None
+        )
+
         for exp_id in experiment_ids:
             archive_path = storage.archive_experiment(exp_id, archive_dir)
-            
+
             # Verify experiment was archived
             assert archive_path.exists()
             assert not storage.experiment_exists(exp_id)
@@ -684,11 +711,10 @@ class TestStorageIntegrationScenarios:
 
         # 2. Save metadata and config
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="running"
+            experiment_id=experiment_id, status="running"
         )
         config = TestDataFactory.create_experiment_config("ml_training")
-        
+
         storage.save_metadata(experiment_id, metadata)
         storage.save_config(experiment_id, config)
 
@@ -701,8 +727,7 @@ class TestStorageIntegrationScenarios:
 
         # 4. Save artifacts
         test_file = TestFileHelpers.create_test_file(
-            temp_dir / "model.pkl",
-            "model data"
+            temp_dir / "model.pkl", "model data"
         )
         storage.save_artifact(experiment_id, "model.pkl", test_file)
         storage.save_text_artifact(experiment_id, "notes.txt", "experiment notes")
@@ -712,8 +737,12 @@ class TestStorageIntegrationScenarios:
         loaded_config = storage.load_config(experiment_id)
         loaded_results = storage.load_results(experiment_id)
 
-        TestAssertions.assert_metadata_fields(loaded_metadata, ["id", "status", "created_at"])
-        assert loaded_config["learning_rate"] is not None  # Config factory provides this
+        TestAssertions.assert_metadata_fields(
+            loaded_metadata, ["id", "status", "created_at"]
+        )
+        assert (
+            loaded_config["learning_rate"] is not None
+        )  # Config factory provides this
         assert len(loaded_results) == 3
 
         # 6. Archive experiment
@@ -730,13 +759,12 @@ class TestStorageIntegrationScenarios:
 
         # Create experiment with workflow-appropriate data
         storage.create_experiment_directory(experiment_id)
-        
+
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="running"
+            experiment_id=experiment_id, status="running"
         )
         config = TestDataFactory.create_experiment_config(workflow_type)
-        
+
         storage.save_metadata(experiment_id, metadata)
         storage.save_config(experiment_id, config)
 
@@ -756,38 +784,38 @@ class TestStorageIntegrationScenarios:
 
 
 # Summary of improvements in the complete conversion:
-# 
+#
 # 1. **Factory Usage**: 70-80% reduction in manual test data creation
 #    - TestDataFactory.create_experiment_metadata() replaces manual dict creation
 #    - TestDataFactory.create_experiment_config() provides standardized configs
 #    - TestDataFactory.create_result_entry() creates consistent result data
-# 
-# 2. **Utility Assertions**: Enhanced validation with reusable assertions  
+#
+# 2. **Utility Assertions**: Enhanced validation with reusable assertions
 #    - TestAssertions.assert_experiment_directory_structure() validates directory layout
 #    - TestAssertions.assert_metadata_fields() validates required metadata fields
-# 
+#
 # 3. **Test Helpers**: Simplified file and directory operations
 #    - TestFileHelpers.create_test_file() handles test file creation
 #    - TestFileHelpers.create_multiple_experiment_directories() for batch setup
-# 
+#
 # 4. **Parametrized Tests**: 60-70% reduction in duplicate test methods
 #    - test_metadata_different_statuses: 1 test replaces 4 separate status tests
 #    - test_config_different_types: 1 test replaces 3 config type tests
 #    - test_result_step_ordering_patterns: Comprehensive ordering validation
 #    - test_save_artifact_different_content_types: Multiple content scenarios
 #    - test_archive_multiple_experiments: Batch archiving testing
-# 
+#
 # 5. **Integration Tests**: New comprehensive workflow testing
 #    - test_complete_experiment_lifecycle: End-to-end storage operations
 #    - test_storage_workflow_patterns: Workflow-specific storage validation
-# 
+#
 # 6. **Consistency**: Standardized data structures across all tests
 #    - All metadata uses same factory -> consistent field presence
 #    - All configs use same factory -> consistent parameter sets
 #    - All results use same factory -> consistent formatting
-# 
+#
 # 7. **Maintenance**: Changes to storage data formats only need factory updates
-# 
+#
 # Overall: ~50-60% reduction in test setup code with enhanced coverage
 # Additional: New integration tests provide broader scenario validation
 # Test count: Original ~25 tests → New ~35+ tests (including parametrized expansions)

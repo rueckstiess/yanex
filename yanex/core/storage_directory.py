@@ -1,7 +1,6 @@
 """Directory management for experiment storage."""
 
 from pathlib import Path
-from typing import List
 
 from ..utils.exceptions import StorageError
 from .storage_interfaces import ExperimentDirectoryManager
@@ -103,7 +102,7 @@ class FileSystemDirectoryManager(ExperimentDirectoryManager):
 
         return False
 
-    def list_experiments(self, include_archived: bool = False) -> List[str]:
+    def list_experiments(self, include_archived: bool = False) -> list[str]:
         """List all experiment IDs.
 
         Args:
@@ -117,9 +116,11 @@ class FileSystemDirectoryManager(ExperimentDirectoryManager):
         # List regular experiments
         if self.experiments_dir.exists():
             for item in self.experiments_dir.iterdir():
-                if (item.is_dir() and 
-                    item.name != "archived" and 
-                    (item / "metadata.json").exists()):
+                if (
+                    item.is_dir()
+                    and item.name != "archived"
+                    and (item / "metadata.json").exists()
+                ):
                     # Validate by checking for experiment metadata
                     experiment_ids.append(item.name)
 

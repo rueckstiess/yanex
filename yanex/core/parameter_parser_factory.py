@@ -20,13 +20,13 @@ class ParameterParserFactory:
     def __init__(self):
         """Initialize with all available parsers in priority order."""
         self.parsers: list[ParameterParser] = [
-            NullParser(),          # Handle empty/null first
-            SweepParameterParser(), # Handle sweep syntax before other parsing
-            NumericParser(),       # Parse numbers before booleans (so "1"/"0" are numbers)
-            BooleanParser(),       # Parse boolean values
-            ListParser(),          # Parse list syntax
+            NullParser(),  # Handle empty/null first
+            SweepParameterParser(),  # Handle sweep syntax before other parsing
+            NumericParser(),  # Parse numbers before booleans (so "1"/"0" are numbers)
+            BooleanParser(),  # Parse boolean values
+            ListParser(),  # Parse list syntax
             QuotedStringParser(),  # Parse quoted strings
-            StringParser(),        # Fallback to string (always last)
+            StringParser(),  # Fallback to string (always last)
         ]
 
     def parse_value(self, value_str: str) -> Any:
@@ -63,4 +63,3 @@ class ParameterParserFactory:
 
         # Should never reach here since StringParser accepts everything
         return self.parsers[-1]  # Return StringParser as fallback
-

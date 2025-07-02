@@ -127,6 +127,7 @@ class TestFormatRelativeTime:
         """Test formatting very recent time."""
         # Create a datetime that's just a few seconds ago
         import datetime as dt
+
         recent = datetime.now(timezone.utc) - dt.timedelta(seconds=30)
         result = format_relative_time(recent)
         assert result == "just now"

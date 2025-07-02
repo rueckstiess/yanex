@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import click
 import pytest
-from click.testing import CliRunner
 
+from tests.test_utils import create_cli_runner
 from yanex.cli.error_handling import (
     BulkOperationReporter,
     CLIErrorHandler,
@@ -16,7 +16,6 @@ from yanex.cli.error_handling import (
     validate_experiment_state,
 )
 from yanex.utils.exceptions import ValidationError
-from tests.test_utils import create_cli_runner
 
 
 class TestCLIErrorHandler:
@@ -24,6 +23,7 @@ class TestCLIErrorHandler:
 
     def test_handle_cli_errors_decorator_success(self):
         """Test that decorator allows successful function execution."""
+
         @CLIErrorHandler.handle_cli_errors
         def test_func():
             return "success"
@@ -33,6 +33,7 @@ class TestCLIErrorHandler:
 
     def test_handle_cli_errors_decorator_preserves_click_exception(self):
         """Test that ClickException is preserved by decorator."""
+
         @CLIErrorHandler.handle_cli_errors
         def test_func():
             raise click.ClickException("test error")
@@ -49,8 +50,11 @@ class TestCLIErrorHandler:
             (TypeError, "test type error"),
         ],
     )
-    def test_handle_cli_errors_decorator_converts_exception(self, exception_class, exception_message):
+    def test_handle_cli_errors_decorator_converts_exception(
+        self, exception_class, exception_message
+    ):
         """Test that general exceptions are converted to ClickAbort."""
+
         @CLIErrorHandler.handle_cli_errors
         def test_func():
             raise exception_class(exception_message)
@@ -68,7 +72,9 @@ class TestCLIErrorHandler:
             (["exp1", "exp2"], False, False, None),  # Multiple identifiers only
         ],
     )
-    def test_validate_targeting_options(self, identifiers, has_filters, should_raise, expected_match):
+    def test_validate_targeting_options(
+        self, identifiers, has_filters, should_raise, expected_match
+    ):
         """Test targeting options validation with various combinations."""
         if should_raise:
             with pytest.raises(click.ClickException, match=expected_match):
@@ -77,29 +83,29 @@ class TestCLIErrorHandler:
                 )
         else:
             # Should not raise
-            CLIErrorHandler.validate_targeting_options(
-                identifiers, has_filters, "test"
-            )
+            CLIErrorHandler.validate_targeting_options(identifiers, has_filters, "test")
 
-    @patch('yanex.cli.error_handling.parse_time_spec')
+    @patch("yanex.cli.error_handling.parse_time_spec")
     def test_parse_time_filters_all_none(self, mock_parse):
         """Test parsing with all None values."""
         result = CLIErrorHandler.parse_time_filters()
         assert result == (None, None, None, None)
         mock_parse.assert_not_called()
 
-    @patch('yanex.cli.error_handling.parse_time_spec')
+    @patch("yanex.cli.error_handling.parse_time_spec")
     def test_parse_time_filters_valid_specs(self, mock_parse):
         """Test parsing with valid time specifications."""
         mock_dt = datetime(2023, 1, 1, tzinfo=timezone.utc)
         mock_parse.return_value = mock_dt
 
-        result = CLIErrorHandler.parse_time_filters("2023-01-01", None, "yesterday", None)
+        result = CLIErrorHandler.parse_time_filters(
+            "2023-01-01", None, "yesterday", None
+        )
 
         assert result == (mock_dt, None, mock_dt, None)
         assert mock_parse.call_count == 2
 
-    @patch('yanex.cli.error_handling.parse_time_spec')
+    @patch("yanex.cli.error_handling.parse_time_spec")
     def test_parse_time_filters_invalid_spec(self, mock_parse):
         """Test parsing with invalid time specification."""
         mock_parse.return_value = None
@@ -107,7 +113,7 @@ class TestCLIErrorHandler:
         with pytest.raises(click.ClickException, match="Invalid time specification"):
             CLIErrorHandler.parse_time_filters("invalid", None, None, None)
 
-    @patch('yanex.cli.error_handling.parse_time_spec')
+    @patch("yanex.cli.error_handling.parse_time_spec")
     def test_parse_time_filters_parse_exception(self, mock_parse):
         """Test parsing when parse_time_spec raises exception."""
         mock_parse.side_effect = ValueError("parse error")
@@ -124,8 +130,10 @@ class TestCLIErrorHandler:
             ({"started_before": "last week", "ended_after": "today"}, 2),
         ],
     )
-    @patch('yanex.cli.error_handling.parse_time_spec')
-    def test_parse_time_filters_call_counts(self, mock_parse, time_specs, expected_call_count):
+    @patch("yanex.cli.error_handling.parse_time_spec")
+    def test_parse_time_filters_call_counts(
+        self, mock_parse, time_specs, expected_call_count
+    ):
         """Test that parse_time_spec is called the correct number of times."""
         mock_dt = datetime(2023, 1, 1, tzinfo=timezone.utc)
         mock_parse.return_value = mock_dt
@@ -159,11 +167,18 @@ class TestBulkOperationReporter:
         "operation,exp_id,description,expected_output",
         [
             ("archive", "exp1", "test experiment", "✓ Archived exp1 (test experiment)"),
-            ("delete", "exp123", "ML training run", "✓ Deleted exp123 (ML training run)"),
+            (
+                "delete",
+                "exp123",
+                "ML training run",
+                "✓ Deleted exp123 (ML training run)",
+            ),
             ("update", "short", None, "✓ Updated short"),
         ],
     )
-    def test_report_success(self, capsys, operation, exp_id, description, expected_output):
+    def test_report_success(
+        self, capsys, operation, exp_id, description, expected_output
+    ):
         """Test success reporting with various inputs."""
         reporter = BulkOperationReporter(operation)
         reporter.report_success(exp_id, description)
@@ -185,12 +200,32 @@ class TestBulkOperationReporter:
     @pytest.mark.parametrize(
         "operation,exp_id,error,description,expected_output_part",
         [
-            ("delete", "exp2", ValueError("test error"), "failed experiment", "✗ Failed to delete exp2 (failed experiment): test error"),
-            ("archive", "exp123", RuntimeError("disk full"), None, "✗ Failed to archive exp123: disk full"),
-            ("update", "short", KeyError("missing key"), "data processing", "✗ Failed to update short (data processing): 'missing key'"),
+            (
+                "delete",
+                "exp2",
+                ValueError("test error"),
+                "failed experiment",
+                "✗ Failed to delete exp2 (failed experiment): test error",
+            ),
+            (
+                "archive",
+                "exp123",
+                RuntimeError("disk full"),
+                None,
+                "✗ Failed to archive exp123: disk full",
+            ),
+            (
+                "update",
+                "short",
+                KeyError("missing key"),
+                "data processing",
+                "✗ Failed to update short (data processing): 'missing key'",
+            ),
         ],
     )
-    def test_report_failure(self, capsys, operation, exp_id, error, description, expected_output_part):
+    def test_report_failure(
+        self, capsys, operation, exp_id, error, description, expected_output_part
+    ):
         """Test failure reporting with various inputs."""
         reporter = BulkOperationReporter(operation)
         reporter.report_failure(exp_id, error, description)
@@ -209,7 +244,9 @@ class TestBulkOperationReporter:
             ("delete", 5, "✓ Successfully deleted 5 experiments"),
         ],
     )
-    def test_report_summary_success_only(self, capsys, operation, success_count, expected_message):
+    def test_report_summary_success_only(
+        self, capsys, operation, success_count, expected_message
+    ):
         """Test summary with only successes."""
         reporter = BulkOperationReporter(operation)
         reporter.success_count = success_count
@@ -226,7 +263,9 @@ class TestBulkOperationReporter:
             ("delete", 1, 3),
         ],
     )
-    def test_report_summary_with_failures(self, capsys, operation, success_count, failure_count):
+    def test_report_summary_with_failures(
+        self, capsys, operation, success_count, failure_count
+    ):
         """Test summary with failures."""
         reporter = BulkOperationReporter(operation)
         reporter.success_count = success_count
@@ -272,7 +311,7 @@ class TestBulkOperationReporter:
         [
             (0, 0, 0),  # No operations
             (3, 0, 0),  # Only successes
-            (0, 2, 1),  # Only failures  
+            (0, 2, 1),  # Only failures
             (2, 1, 2),  # Mixed results
             (5, 3, 2),  # Mixed results
         ],
@@ -304,13 +343,39 @@ class TestConfirmDestructiveOperation:
     @pytest.mark.parametrize(
         "operation,count,user_choice,expected_result,expected_prompt",
         [
-            ("archive", 1, True, True, "Are you sure you want to archive 1 experiment?"),
-            ("delete", 3, False, False, "Are you sure you want to delete 3 experiments?"),
-            ("update", 10, True, True, "Are you sure you want to update 10 experiments?"),
+            (
+                "archive",
+                1,
+                True,
+                True,
+                "Are you sure you want to archive 1 experiment?",
+            ),
+            (
+                "delete",
+                3,
+                False,
+                False,
+                "Are you sure you want to delete 3 experiments?",
+            ),
+            (
+                "update",
+                10,
+                True,
+                True,
+                "Are you sure you want to update 10 experiments?",
+            ),
         ],
     )
-    @patch('click.confirm')
-    def test_confirm_operations(self, mock_confirm, operation, count, user_choice, expected_result, expected_prompt):
+    @patch("click.confirm")
+    def test_confirm_operations(
+        self,
+        mock_confirm,
+        operation,
+        count,
+        user_choice,
+        expected_result,
+        expected_prompt,
+    ):
         """Test confirmation for various operations."""
         mock_confirm.return_value = user_choice
         result = confirm_destructive_operation(operation, count, force=False)
@@ -325,7 +390,11 @@ class TestUtilityFunctions:
     @pytest.mark.parametrize(
         "error_message,context,expected_result",
         [
-            ("Invalid input", "Command validation", "Command validation: Invalid input"),
+            (
+                "Invalid input",
+                "Command validation",
+                "Command validation: Invalid input",
+            ),
             ("Missing parameter", "Configuration", "Configuration: Missing parameter"),
             ("Bad format", None, "Bad format"),
             ("", "Context", "Context: "),
@@ -359,7 +428,9 @@ class TestUtilityFunctions:
             ("exp3", "failed", "running", "retry"),
         ],
     )
-    def test_validate_experiment_state_placeholder(self, exp_id, current_state, required_state, operation):
+    def test_validate_experiment_state_placeholder(
+        self, exp_id, current_state, required_state, operation
+    ):
         """Test experiment state validation (placeholder)."""
         # This is a placeholder function for now
         validate_experiment_state(exp_id, current_state, required_state, operation)
@@ -375,6 +446,7 @@ class TestIntegrationWithCLI:
 
     def test_cli_command_with_error_handler(self):
         """Test CLI command with error handler decorator."""
+
         @click.command()
         @CLIErrorHandler.handle_cli_errors
         def test_command():
@@ -395,8 +467,11 @@ class TestIntegrationWithCLI:
             ([], 1, "Must specify either"),  # Invalid: none
         ],
     )
-    def test_targeting_validation_in_command(self, args, expected_exit_code, expected_output):
+    def test_targeting_validation_in_command(
+        self, args, expected_exit_code, expected_output
+    ):
         """Test targeting validation in a mock command."""
+
         @click.command()
         @click.argument("identifiers", nargs=-1)
         @click.option("--status")
@@ -420,8 +495,11 @@ class TestIntegrationWithCLI:
             (["--ended-before", "yesterday"], 0, "Success"),  # Valid time filter
         ],
     )
-    def test_time_filter_parsing_in_command(self, args, expected_exit_code, expected_output):
+    def test_time_filter_parsing_in_command(
+        self, args, expected_exit_code, expected_output
+    ):
         """Test time filter parsing in a mock command."""
+
         @click.command()
         @click.option("--started-after")
         @click.option("--ended-before")
@@ -438,6 +516,7 @@ class TestIntegrationWithCLI:
 
     def test_error_handler_with_click_exception(self):
         """Test that ClickException passes through correctly."""
+
         @click.command()
         @CLIErrorHandler.handle_cli_errors
         def test_command():
@@ -449,6 +528,7 @@ class TestIntegrationWithCLI:
 
     def test_error_handler_preserves_successful_execution(self):
         """Test that successful commands work normally."""
+
         @click.command()
         @CLIErrorHandler.handle_cli_errors
         def test_command():

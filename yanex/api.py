@@ -8,7 +8,7 @@ and thread-local storage for safe concurrent usage.
 import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .core.manager import ExperimentManager
 from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
@@ -17,7 +17,7 @@ from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
 _local = threading.local()
 
 
-def _get_current_experiment_id() -> Optional[str]:
+def _get_current_experiment_id() -> str | None:
     """Get current experiment ID from thread-local storage or environment.
 
     Returns:
@@ -74,7 +74,7 @@ def has_context() -> bool:
     return _get_current_experiment_id() is not None
 
 
-def get_params() -> Dict[str, Any]:
+def get_params() -> dict[str, Any]:
     """Get experiment parameters.
 
     Returns:
@@ -126,18 +126,22 @@ def get_param(key: str, default: Any = None) -> Any:
             if isinstance(current, dict) and k in current:
                 current = current[k]
             else:
-                print(f"Warning: Parameter '{key}' not found in config. Using default value: {default}")
+                print(
+                    f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
+                )
                 return default
 
         return current
     else:
         # Simple key access
         if key not in params:
-            print(f"Warning: Parameter '{key}' not found in config. Using default value: {default}")
+            print(
+                f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
+            )
         return params.get(key, default)
 
 
-def get_status() -> Optional[str]:
+def get_status() -> str | None:
     """Get current experiment status.
 
     Returns:
@@ -151,7 +155,7 @@ def get_status() -> Optional[str]:
     return manager.get_experiment_status(experiment_id)
 
 
-def get_experiment_id() -> Optional[str]:
+def get_experiment_id() -> str | None:
     """Get current experiment ID.
 
     Returns:
@@ -160,7 +164,7 @@ def get_experiment_id() -> Optional[str]:
     return _get_current_experiment_id()
 
 
-def get_metadata() -> Dict[str, Any]:
+def get_metadata() -> dict[str, Any]:
     """Get complete experiment metadata.
 
     Returns:
@@ -174,7 +178,7 @@ def get_metadata() -> Dict[str, Any]:
     return manager.get_experiment_metadata(experiment_id)
 
 
-def log_results(data: Dict[str, Any], step: Optional[int] = None) -> None:
+def log_results(data: dict[str, Any], step: int | None = None) -> None:
     """Log experiment results for current step.
 
     Args:
@@ -394,7 +398,9 @@ class ExperimentContext:
                 if not self._manual_exit:
                     self.manager.complete_experiment(self.experiment_id)
                     # Print completion message like CLI mode
-                    exp_dir = self.manager.storage.get_experiment_directory(self.experiment_id)
+                    exp_dir = self.manager.storage.get_experiment_directory(
+                        self.experiment_id
+                    )
                     print(f"✓ Experiment completed successfully: {self.experiment_id}")
                     print(f"  Directory: {exp_dir}")
             elif exc_type in (
@@ -408,9 +414,13 @@ class ExperimentContext:
                 return True
             elif exc_type is KeyboardInterrupt:
                 # User interruption - mark as cancelled
-                self.manager.cancel_experiment(self.experiment_id, "Interrupted by user (Ctrl+C)")
+                self.manager.cancel_experiment(
+                    self.experiment_id, "Interrupted by user (Ctrl+C)"
+                )
                 # Print cancellation message like CLI mode
-                exp_dir = self.manager.storage.get_experiment_directory(self.experiment_id)
+                exp_dir = self.manager.storage.get_experiment_directory(
+                    self.experiment_id
+                )
                 print(f"✗ Experiment cancelled: {self.experiment_id}")
                 print(f"  Directory: {exp_dir}")
                 # Re-raise KeyboardInterrupt
@@ -420,7 +430,9 @@ class ExperimentContext:
                 error_message = f"{exc_type.__name__}: {exc_val}"
                 self.manager.fail_experiment(self.experiment_id, error_message)
                 # Print failure message like CLI mode
-                exp_dir = self.manager.storage.get_experiment_directory(self.experiment_id)
+                exp_dir = self.manager.storage.get_experiment_directory(
+                    self.experiment_id
+                )
                 print(f"✗ Experiment failed: {self.experiment_id}")
                 print(f"  Directory: {exp_dir}")
                 # Propagate the original exception
@@ -432,10 +444,10 @@ class ExperimentContext:
 
 def create_experiment(
     script_path: Path,
-    name: Optional[str] = None,
-    config: Optional[Dict[str, Any]] = None,
-    tags: Optional[List[str]] = None,
-    description: Optional[str] = None,
+    name: str | None = None,
+    config: dict[str, Any] | None = None,
+    tags: list[str] | None = None,
+    description: str | None = None,
     allow_dirty: bool = False,
 ) -> ExperimentContext:
     """Create a new experiment.

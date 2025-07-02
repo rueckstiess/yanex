@@ -3,7 +3,6 @@ Git integration utilities.
 """
 
 from pathlib import Path
-from typing import Optional
 
 import git
 from git import Repo
@@ -11,7 +10,7 @@ from git import Repo
 from ..utils.exceptions import DirtyWorkingDirectoryError, GitError
 
 
-def get_git_repo(path: Optional[Path] = None) -> Repo:
+def get_git_repo(path: Path | None = None) -> Repo:
     """
     Get git repository instance.
 
@@ -33,7 +32,7 @@ def get_git_repo(path: Optional[Path] = None) -> Repo:
         raise GitError(f"No git repository found at {path}") from e
 
 
-def validate_clean_working_directory(repo: Optional[Repo] = None) -> None:
+def validate_clean_working_directory(repo: Repo | None = None) -> None:
     """
     Validate that git working directory is clean.
 
@@ -70,7 +69,7 @@ def validate_clean_working_directory(repo: Optional[Repo] = None) -> None:
         raise GitError(f"Git operation failed: {e}") from e
 
 
-def get_current_commit_info(repo: Optional[Repo] = None) -> dict[str, str]:
+def get_current_commit_info(repo: Repo | None = None) -> dict[str, str]:
     """
     Get current git commit information.
 
@@ -102,7 +101,7 @@ def get_current_commit_info(repo: Optional[Repo] = None) -> dict[str, str]:
         raise GitError(f"Failed to get commit info: {e}") from e
 
 
-def get_repository_info(repo: Optional[Repo] = None) -> dict[str, str]:
+def get_repository_info(repo: Repo | None = None) -> dict[str, str]:
     """
     Get git repository information.
 

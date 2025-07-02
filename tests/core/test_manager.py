@@ -10,6 +10,10 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.test_utils import (
+    TestAssertions,
+    TestDataFactory,
+)
 from yanex.core.manager import ExperimentManager
 from yanex.utils.exceptions import (
     DirtyWorkingDirectoryError,
@@ -17,7 +21,6 @@ from yanex.utils.exceptions import (
     ExperimentNotFoundError,
     ValidationError,
 )
-from tests.test_utils import TestDataFactory, create_isolated_manager, TestAssertions, MockHelpers
 
 
 class TestExperimentManager:
@@ -60,7 +63,9 @@ class TestExperimentManager:
         assert len(set(ids)) == len(ids)
 
     @patch("yanex.core.manager.secrets.token_hex")
-    def test_generate_experiment_id_collision_detection(self, mock_token_hex, isolated_manager):
+    def test_generate_experiment_id_collision_detection(
+        self, mock_token_hex, isolated_manager
+    ):
         """Test ID generation handles collisions properly."""
         # Create an existing experiment directory
         existing_id = "deadbeef"
@@ -121,8 +126,7 @@ class TestRunningExperimentDetection:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="running"
+            experiment_id=experiment_id, status="running"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -138,8 +142,7 @@ class TestRunningExperimentDetection:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="completed"
+            experiment_id=experiment_id, status="completed"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -168,16 +171,15 @@ class TestRunningExperimentDetection:
         experiment_data = [
             ("exp00000", "completed"),
             ("exp00001", "running"),
-            ("exp00002", "failed")
+            ("exp00002", "failed"),
         ]
-        
+
         for exp_id, status in experiment_data:
             exp_dir = isolated_manager.experiments_dir / exp_id
             exp_dir.mkdir(parents=True)
 
             metadata = TestDataFactory.create_experiment_metadata(
-                experiment_id=exp_id,
-                status=status
+                experiment_id=exp_id, status=status
             )
             isolated_manager.storage.save_metadata(exp_id, metadata)
 
@@ -202,8 +204,7 @@ class TestConcurrencyPrevention:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="running"
+            experiment_id=experiment_id, status="running"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -222,8 +223,7 @@ class TestConcurrencyPrevention:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="running"
+            experiment_id=experiment_id, status="running"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -312,7 +312,9 @@ class TestExperimentCreation:
             isolated_manager.create_experiment(Path(__file__))
 
     @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_create_experiment_concurrent_execution(self, mock_validate_git, isolated_manager):
+    def test_create_experiment_concurrent_execution(
+        self, mock_validate_git, isolated_manager
+    ):
         """Test experiment creation fails when another experiment is running."""
         mock_validate_git.return_value = None
 
@@ -320,10 +322,9 @@ class TestExperimentCreation:
         running_id = "running123"
         exp_dir = isolated_manager.experiments_dir / running_id
         exp_dir.mkdir(parents=True)
-        
+
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=running_id,
-            status="running"
+            experiment_id=running_id, status="running"
         )
         isolated_manager.storage.save_metadata(running_id, metadata)
 
@@ -416,9 +417,7 @@ class TestExperimentFinding:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="completed",
-            name="test-experiment"
+            experiment_id=experiment_id, status="completed", name="test-experiment"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -485,9 +484,7 @@ class TestExperimentLifecycle:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="created",
-            started_at=None
+            experiment_id=experiment_id, status="created", started_at=None
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -498,9 +495,7 @@ class TestExperimentLifecycle:
         updated_metadata = isolated_manager.storage.load_metadata(experiment_id)
         assert updated_metadata["status"] == "running"
         assert updated_metadata["started_at"] is not None
-        assert (
-            "T" in updated_metadata["started_at"]
-        )  # Should be ISO format timestamp
+        assert "T" in updated_metadata["started_at"]  # Should be ISO format timestamp
 
     def test_start_experiment_not_found(self, isolated_manager):
         """Test starting non-existent experiment."""
@@ -515,8 +510,7 @@ class TestExperimentLifecycle:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="completed"
+            experiment_id=experiment_id, status="completed"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -536,7 +530,7 @@ class TestExperimentLifecycle:
             status="running",
             started_at="2023-01-01T12:00:00",
             completed_at=None,
-            duration=None
+            duration=None,
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -557,9 +551,7 @@ class TestExperimentLifecycle:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="running",
-            started_at=None
+            experiment_id=experiment_id, status="running", started_at=None
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -581,7 +573,7 @@ class TestExperimentLifecycle:
         metadata = TestDataFactory.create_experiment_metadata(
             experiment_id=experiment_id,
             status="running",
-            started_at="2023-01-01T12:00:00"
+            started_at="2023-01-01T12:00:00",
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -606,7 +598,7 @@ class TestExperimentLifecycle:
         metadata = TestDataFactory.create_experiment_metadata(
             experiment_id=experiment_id,
             status="running",
-            started_at="2023-01-01T12:00:00"
+            started_at="2023-01-01T12:00:00",
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -633,8 +625,7 @@ class TestExperimentInformation:
         exp_dir.mkdir(parents=True)
 
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="running"
+            experiment_id=experiment_id, status="running"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -655,9 +646,7 @@ class TestExperimentInformation:
         exp_dir.mkdir(parents=True)
 
         original_metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="completed",
-            name="test-experiment"
+            experiment_id=experiment_id, status="completed", name="test-experiment"
         )
         isolated_manager.storage.save_metadata(experiment_id, original_metadata)
 
@@ -683,10 +672,9 @@ class TestExperimentListing:
         for exp_id in experiment_ids:
             exp_dir = isolated_manager.experiments_dir / exp_id
             exp_dir.mkdir(parents=True)
-            
+
             metadata = TestDataFactory.create_experiment_metadata(
-                experiment_id=exp_id,
-                status="completed"
+                experiment_id=exp_id, status="completed"
             )
             isolated_manager.storage.save_metadata(exp_id, metadata)
 
@@ -707,10 +695,9 @@ class TestExperimentListing:
         for exp_id, status in experiments:
             exp_dir = isolated_manager.experiments_dir / exp_id
             exp_dir.mkdir(parents=True)
-            
+
             metadata = TestDataFactory.create_experiment_metadata(
-                experiment_id=exp_id,
-                status=status
+                experiment_id=exp_id, status=status
             )
             isolated_manager.storage.save_metadata(exp_id, metadata)
 
@@ -728,10 +715,9 @@ class TestExperimentListing:
         valid_id = "valid123"
         exp_dir = isolated_manager.experiments_dir / valid_id
         exp_dir.mkdir(parents=True)
-        
+
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=valid_id,
-            status="completed"
+            experiment_id=valid_id, status="completed"
         )
         isolated_manager.storage.save_metadata(valid_id, metadata)
 
@@ -752,10 +738,9 @@ class TestExperimentListing:
         experiment_id = "test1234"
         exp_dir = isolated_manager.experiments_dir / experiment_id
         exp_dir.mkdir(parents=True)
-        
+
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="completed"
+            experiment_id=experiment_id, status="completed"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -778,13 +763,13 @@ class TestExperimentListing:
         experiment_id = "lifecycle1"
         exp_dir = isolated_manager.experiments_dir / experiment_id
         exp_dir.mkdir(parents=True)
-        
+
         metadata = TestDataFactory.create_experiment_metadata(
             experiment_id=experiment_id,
             status="created",
             started_at=None,
             completed_at=None,
-            duration=None
+            duration=None,
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
@@ -824,7 +809,9 @@ class TestStagingFunctionality:
         assert metadata["completed_at"] is None
 
     @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_create_experiment_staged_skips_concurrency_check(self, mock_validate_git, isolated_manager):
+    def test_create_experiment_staged_skips_concurrency_check(
+        self, mock_validate_git, isolated_manager
+    ):
         """Test staged experiments skip concurrency check."""
         script_path = Path(__file__)
 
@@ -843,7 +830,9 @@ class TestStagingFunctionality:
         assert running_id != staged_id
 
     @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_execute_staged_experiment_success(self, mock_validate_git, isolated_manager):
+    def test_execute_staged_experiment_success(
+        self, mock_validate_git, isolated_manager
+    ):
         """Test executing a staged experiment transitions to running state."""
         script_path = Path(__file__)
 
@@ -860,13 +849,17 @@ class TestStagingFunctionality:
         assert metadata["started_at"] is not None
 
     @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_execute_staged_experiment_not_found(self, mock_validate_git, isolated_manager):
+    def test_execute_staged_experiment_not_found(
+        self, mock_validate_git, isolated_manager
+    ):
         """Test executing non-existent staged experiment raises error."""
         with pytest.raises(ExperimentNotFoundError):
             isolated_manager.execute_staged_experiment("nonexistent")
 
     @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_execute_staged_experiment_wrong_status(self, mock_validate_git, isolated_manager):
+    def test_execute_staged_experiment_wrong_status(
+        self, mock_validate_git, isolated_manager
+    ):
         """Test executing non-staged experiment raises error."""
         script_path = Path(__file__)
 
@@ -914,7 +907,9 @@ class TestStagingFunctionality:
         assert regular_id not in staged
 
     @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_get_staged_experiments_ignores_corrupted(self, mock_validate_git, isolated_manager):
+    def test_get_staged_experiments_ignores_corrupted(
+        self, mock_validate_git, isolated_manager
+    ):
         """Test get_staged_experiments ignores experiments with corrupted metadata."""
         script_path = Path(__file__)
 
@@ -975,7 +970,9 @@ class TestStagingFunctionality:
         assert metadata["duration"] is not None
 
     @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_staged_experiment_with_all_options(self, mock_validate_git, isolated_manager):
+    def test_staged_experiment_with_all_options(
+        self, mock_validate_git, isolated_manager
+    ):
         """Test staged experiment creation with all options."""
         script_path = Path(__file__)
 
@@ -1004,26 +1001,27 @@ class TestStagingFunctionality:
 
 class TestParameterizedExperimentScenarios:
     """Additional parametrized tests using utilities for comprehensive coverage."""
-    
-    @pytest.mark.parametrize("status,operation", [
-        ("running", "complete"),
-        ("running", "fail"),
-        ("running", "cancel"),
-    ])
+
+    @pytest.mark.parametrize(
+        "status,operation",
+        [
+            ("running", "complete"),
+            ("running", "fail"),
+            ("running", "cancel"),
+        ],
+    )
     def test_experiment_lifecycle_operations(self, isolated_manager, status, operation):
         """Test different lifecycle operations on running experiments."""
         # NEW: Use factory for experiment creation
         experiment_id = f"{operation[:8].ljust(8, '0')}"
         exp_dir = isolated_manager.experiments_dir / experiment_id
         exp_dir.mkdir(parents=True)
-        
+
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status=status,
-            started_at="2023-01-01T12:00:00"
+            experiment_id=experiment_id, status=status, started_at="2023-01-01T12:00:00"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
-        
+
         # Perform the operation
         if operation == "complete":
             isolated_manager.complete_experiment(experiment_id)
@@ -1034,14 +1032,13 @@ class TestParameterizedExperimentScenarios:
         elif operation == "cancel":
             isolated_manager.cancel_experiment(experiment_id, "Test cancellation")
             expected_status = "cancelled"
-        
+
         # Verify the transition
         assert isolated_manager.get_experiment_status(experiment_id) == expected_status
-        
 
 
 # Summary of improvements in the complete conversion:
-# 
+#
 # 1. **Setup Reduction**: 15-25 lines → 5-8 lines (60-70% reduction in setup code)
 # 2. **Factory Usage**: All metadata creation uses TestDataFactory for consistency
 # 3. **Isolated Environment**: isolated_manager fixture provides clean test environment

@@ -2,8 +2,6 @@
 Update experiment metadata - name, description, status, and tags.
 """
 
-from typing import Optional
-
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES
@@ -87,16 +85,16 @@ from .confirm import (
 def update_experiments(
     ctx,
     experiment_identifiers: tuple,
-    filter_status: Optional[str],
-    filter_name_pattern: Optional[str],
+    filter_status: str | None,
+    filter_name_pattern: str | None,
     filter_tags: tuple,
-    started_after: Optional[str],
-    started_before: Optional[str],
-    ended_after: Optional[str],
-    ended_before: Optional[str],
-    new_name: Optional[str],
-    new_description: Optional[str],
-    new_status: Optional[str],
+    started_after: str | None,
+    started_before: str | None,
+    ended_after: str | None,
+    ended_before: str | None,
+    new_name: str | None,
+    new_description: str | None,
+    new_status: str | None,
     add_tags: tuple,
     remove_tags: tuple,
     archived: bool,
@@ -154,9 +152,7 @@ def update_experiments(
     )
 
     CLIErrorHandler.validate_targeting_options(
-        list(experiment_identifiers),
-        has_filters,
-        "update"
+        list(experiment_identifiers), has_filters, "update"
     )
 
     # Parse time specifications

@@ -2,8 +2,6 @@
 List command implementation for yanex CLI.
 """
 
-from typing import List, Optional
-
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES
@@ -40,18 +38,9 @@ from ..formatters import ExperimentTableFormatter
     "--started-after",
     help="Show experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
 )
-@click.option(
-    "--started-before", 
-    help="Show experiments started before date/time"
-)
-@click.option(
-    "--ended-after", 
-    help="Show experiments ended after date/time"
-)
-@click.option(
-    "--ended-before", 
-    help="Show experiments ended before date/time"
-)
+@click.option("--started-before", help="Show experiments started before date/time")
+@click.option("--ended-after", help="Show experiments ended after date/time")
+@click.option("--ended-before", help="Show experiments ended before date/time")
 @click.option(
     "--archived",
     is_flag=True,
@@ -62,14 +51,14 @@ from ..formatters import ExperimentTableFormatter
 def list_experiments(
     ctx: click.Context,
     show_all: bool,
-    limit: Optional[int],
-    status: Optional[str],
-    name_pattern: Optional[str],
-    tags: List[str],
-    started_after: Optional[str],
-    started_before: Optional[str],
-    ended_after: Optional[str],
-    ended_before: Optional[str],
+    limit: int | None,
+    status: str | None,
+    name_pattern: str | None,
+    tags: list[str],
+    started_after: str | None,
+    started_before: str | None,
+    ended_after: str | None,
+    ended_before: str | None,
     archived: bool,
 ) -> None:
     """
@@ -179,7 +168,13 @@ def list_experiments(
         if not experiments:
             click.echo("No experiments found.")
             _show_filter_suggestions(
-                status, name_pattern, tags, started_after, started_before, ended_after, ended_before
+                status,
+                name_pattern,
+                tags,
+                started_after,
+                started_before,
+                ended_after,
+                ended_before,
             )
             return
 
@@ -188,9 +183,17 @@ def list_experiments(
         formatter.print_experiments_table(experiments, title=table_title)
 
         # Show summary if filtering was applied or not showing all
-        if any([status, name_pattern, tags, started_after, started_before, ended_after, ended_before]) or (
-            not show_all and limit != len(experiments)
-        ):
+        if any(
+            [
+                status,
+                name_pattern,
+                tags,
+                started_after,
+                started_before,
+                ended_after,
+                ended_before,
+            ]
+        ) or (not show_all and limit != len(experiments)):
             # Get total count for summary
             total_experiments = experiment_filter.filter_experiments(
                 include_all=True, include_archived=archived
@@ -221,18 +224,28 @@ def list_experiments(
 
 
 def _show_filter_suggestions(
-    status: Optional[str],
-    name_pattern: Optional[str],
-    tags: List[str],
-    started_after: Optional[str],
-    started_before: Optional[str],
-    ended_after: Optional[str],
-    ended_before: Optional[str],
+    status: str | None,
+    name_pattern: str | None,
+    tags: list[str],
+    started_after: str | None,
+    started_before: str | None,
+    ended_after: str | None,
+    ended_before: str | None,
 ) -> None:
     """Show helpful suggestions when no experiments are found."""
 
     # Check if any filters were applied
-    has_filters = any([status, name_pattern, tags, started_after, started_before, ended_after, ended_before])
+    has_filters = any(
+        [
+            status,
+            name_pattern,
+            tags,
+            started_after,
+            started_before,
+            ended_after,
+            ended_before,
+        ]
+    )
 
     if has_filters:
         click.echo("\nTry adjusting your filters:")

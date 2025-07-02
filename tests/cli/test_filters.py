@@ -7,10 +7,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.test_utils import TestDataFactory, TestFileHelpers
 from yanex.cli.filters import ExperimentFilter, parse_time_spec
 from yanex.core.manager import ExperimentManager
-from yanex.core.storage import ExperimentStorage
-from tests.test_utils import TestDataFactory, MockHelpers, TestFileHelpers
 
 
 class TestExperimentFilter:
@@ -133,7 +132,7 @@ class TestExperimentFilter:
         ):
             # Test empty string pattern
             results = self.filter.filter_experiments(name_pattern="")
-            
+
             # Should only match the unnamed experiment (exp11111)
             assert len(results) == 1
             assert results[0]["id"] == "exp11111"
@@ -145,22 +144,19 @@ class TestExperimentFilter:
         test_experiments = [
             {
                 **TestDataFactory.create_experiment_metadata(
-                    experiment_id="exp_none",
-                    status="completed"
+                    experiment_id="exp_none", status="completed"
                 ),
                 # Explicitly omit name key to simulate None name
             },
             {
                 **TestDataFactory.create_experiment_metadata(
-                    experiment_id="exp_empty",
-                    status="completed"
+                    experiment_id="exp_empty", status="completed"
                 ),
                 "name": "",  # Empty string name
             },
             {
                 **TestDataFactory.create_experiment_metadata(
-                    experiment_id="exp_named",
-                    status="completed"
+                    experiment_id="exp_named", status="completed"
                 ),
                 "name": "actual-name",
             },
@@ -171,7 +167,7 @@ class TestExperimentFilter:
         ):
             # Empty pattern should match both None and empty string names
             results = self.filter.filter_experiments(name_pattern="")
-            
+
             assert len(results) == 2
             result_ids = [exp["id"] for exp in results]
             assert "exp_none" in result_ids
@@ -195,7 +191,9 @@ class TestExperimentFilter:
             assert all(exp["name"].startswith("test-") for exp in named_results)
 
             # Pattern that should match unnamed (alternative method)
-            unnamed_alt_results = self.filter.filter_experiments(name_pattern="*unnamed*")
+            unnamed_alt_results = self.filter.filter_experiments(
+                name_pattern="*unnamed*"
+            )
             assert len(unnamed_alt_results) == 1
             assert unnamed_alt_results[0].get("name") is None
 
@@ -230,9 +228,17 @@ class TestExperimentFilter:
         "time_filter,filter_time,expected_ids",
         [
             # started_after 10:30 should match 11:00 and 12:00
-            ("started_after", datetime(2025, 6, 28, 10, 30, 0, tzinfo=timezone.utc), ["exp67890", "exp11111"]),
+            (
+                "started_after",
+                datetime(2025, 6, 28, 10, 30, 0, tzinfo=timezone.utc),
+                ["exp67890", "exp11111"],
+            ),
             # started_before 10:30 should match 10:00, 15:00 on 27th, and 09:00 on 26th
-            ("started_before", datetime(2025, 6, 28, 10, 30, 0, tzinfo=timezone.utc), ["exp12345", "exp22222", "exp33333"]),
+            (
+                "started_before",
+                datetime(2025, 6, 28, 10, 30, 0, tzinfo=timezone.utc),
+                ["exp12345", "exp22222", "exp33333"],
+            ),
         ],
     )
     def test_filter_by_time(self, time_filter, filter_time, expected_ids):
@@ -279,7 +285,7 @@ class TestExperimentFilter:
                 kwargs["limit"] = limit
             if include_all:
                 kwargs["include_all"] = include_all
-                
+
             results = self.filter.filter_experiments(**kwargs)
             assert len(results) == expected_count
 
@@ -360,7 +366,7 @@ class TestTimeUtils:
     def test_parse_time_spec_validity(self, time_spec, expected_valid):
         """Test parsing various time specifications for validity."""
         result = parse_time_spec(time_spec)
-        
+
         if expected_valid:
             assert result is not None
             assert isinstance(result, datetime)
@@ -381,17 +387,41 @@ class TestTimeUtils:
     @pytest.mark.parametrize(
         "day_term,expected_time",
         [
-            ("today", lambda: datetime.combine(datetime.now().date(), datetime.min.time(), timezone.utc)),
-            ("yesterday", lambda: datetime.combine(datetime.now().date() - timedelta(days=1), datetime.min.time(), timezone.utc)),
-            ("tomorrow", lambda: datetime.combine(datetime.now().date() + timedelta(days=1), datetime.min.time(), timezone.utc)),
-            ("TODAY", lambda: datetime.combine(datetime.now().date(), datetime.min.time(), timezone.utc)),  # Case insensitive
+            (
+                "today",
+                lambda: datetime.combine(
+                    datetime.now().date(), datetime.min.time(), timezone.utc
+                ),
+            ),
+            (
+                "yesterday",
+                lambda: datetime.combine(
+                    datetime.now().date() - timedelta(days=1),
+                    datetime.min.time(),
+                    timezone.utc,
+                ),
+            ),
+            (
+                "tomorrow",
+                lambda: datetime.combine(
+                    datetime.now().date() + timedelta(days=1),
+                    datetime.min.time(),
+                    timezone.utc,
+                ),
+            ),
+            (
+                "TODAY",
+                lambda: datetime.combine(
+                    datetime.now().date(), datetime.min.time(), timezone.utc
+                ),
+            ),  # Case insensitive
         ],
     )
     def test_parse_time_spec_relative_days(self, day_term, expected_time):
         """Test parsing relative day terms returns beginning of day."""
         result = parse_time_spec(day_term)
         expected = expected_time()
-        
+
         assert result is not None
         assert result.date() == expected.date()
         assert result.time() == expected.time()
@@ -404,7 +434,7 @@ class TestTimeUtils:
         assert result is not None
         assert isinstance(result, datetime)
         assert result.tzinfo is not None
-        
+
         # Should be approximately 1 hour ago (within 5 minutes tolerance)
         now = datetime.now(timezone.utc)
         time_diff = abs((now - result).total_seconds() - 3600)  # 1 hour = 3600 seconds

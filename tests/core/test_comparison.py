@@ -4,8 +4,8 @@ Tests for experiment comparison data extraction.
 
 import pytest
 
-from yanex.core.comparison import ExperimentComparisonData
 from tests.test_utils import TestDataFactory, TestFileHelpers, create_isolated_manager
+from yanex.core.comparison import ExperimentComparisonData
 
 
 class TestExperimentComparisonData:
@@ -20,11 +20,13 @@ class TestExperimentComparisonData:
         "exp_id,name,status,config_type,results_type",
         [
             ("test123", "test-experiment", "completed", "ml_training", "ml_metrics"),
-            ("exp456", "minimal-exp", "failed", "simple", "basic_metrics"), 
+            ("exp456", "minimal-exp", "failed", "simple", "basic_metrics"),
             ("complex1", "complex-exp", "running", "data_processing", "custom_metrics"),
         ],
     )
-    def test_extract_single_experiment_complete(self, exp_id, name, status, config_type, results_type):
+    def test_extract_single_experiment_complete(
+        self, exp_id, name, status, config_type, results_type
+    ):
         """Test extracting complete experiment data with various configurations."""
         # Create test experiment using utilities
         metadata = TestDataFactory.create_experiment_metadata(
@@ -37,7 +39,7 @@ class TestExperimentComparisonData:
         )
         config = TestDataFactory.create_experiment_config(config_type=config_type)
         results = TestDataFactory.create_experiment_results(result_type=results_type)
-        
+
         experiment_dir = self.manager.storage.experiments_dir / exp_id
         TestFileHelpers.create_experiment_files(
             experiment_dir, metadata, config, results
@@ -69,12 +71,10 @@ class TestExperimentComparisonData:
             name=name,
             status=status,
         )
-        
+
         # Only create metadata, no config or results
         experiment_dir = self.manager.storage.experiments_dir / exp_id
-        TestFileHelpers.create_experiment_files(
-            experiment_dir, metadata
-        )
+        TestFileHelpers.create_experiment_files(experiment_dir, metadata)
 
         exp_data = self.comparison._extract_single_experiment(exp_id)
 
@@ -96,24 +96,40 @@ class TestExperimentComparisonData:
             ),
             (
                 ["simple", "data_processing"],
-                ["simple", "processing_stats"], 
+                ["simple", "processing_stats"],
                 {"param1", "param2", "param3", "n_docs", "chunk_size"},
-                {"value", "status", "timestamp", "docs_processed", "processing_time", "errors", "success_rate"},
+                {
+                    "value",
+                    "status",
+                    "timestamp",
+                    "docs_processed",
+                    "processing_time",
+                    "errors",
+                    "success_rate",
+                },
             ),
         ],
     )
-    def test_discover_columns_auto_discovery(self, config_types, result_types, expected_params, expected_metrics):
+    def test_discover_columns_auto_discovery(
+        self, config_types, result_types, expected_params, expected_metrics
+    ):
         """Test automatic column discovery with various experiment types."""
         experiments_data = []
-        
-        for config_type, result_type in zip(config_types, result_types):
+
+        for config_type, result_type in zip(config_types, result_types, strict=False):
             exp_data = {
-                "config": TestDataFactory.create_experiment_config(config_type=config_type),
-                "results": TestDataFactory.create_experiment_results(result_type=result_type),
+                "config": TestDataFactory.create_experiment_config(
+                    config_type=config_type
+                ),
+                "results": TestDataFactory.create_experiment_results(
+                    result_type=result_type
+                ),
             }
             experiments_data.append(exp_data)
 
-        param_columns, metric_columns = self.comparison.discover_columns(experiments_data)
+        param_columns, metric_columns = self.comparison.discover_columns(
+            experiments_data
+        )
 
         # Check that discovered columns contain expected parameters
         assert expected_params.issubset(set(param_columns))
@@ -124,7 +140,7 @@ class TestExperimentComparisonData:
         [
             (
                 "ml_training",
-                "ml_metrics", 
+                "ml_metrics",
                 ["learning_rate", "epochs"],
                 ["accuracy"],
             ),
@@ -136,12 +152,18 @@ class TestExperimentComparisonData:
             ),
         ],
     )
-    def test_discover_columns_specified(self, config_type, result_type, specified_params, specified_metrics):
+    def test_discover_columns_specified(
+        self, config_type, result_type, specified_params, specified_metrics
+    ):
         """Test column discovery with specified parameters/metrics."""
         experiments_data = [
             {
-                "config": TestDataFactory.create_experiment_config(config_type=config_type),
-                "results": TestDataFactory.create_experiment_results(result_type=result_type),
+                "config": TestDataFactory.create_experiment_config(
+                    config_type=config_type
+                ),
+                "results": TestDataFactory.create_experiment_results(
+                    result_type=result_type
+                ),
             }
         ]
 
@@ -159,7 +181,9 @@ class TestExperimentComparisonData:
             ("minimal1", "minimal-exp", "failed", "simple", "simple"),
         ],
     )
-    def test_build_comparison_matrix(self, exp_id, name, status, config_type, results_type):
+    def test_build_comparison_matrix(
+        self, exp_id, name, status, config_type, results_type
+    ):
         """Test building comparison matrix with various experiment types."""
         metadata = TestDataFactory.create_experiment_metadata(
             experiment_id=exp_id,
@@ -170,7 +194,7 @@ class TestExperimentComparisonData:
         )
         config = TestDataFactory.create_experiment_config(config_type=config_type)
         results = TestDataFactory.create_experiment_results(result_type=results_type)
-        
+
         exp_data = {
             "id": exp_id,
             "metadata": {
@@ -197,7 +221,7 @@ class TestExperimentComparisonData:
         assert row["id"] == exp_id
         assert row["name"] == metadata["name"]
         assert row["status"] == metadata["status"]
-        
+
         # Check parameter and metric columns are present
         for param in param_columns:
             assert f"param:{param}" in row
@@ -296,12 +320,14 @@ class TestExperimentComparisonData:
             status="completed",
         )
         exp1_config = TestDataFactory.create_experiment_config(config_type=exp1_type)
-        exp1_results = TestDataFactory.create_experiment_results(result_type="ml_metrics")
+        exp1_results = TestDataFactory.create_experiment_results(
+            result_type="ml_metrics"
+        )
 
         exp2_id = "exp002"
         exp2_metadata = TestDataFactory.create_experiment_metadata(
             experiment_id=exp2_id,
-            name="experiment-2", 
+            name="experiment-2",
             status="failed",
         )
         exp2_config = TestDataFactory.create_experiment_config(config_type=exp2_type)
@@ -358,12 +384,12 @@ class TestExperimentComparisonData:
         # Create diverse set of experiments using utilities
         experiments = [
             ("ml001", "ml_training", "ml_metrics"),
-            ("data001", "data_processing", "processing_stats"), 
+            ("data001", "data_processing", "processing_stats"),
             ("simple001", "simple", "simple"),
         ]
-        
+
         experiment_ids = []
-        
+
         for exp_id, config_type, results_type in experiments:
             metadata = TestDataFactory.create_experiment_metadata(
                 experiment_id=exp_id,
@@ -371,8 +397,10 @@ class TestExperimentComparisonData:
                 status="completed",
             )
             config = TestDataFactory.create_experiment_config(config_type=config_type)
-            results = TestDataFactory.create_experiment_results(result_type=results_type)
-            
+            results = TestDataFactory.create_experiment_results(
+                result_type=results_type
+            )
+
             experiment_dir = self.manager.storage.experiments_dir / exp_id
             TestFileHelpers.create_experiment_files(
                 experiment_dir, metadata, config, results
@@ -380,16 +408,22 @@ class TestExperimentComparisonData:
             experiment_ids.append(exp_id)
 
         # Test full comparison workflow
-        comparison_data = self.comparison.get_comparison_data(experiment_ids, only_different=True)
-        
+        comparison_data = self.comparison.get_comparison_data(
+            experiment_ids, only_different=True
+        )
+
         assert comparison_data["total_experiments"] == 3
         assert len(comparison_data["rows"]) == 3
-        
+
         # Should discover columns from diverse experiment types
         # Note: only_different=True may filter out some columns if they have identical values
-        assert len(comparison_data["param_columns"]) >= 0  # May be 0 if all params are identical
-        assert len(comparison_data["metric_columns"]) >= 0  # May be 0 if all metrics are identical
-        
+        assert (
+            len(comparison_data["param_columns"]) >= 0
+        )  # May be 0 if all params are identical
+        assert (
+            len(comparison_data["metric_columns"]) >= 0
+        )  # May be 0 if all metrics are identical
+
         # Each row should have consistent structure
         for row in comparison_data["rows"]:
             assert "id" in row

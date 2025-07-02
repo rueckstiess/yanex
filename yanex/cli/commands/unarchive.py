@@ -2,8 +2,6 @@
 Unarchive experiments - move them back from archived directory.
 """
 
-from typing import Optional
-
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES
@@ -47,13 +45,13 @@ from .confirm import (
 def unarchive_experiments(
     ctx,
     experiment_identifiers: tuple,
-    status: Optional[str],
-    name_pattern: Optional[str],
+    status: str | None,
+    name_pattern: str | None,
     tags: tuple,
-    started_after: Optional[str],
-    started_before: Optional[str],
-    ended_after: Optional[str],
-    ended_before: Optional[str],
+    started_after: str | None,
+    started_before: str | None,
+    ended_after: str | None,
+    ended_before: str | None,
     force: bool,
 ):
     """
@@ -85,9 +83,7 @@ def unarchive_experiments(
     )
 
     CLIErrorHandler.validate_targeting_options(
-        list(experiment_identifiers),
-        has_filters,
-        "unarchive"
+        list(experiment_identifiers), has_filters, "unarchive"
     )
 
     # Parse time specifications

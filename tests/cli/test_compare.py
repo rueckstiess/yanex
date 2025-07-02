@@ -2,21 +2,18 @@
 Tests for yanex CLI compare command functionality.
 """
 
-import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import yaml
 
-from yanex.cli.commands.compare import compare_experiments
-from yanex.core.comparison import ExperimentComparisonData
-from yanex.core.manager import ExperimentManager
 from tests.test_utils import (
     TestDataFactory,
     TestFileHelpers,
     create_cli_runner,
 )
+from yanex.cli.commands.compare import compare_experiments
+from yanex.core.comparison import ExperimentComparisonData
+from yanex.core.manager import ExperimentManager
 
 
 class TestCompareCommand:
@@ -30,7 +27,10 @@ class TestCompareCommand:
         "filter_args,expected_message",
         [
             (["--status", "completed"], "No regular experiments found to compare"),
-            (["--started-after", "2024-01-01"], "No regular experiments found to compare"),
+            (
+                ["--started-after", "2024-01-01"],
+                "No regular experiments found to compare",
+            ),
             (["--max-rows", "10"], "No regular experiments found to compare"),
         ],
     )
@@ -53,38 +53,41 @@ class TestCompareCommand:
             {"id": "exp002", "name": "experiment-2"},
         ]
 
-        mock_comparison_data = TestDataFactory.create_comparison_data([
-            {
-                "id": "exp001",
-                "name": "experiment-1",
-                "started": "2025-01-01 10:00:00",
-                "duration": "01:00:00",
-                "status": "completed",
-                "tags": "-",
-                "param:learning_rate": "0.01",
-                "param:epochs": "10",
-                "metric:accuracy": "0.95",
-                "metric:loss": "0.05",
-            },
-            {
-                "id": "exp002",
-                "name": "experiment-2",
-                "started": "2025-01-01 12:00:00",
-                "duration": "01:00:00",
-                "status": "completed",
-                "tags": "-",
-                "param:learning_rate": "0.02",
-                "param:epochs": "5",
-                "metric:accuracy": "0.87",
-                "metric:loss": "0.13",
-            },
-        ])
+        mock_comparison_data = TestDataFactory.create_comparison_data(
+            [
+                {
+                    "id": "exp001",
+                    "name": "experiment-1",
+                    "started": "2025-01-01 10:00:00",
+                    "duration": "01:00:00",
+                    "status": "completed",
+                    "tags": "-",
+                    "param:learning_rate": "0.01",
+                    "param:epochs": "10",
+                    "metric:accuracy": "0.95",
+                    "metric:loss": "0.05",
+                },
+                {
+                    "id": "exp002",
+                    "name": "experiment-2",
+                    "started": "2025-01-01 12:00:00",
+                    "duration": "01:00:00",
+                    "status": "completed",
+                    "tags": "-",
+                    "param:learning_rate": "0.02",
+                    "param:epochs": "5",
+                    "metric:accuracy": "0.87",
+                    "metric:loss": "0.13",
+                },
+            ]
+        )
 
-        with patch(
-            "yanex.cli.commands.compare.find_experiments_by_identifiers"
-        ) as mock_find, patch.object(
-            ExperimentComparisonData, "get_comparison_data"
-        ) as mock_data:
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_identifiers"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
             mock_find.return_value = mock_experiments
             mock_data.return_value = mock_comparison_data
 
@@ -103,24 +106,27 @@ class TestCompareCommand:
         """Test compare command CSV export functionality."""
         mock_experiments = [{"id": "exp001", "name": "test-exp"}]
 
-        mock_comparison_data = TestDataFactory.create_comparison_data([
-            {
-                "id": "exp001",
-                "name": "test-exp",
-                "started": "2025-01-01 10:00:00",
-                "duration": "01:00:00",
-                "status": "completed",
-                "tags": "-",
-                "param:learning_rate": "0.01",
-                "metric:accuracy": "0.95",
-            }
-        ])
+        mock_comparison_data = TestDataFactory.create_comparison_data(
+            [
+                {
+                    "id": "exp001",
+                    "name": "test-exp",
+                    "started": "2025-01-01 10:00:00",
+                    "duration": "01:00:00",
+                    "status": "completed",
+                    "tags": "-",
+                    "param:learning_rate": "0.01",
+                    "metric:accuracy": "0.95",
+                }
+            ]
+        )
 
-        with patch(
-            "yanex.cli.commands.compare.find_experiments_by_identifiers"
-        ) as mock_find, patch.object(
-            ExperimentComparisonData, "get_comparison_data"
-        ) as mock_data:
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_identifiers"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
             mock_find.return_value = mock_experiments
             mock_data.return_value = mock_comparison_data
 
@@ -164,7 +170,9 @@ class TestCompareCommand:
     def test_compare_filter_by_status(self, filter_options, expected_in_output):
         """Test compare command with various filter options."""
         # Mock experiments matching filters
-        mock_experiments = [{"id": "exp001", "name": "completed-exp", "status": "completed"}]
+        mock_experiments = [
+            {"id": "exp001", "name": "completed-exp", "status": "completed"}
+        ]
         if not expected_in_output:  # For failed status, return empty
             mock_experiments = []
 
@@ -197,38 +205,41 @@ class TestCompareCommand:
             {"id": "exp002", "name": "exp-2"},
         ]
 
-        mock_comparison_data = TestDataFactory.create_comparison_data([
-            {
-                "id": "exp001",
-                "name": "exp-1",
-                "started": "2025-01-01 10:00:00",
-                "duration": "01:00:00",
-                "status": "completed",
-                "tags": "-",
-                "param:learning_rate": "0.01",
-                "param:epochs": "10",
-                "metric:accuracy": "0.95",
-                "metric:loss": "0.05",
-            },
-            {
-                "id": "exp002",
-                "name": "exp-2",
-                "started": "2025-01-01 12:00:00",
-                "duration": "01:00:00",
-                "status": "completed",
-                "tags": "-",
-                "param:learning_rate": "0.02",
-                "param:epochs": "5",
-                "metric:accuracy": "0.87",
-                "metric:loss": "0.13",
-            },
-        ])
+        mock_comparison_data = TestDataFactory.create_comparison_data(
+            [
+                {
+                    "id": "exp001",
+                    "name": "exp-1",
+                    "started": "2025-01-01 10:00:00",
+                    "duration": "01:00:00",
+                    "status": "completed",
+                    "tags": "-",
+                    "param:learning_rate": "0.01",
+                    "param:epochs": "10",
+                    "metric:accuracy": "0.95",
+                    "metric:loss": "0.05",
+                },
+                {
+                    "id": "exp002",
+                    "name": "exp-2",
+                    "started": "2025-01-01 12:00:00",
+                    "duration": "01:00:00",
+                    "status": "completed",
+                    "tags": "-",
+                    "param:learning_rate": "0.02",
+                    "param:epochs": "5",
+                    "metric:accuracy": "0.87",
+                    "metric:loss": "0.13",
+                },
+            ]
+        )
 
-        with patch(
-            "yanex.cli.commands.compare.find_experiments_by_identifiers"
-        ) as mock_find, patch.object(
-            ExperimentComparisonData, "get_comparison_data"
-        ) as mock_data:
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_identifiers"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
             mock_find.return_value = mock_experiments
             mock_data.return_value = mock_comparison_data
 
@@ -264,11 +275,12 @@ class TestCompareCommand:
 
     def test_compare_no_comparison_data(self):
         """Test when no comparison data is available."""
-        with patch(
-            "yanex.cli.commands.compare.find_experiments_by_filters"
-        ) as mock_find, patch.object(
-            ExperimentComparisonData, "get_comparison_data"
-        ) as mock_data:
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_filters"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
             mock_find.return_value = [{"id": "exp001", "name": "test"}]
             mock_data.return_value = {"rows": []}  # No data
 
@@ -332,8 +344,12 @@ class TestCompareCommandIntegration:
         }
 
         # Create experiment directories with all files
-        TestFileHelpers.create_experiment_files(experiments_dir / "exp001", exp1_metadata, exp1_config, exp1_results)
-        TestFileHelpers.create_experiment_files(experiments_dir / "exp002", exp2_metadata, exp2_config, exp2_results)
+        TestFileHelpers.create_experiment_files(
+            experiments_dir / "exp001", exp1_metadata, exp1_config, exp1_results
+        )
+        TestFileHelpers.create_experiment_files(
+            experiments_dir / "exp002", exp2_metadata, exp2_config, exp2_results
+        )
 
         # Test with real ExperimentComparisonData
         comparison = ExperimentComparisonData(ExperimentManager(experiments_dir))
@@ -410,8 +426,12 @@ class TestCompareCommandIntegration:
             "epochs_trained": 10,  # Same
         }
 
-        TestFileHelpers.create_experiment_files(experiments_dir / "exp001", exp1_metadata, exp1_config, exp1_results)
-        TestFileHelpers.create_experiment_files(experiments_dir / "exp002", exp2_metadata, exp2_config, exp2_results)
+        TestFileHelpers.create_experiment_files(
+            experiments_dir / "exp001", exp1_metadata, exp1_config, exp1_results
+        )
+        TestFileHelpers.create_experiment_files(
+            experiments_dir / "exp002", exp2_metadata, exp2_config, exp2_results
+        )
 
         # Test with only_different=True
         comparison = ExperimentComparisonData(ExperimentManager(experiments_dir))
@@ -461,7 +481,12 @@ class TestCompareCommandIntegration:
         ],
     )
     def test_compare_column_type_inference_integration(
-        self, tmp_path, config_data, results_data, expected_param_types, expected_metric_types
+        self,
+        tmp_path,
+        config_data,
+        results_data,
+        expected_param_types,
+        expected_metric_types,
     ):
         """Test column type inference with real data."""
         experiments_dir = tmp_path / "experiments"
@@ -471,7 +496,9 @@ class TestCompareCommandIntegration:
             experiment_id="exp001", name="test-exp", status="completed"
         )
 
-        TestFileHelpers.create_experiment_files(experiments_dir / "exp001", exp_metadata, config_data, results_data)
+        TestFileHelpers.create_experiment_files(
+            experiments_dir / "exp001", exp_metadata, config_data, results_data
+        )
 
         comparison = ExperimentComparisonData(ExperimentManager(experiments_dir))
         comparison_data = comparison.get_comparison_data(["exp001"])

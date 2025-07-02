@@ -8,7 +8,7 @@ between all core components (git, config, storage, environment).
 import secrets
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..utils.exceptions import ExperimentAlreadyRunningError
 from ..utils.validation import validate_experiment_name, validate_tags
@@ -20,7 +20,7 @@ from .storage import ExperimentStorage
 class ExperimentManager:
     """Central manager for experiment lifecycle and orchestration."""
 
-    def __init__(self, experiments_dir: Optional[Path] = None):
+    def __init__(self, experiments_dir: Path | None = None):
         """Initialize experiment manager.
 
         Args:
@@ -61,7 +61,7 @@ class ExperimentManager:
             f"Failed to generate unique experiment ID after {max_attempts} attempts"
         )
 
-    def get_running_experiment(self) -> Optional[str]:
+    def get_running_experiment(self) -> str | None:
         """Check if there's currently a running experiment.
 
         Scans the experiments directory for experiments with status='running'.
@@ -272,7 +272,7 @@ class ExperimentManager:
         metadata = self.storage.load_metadata(experiment_id)
         return metadata.get("status", "unknown")
 
-    def get_experiment_metadata(self, experiment_id: str) -> Dict[str, Any]:
+    def get_experiment_metadata(self, experiment_id: str) -> dict[str, Any]:
         """Get complete metadata for an experiment.
 
         Args:
@@ -293,7 +293,7 @@ class ExperimentManager:
 
         return self.storage.load_metadata(experiment_id)
 
-    def list_experiments(self, status_filter: Optional[str] = None) -> List[str]:
+    def list_experiments(self, status_filter: str | None = None) -> list[str]:
         """List experiment IDs, optionally filtered by status.
 
         Args:
@@ -356,10 +356,10 @@ class ExperimentManager:
     def create_experiment(
         self,
         script_path: Path,
-        name: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None,
-        description: Optional[str] = None,
+        name: str | None = None,
+        config: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
+        description: str | None = None,
         allow_dirty: bool = False,
         stage_only: bool = False,
     ) -> str:
@@ -425,11 +425,11 @@ class ExperimentManager:
         self,
         experiment_id: str,
         script_path: Path,
-        name: Optional[str],
-        tags: List[str],
-        description: Optional[str],
+        name: str | None,
+        tags: list[str],
+        description: str | None,
         stage_only: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build complete experiment metadata.
 
         Args:
@@ -505,7 +505,7 @@ class ExperimentManager:
         metadata["started_at"] = now
         self.storage.save_metadata(experiment_id, metadata)
 
-    def get_staged_experiments(self) -> List[str]:
+    def get_staged_experiments(self) -> list[str]:
         """Get list of staged experiment IDs.
 
         Returns:
@@ -525,7 +525,7 @@ class ExperimentManager:
 
         return staged_experiments
 
-    def find_experiment_by_name(self, name: str) -> Optional[str]:
+    def find_experiment_by_name(self, name: str) -> str | None:
         """Find experiment ID by name.
 
         Args:

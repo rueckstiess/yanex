@@ -5,7 +5,7 @@ Core experiment filtering functionality.
 import fnmatch
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ...core.constants import EXPERIMENT_STATUSES_SET
 from ...core.manager import ExperimentManager
@@ -20,7 +20,7 @@ class ExperimentFilter:
     Can be used by list, delete, archive, and other commands.
     """
 
-    def __init__(self, manager: Optional[ExperimentManager] = None):
+    def __init__(self, manager: ExperimentManager | None = None):
         """
         Initialize experiment filter.
 
@@ -31,17 +31,17 @@ class ExperimentFilter:
 
     def filter_experiments(
         self,
-        status: Optional[str] = None,
-        name_pattern: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        started_after: Optional[datetime] = None,
-        started_before: Optional[datetime] = None,
-        ended_after: Optional[datetime] = None,
-        ended_before: Optional[datetime] = None,
-        limit: Optional[int] = None,
+        status: str | None = None,
+        name_pattern: str | None = None,
+        tags: list[str] | None = None,
+        started_after: datetime | None = None,
+        started_before: datetime | None = None,
+        ended_after: datetime | None = None,
+        ended_before: datetime | None = None,
+        limit: int | None = None,
         include_all: bool = False,
         include_archived: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Filter experiments based on multiple criteria.
 
@@ -119,7 +119,7 @@ class ExperimentFilter:
 
     def _load_all_experiments(
         self, include_archived: bool = False
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Load metadata for all experiments.
 
@@ -180,29 +180,29 @@ class ExperimentFilter:
 
         return experiments
 
-    def _matches_name_pattern(self, experiment: Dict[str, Any], pattern: str) -> bool:
+    def _matches_name_pattern(self, experiment: dict[str, Any], pattern: str) -> bool:
         """Check if experiment name matches glob pattern."""
         name = experiment.get("name", "")
         original_name = name
-        
+
         # Special case: empty pattern should match empty names
         if not pattern:
             return not original_name
-        
+
         if not name:
             # Handle unnamed experiments - convert to searchable form
             name = "[unnamed]"
         return fnmatch.fnmatch(name.lower(), pattern.lower())
 
     def _has_all_tags(
-        self, experiment: Dict[str, Any], required_tags: List[str]
+        self, experiment: dict[str, Any], required_tags: list[str]
     ) -> bool:
         """Check if experiment has all required tags."""
         exp_tags = set(experiment.get("tags", []))
         required_tags_set = set(required_tags)
         return required_tags_set.issubset(exp_tags)
 
-    def _started_after(self, experiment: Dict[str, Any], after_time: datetime) -> bool:
+    def _started_after(self, experiment: dict[str, Any], after_time: datetime) -> bool:
         """Check if experiment started after the specified time."""
         started_at = experiment.get("started_at")
         if not started_at:
@@ -215,7 +215,7 @@ class ExperimentFilter:
         return exp_start >= after_time
 
     def _started_before(
-        self, experiment: Dict[str, Any], before_time: datetime
+        self, experiment: dict[str, Any], before_time: datetime
     ) -> bool:
         """Check if experiment started before the specified time."""
         started_at = experiment.get("started_at")
@@ -228,7 +228,7 @@ class ExperimentFilter:
 
         return exp_start < before_time
 
-    def _ended_after(self, experiment: Dict[str, Any], after_time: datetime) -> bool:
+    def _ended_after(self, experiment: dict[str, Any], after_time: datetime) -> bool:
         """Check if experiment ended after the specified time."""
         ended_at = experiment.get("ended_at")
         if not ended_at:
@@ -240,7 +240,7 @@ class ExperimentFilter:
 
         return exp_end >= after_time
 
-    def _ended_before(self, experiment: Dict[str, Any], before_time: datetime) -> bool:
+    def _ended_before(self, experiment: dict[str, Any], before_time: datetime) -> bool:
         """Check if experiment ended before the specified time."""
         ended_at = experiment.get("ended_at")
         if not ended_at:

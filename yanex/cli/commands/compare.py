@@ -2,8 +2,6 @@
 Compare experiments - interactive table with parameters and metrics.
 """
 
-from typing import Optional
-
 import click
 
 from ...core.comparison import ExperimentComparisonData
@@ -72,20 +70,20 @@ from .confirm import find_experiments_by_filters, find_experiments_by_identifier
 def compare_experiments(
     ctx,
     experiment_identifiers: tuple,
-    status: Optional[str],
-    name_pattern: Optional[str],
+    status: str | None,
+    name_pattern: str | None,
     tags: tuple,
-    started_after: Optional[str],
-    started_before: Optional[str],
-    ended_after: Optional[str],
-    ended_before: Optional[str],
+    started_after: str | None,
+    started_before: str | None,
+    ended_after: str | None,
+    ended_before: str | None,
     archived: bool,
-    params: Optional[str],
-    metrics: Optional[str],
+    params: str | None,
+    metrics: str | None,
     only_different: bool,
-    export_path: Optional[str],
+    export_path: str | None,
     no_interactive: bool,
-    max_rows: Optional[int],
+    max_rows: int | None,
 ):
     """
     Compare experiments in an interactive table showing parameters and metrics.

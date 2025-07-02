@@ -2,7 +2,6 @@
 
 import shutil
 from pathlib import Path
-from typing import Dict
 
 from ..utils.exceptions import StorageError
 from .storage_interfaces import ArtifactStorage, ExperimentDirectoryManager
@@ -77,7 +76,7 @@ class FileSystemArtifactStorage(ArtifactStorage):
 
         return artifact_path
 
-    def get_log_paths(self, experiment_id: str) -> Dict[str, Path]:
+    def get_log_paths(self, experiment_id: str) -> dict[str, Path]:
         """Get paths for log files.
 
         Args:

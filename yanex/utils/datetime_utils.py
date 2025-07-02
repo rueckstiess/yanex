@@ -1,10 +1,9 @@
 """Centralized date/time parsing and formatting utilities for Yanex."""
 
 from datetime import datetime, timezone
-from typing import Optional
 
 
-def parse_iso_timestamp(timestamp: str) -> Optional[datetime]:
+def parse_iso_timestamp(timestamp: str) -> datetime | None:
     """Parse ISO format timestamp with proper timezone handling.
 
     Handles various ISO timestamp formats commonly found in experiment data:
@@ -41,7 +40,9 @@ def parse_iso_timestamp(timestamp: str) -> Optional[datetime]:
             return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
 
         # Handle explicit timezone offset (e.g., +00:00, -05:00)
-        elif "+" in timestamp or timestamp.count("-") > 2:  # Account for date separators
+        elif (
+            "+" in timestamp or timestamp.count("-") > 2
+        ):  # Account for date separators
             return datetime.fromisoformat(timestamp)
 
         # No timezone info - assume UTC for consistency
@@ -53,7 +54,9 @@ def parse_iso_timestamp(timestamp: str) -> Optional[datetime]:
         return None
 
 
-def ensure_timezone_aware(dt: datetime, default_tz: timezone = timezone.utc) -> datetime:
+def ensure_timezone_aware(
+    dt: datetime, default_tz: timezone = timezone.utc
+) -> datetime:
     """Ensure datetime object has timezone information.
 
     Args:
@@ -73,7 +76,7 @@ def ensure_timezone_aware(dt: datetime, default_tz: timezone = timezone.utc) -> 
     return dt
 
 
-def format_duration(start_time: datetime, end_time: Optional[datetime] = None) -> str:
+def format_duration(start_time: datetime, end_time: datetime | None = None) -> str:
     """Format duration between two times in human-readable format.
 
     Args:
@@ -177,7 +180,7 @@ def format_relative_time(dt: datetime) -> str:
         return dt.strftime("%Y-%m-%d")
 
 
-def calculate_duration_seconds(start_str: str, end_str: str) -> Optional[float]:
+def calculate_duration_seconds(start_str: str, end_str: str) -> float | None:
     """Calculate duration in seconds between two ISO timestamp strings.
 
     Args:

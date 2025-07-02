@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.test_utils import TestFileHelpers
 from yanex.core.environment import (
     capture_dependencies,
     capture_full_environment,
@@ -16,7 +17,6 @@ from yanex.core.environment import (
     capture_python_environment,
     capture_system_environment,
 )
-from tests.test_utils import TestFileHelpers
 
 
 class TestCapturePythonEnvironment:
@@ -58,7 +58,7 @@ class TestCapturePythonEnvironment:
         """Test that version info contains expected attributes."""
         result = capture_python_environment()
         version_info = result["python_version_info"]
-        
+
         for attr in version_info_attrs[:3]:  # Always check at least major, minor, micro
             assert attr in version_info
             assert isinstance(version_info[attr], int)
@@ -94,7 +94,7 @@ class TestCaptureSystemEnvironment:
         "platform_field,expected_type",
         [
             ("system", str),
-            ("release", str), 
+            ("release", str),
             ("version", str),
             ("machine", str),
             ("processor", str),
@@ -105,7 +105,7 @@ class TestCaptureSystemEnvironment:
         """Test that platform information has correct types."""
         result = capture_system_environment()
         platform_info = result["platform"]
-        
+
         assert isinstance(platform_info[platform_field], expected_type)
 
 
@@ -148,20 +148,34 @@ class TestCaptureGitEnvironment:
         "mock_repo_info,mock_commit_info,git_version",
         [
             ({"repo_path": "/test"}, {"commit_hash": "abc123"}, "git version 2.34.1"),
-            ({"repo_path": "/project", "branch": "main"}, {"commit_hash": "def456", "branch": "main"}, "git version 2.40.0"),
-            ({"repo_path": "/workspace"}, {"commit_hash": "ghi789"}, "git version 2.30.2"),
+            (
+                {"repo_path": "/project", "branch": "main"},
+                {"commit_hash": "def456", "branch": "main"},
+                "git version 2.40.0",
+            ),
+            (
+                {"repo_path": "/workspace"},
+                {"commit_hash": "ghi789"},
+                "git version 2.30.2",
+            ),
         ],
     )
-    def test_capture_git_environment_default_path(self, mock_repo_info, mock_commit_info, git_version):
+    def test_capture_git_environment_default_path(
+        self, mock_repo_info, mock_commit_info, git_version
+    ):
         """Test capturing git environment with default path and various mock data."""
         with patch("yanex.core.environment.get_git_repo") as mock_get_repo:
             mock_repo = Mock()
             mock_get_repo.return_value = mock_repo
 
-            with patch("yanex.core.environment.get_repository_info") as mock_repo_info_func:
+            with patch(
+                "yanex.core.environment.get_repository_info"
+            ) as mock_repo_info_func:
                 mock_repo_info_func.return_value = mock_repo_info
 
-                with patch("yanex.core.environment.get_current_commit_info") as mock_commit_info_func:
+                with patch(
+                    "yanex.core.environment.get_current_commit_info"
+                ) as mock_commit_info_func:
                     mock_commit_info_func.return_value = mock_commit_info
 
                     with patch("git.Git") as mock_git:
@@ -176,12 +190,12 @@ class TestCaptureGitEnvironment:
     def test_capture_git_environment_error_handling(self):
         """Test git environment capture with various error conditions."""
         from yanex.utils.exceptions import GitError
-        
+
         with patch("yanex.core.environment.get_git_repo") as mock_get_repo:
             mock_get_repo.side_effect = GitError("Git not found")
-            
+
             result = capture_git_environment()
-            
+
             assert result["repository"] is None
             assert result["commit"] is None
             assert result["git_version"] is None
@@ -219,8 +233,14 @@ class TestCaptureDependencies:
             result = capture_dependencies()
 
             assert result["requirements_txt"] == file_contents["requirements.txt"]
-            assert file_contents["environment.yml"].split('\n')[0] in result["environment_yml"]  # Check name line
-            assert file_contents["pyproject.toml"].split('\n')[0] in result["pyproject_toml"]  # Check tool.poetry line
+            assert (
+                file_contents["environment.yml"].split("\n")[0]
+                in result["environment_yml"]
+            )  # Check name line
+            assert (
+                file_contents["pyproject.toml"].split("\n")[0]
+                in result["pyproject_toml"]
+            )  # Check tool.poetry line
 
     def test_capture_dependencies_no_files(self, temp_dir):
         """Test capturing dependencies when no files exist."""
@@ -241,7 +261,9 @@ class TestCaptureDependencies:
             ("pyproject.toml", UnicodeDecodeError, "Encoding error"),
         ],
     )
-    def test_capture_dependencies_read_error(self, temp_dir, failing_file, error_type, error_message):
+    def test_capture_dependencies_read_error(
+        self, temp_dir, failing_file, error_type, error_message
+    ):
         """Test capturing dependencies when file read fails."""
         with patch("yanex.core.environment.Path.cwd") as mock_cwd:
             mock_cwd.return_value = temp_dir
@@ -251,10 +273,10 @@ class TestCaptureDependencies:
 
             # Mock Path.read_text to raise an exception for specific file
             original_read_text = Path.read_text
-            
+
             def mock_read_text(self, *args, **kwargs):
                 if self.name == failing_file:
-                    if error_type == UnicodeDecodeError:
+                    if error_type is UnicodeDecodeError:
                         raise UnicodeDecodeError("utf-8", b"", 0, 1, error_message)
                     else:
                         raise error_type(error_message)
@@ -273,7 +295,9 @@ class TestCaptureDependencies:
             mock_cwd.return_value = temp_dir
 
             # Create only requirements.txt
-            TestFileHelpers.create_test_file(temp_dir / "requirements.txt", "django==3.2.0")
+            TestFileHelpers.create_test_file(
+                temp_dir / "requirements.txt", "django==3.2.0"
+            )
 
             result = capture_dependencies()
 
@@ -317,10 +341,19 @@ class TestCaptureFullEnvironment:
                 "dependencies": {"requirements_txt": None},
             },
             {
-                "python": {"python_version": "3.11.2", "python_executable": "/usr/bin/python"},
+                "python": {
+                    "python_version": "3.11.2",
+                    "python_executable": "/usr/bin/python",
+                },
                 "system": {"platform": "darwin", "hostname": "test-mac"},
-                "git": {"repository": {"repo_path": "/project"}, "commit": {"commit_hash": "abc123"}},
-                "dependencies": {"requirements_txt": "numpy==1.21.0", "environment_yml": "name: test"},
+                "git": {
+                    "repository": {"repo_path": "/project"},
+                    "commit": {"commit_hash": "abc123"},
+                },
+                "dependencies": {
+                    "requirements_txt": "numpy==1.21.0",
+                    "environment_yml": "name: test",
+                },
             },
         ],
     )
@@ -329,13 +362,19 @@ class TestCaptureFullEnvironment:
         with patch("yanex.core.environment.capture_python_environment") as mock_python:
             mock_python.return_value = mock_data["python"]
 
-            with patch("yanex.core.environment.capture_system_environment") as mock_system:
+            with patch(
+                "yanex.core.environment.capture_system_environment"
+            ) as mock_system:
                 mock_system.return_value = mock_data["system"]
 
-                with patch("yanex.core.environment.capture_git_environment") as mock_git:
+                with patch(
+                    "yanex.core.environment.capture_git_environment"
+                ) as mock_git:
                     mock_git.return_value = mock_data["git"]
 
-                    with patch("yanex.core.environment.capture_dependencies") as mock_deps:
+                    with patch(
+                        "yanex.core.environment.capture_dependencies"
+                    ) as mock_deps:
                         mock_deps.return_value = mock_data["dependencies"]
 
                         result = capture_full_environment()
@@ -353,13 +392,19 @@ class TestCaptureFullEnvironment:
         with patch("yanex.core.environment.capture_python_environment") as mock_python:
             mock_python.return_value = {"python_version": "3.10.0"}
 
-            with patch("yanex.core.environment.capture_system_environment") as mock_system:
+            with patch(
+                "yanex.core.environment.capture_system_environment"
+            ) as mock_system:
                 mock_system.return_value = {"platform": "windows"}
 
-                with patch("yanex.core.environment.capture_git_environment") as mock_git:
+                with patch(
+                    "yanex.core.environment.capture_git_environment"
+                ) as mock_git:
                     mock_git.return_value = {"repository": {"repo_path": str(temp_dir)}}
 
-                    with patch("yanex.core.environment.capture_dependencies") as mock_deps:
+                    with patch(
+                        "yanex.core.environment.capture_dependencies"
+                    ) as mock_deps:
                         mock_deps.return_value = {"requirements_txt": "test==1.0.0"}
 
                         result = capture_full_environment(temp_dir)
@@ -370,20 +415,28 @@ class TestCaptureFullEnvironment:
                         assert result["python"]["python_version"] == "3.10.0"
                         assert result["system"]["platform"] == "windows"
                         assert result["git"]["repository"]["repo_path"] == str(temp_dir)
-                        assert result["dependencies"]["requirements_txt"] == "test==1.0.0"
+                        assert (
+                            result["dependencies"]["requirements_txt"] == "test==1.0.0"
+                        )
 
     def test_capture_full_environment_error_handling(self):
         """Test full environment capture with error conditions in sub-functions."""
         with patch("yanex.core.environment.capture_python_environment") as mock_python:
             mock_python.side_effect = Exception("Python capture failed")
 
-            with patch("yanex.core.environment.capture_system_environment") as mock_system:
+            with patch(
+                "yanex.core.environment.capture_system_environment"
+            ) as mock_system:
                 mock_system.return_value = {"platform": "test"}
 
-                with patch("yanex.core.environment.capture_git_environment") as mock_git:
+                with patch(
+                    "yanex.core.environment.capture_git_environment"
+                ) as mock_git:
                     mock_git.return_value = {"repository": None}
 
-                    with patch("yanex.core.environment.capture_dependencies") as mock_deps:
+                    with patch(
+                        "yanex.core.environment.capture_dependencies"
+                    ) as mock_deps:
                         mock_deps.return_value = {"requirements_txt": None}
 
                         # The function should propagate exceptions from sub-functions
@@ -399,11 +452,13 @@ class TestCaptureFullEnvironment:
             ("dependencies", ["requirements_txt", "environment_yml", "pyproject_toml"]),
         ],
     )
-    def test_full_environment_section_structure(self, git_repo, section_name, expected_keys):
+    def test_full_environment_section_structure(
+        self, git_repo, section_name, expected_keys
+    ):
         """Test that each section of full environment has expected structure."""
         repo_path = Path(git_repo.working_dir)
         result = capture_full_environment(repo_path)
-        
+
         section = result[section_name]
         for key in expected_keys:
             assert key in section, f"Missing key '{key}' in section '{section_name}'"

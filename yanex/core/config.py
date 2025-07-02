@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import yaml
 
@@ -184,8 +184,8 @@ def merge_configs(
 
 
 def resolve_config(
-    config_path: Optional[Path] = None,
-    param_overrides: Optional[list[str]] = None,
+    config_path: Path | None = None,
+    param_overrides: list[str] | None = None,
     default_config_name: str = "config.yaml",
 ) -> dict[str, Any]:
     """
@@ -236,9 +236,7 @@ class SweepParameter:
 class RangeSweep(SweepParameter):
     """Range-based parameter sweep: range(start, stop, step)"""
 
-    def __init__(
-        self, start: Union[int, float], stop: Union[int, float], step: Union[int, float]
-    ):
+    def __init__(self, start: int | float, stop: int | float, step: int | float):
         self.start = start
         self.stop = stop
         self.step = step
@@ -248,7 +246,7 @@ class RangeSweep(SweepParameter):
         if (stop - start) * step < 0:
             raise ConfigError("Range step direction doesn't match start/stop values")
 
-    def generate_values(self) -> list[Union[int, float]]:
+    def generate_values(self) -> list[int | float]:
         """Generate range values."""
         values = []
         current = self.start
@@ -271,7 +269,7 @@ class RangeSweep(SweepParameter):
 class LinspaceSweep(SweepParameter):
     """Linear space parameter sweep: linspace(start, stop, count)"""
 
-    def __init__(self, start: Union[int, float], stop: Union[int, float], count: int):
+    def __init__(self, start: int | float, stop: int | float, count: int):
         self.start = start
         self.stop = stop
         self.count = count
@@ -294,7 +292,7 @@ class LinspaceSweep(SweepParameter):
 class LogspaceSweep(SweepParameter):
     """Logarithmic space parameter sweep: logspace(start, stop, count)"""
 
-    def __init__(self, start: Union[int, float], stop: Union[int, float], count: int):
+    def __init__(self, start: int | float, stop: int | float, count: int):
         self.start = start
         self.stop = stop
         self.count = count
@@ -395,7 +393,7 @@ def expand_parameter_sweeps(config: dict[str, Any]) -> list[dict[str, Any]]:
     # Generate all combinations using itertools.product
     import itertools
 
-    sweep_paths, sweep_objects = zip(*sweep_params)
+    sweep_paths, sweep_objects = zip(*sweep_params, strict=False)
     sweep_value_lists = [sweep_obj.generate_values() for sweep_obj in sweep_objects]
 
     # Generate cross-product of all sweep parameter values
@@ -405,7 +403,7 @@ def expand_parameter_sweeps(config: dict[str, Any]) -> list[dict[str, Any]]:
         expanded_config = copy.deepcopy(config)
 
         # Replace sweep parameters with concrete values
-        for path, value in zip(sweep_paths, value_combination):
+        for path, value in zip(sweep_paths, value_combination, strict=False):
             _set_nested_key(expanded_config, path, value)
 
         expanded_configs.append(expanded_config)

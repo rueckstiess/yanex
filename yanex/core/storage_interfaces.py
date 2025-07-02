@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 class ExperimentDirectoryManager(ABC):
@@ -91,7 +91,7 @@ class ResultsStorage(ABC):
         self,
         experiment_id: str,
         result_data: dict[str, Any],
-        step: Optional[int] = None,
+        step: int | None = None,
     ) -> int:
         """Add a result step to experiment results."""
 
@@ -121,13 +121,13 @@ class ArchiveStorage(ABC):
 
     @abstractmethod
     def archive_experiment(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> Path:
         """Archive an experiment by moving it to archive directory."""
 
     @abstractmethod
     def unarchive_experiment(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> Path:
         """Unarchive an experiment by moving it back to experiments directory."""
 
@@ -137,25 +137,23 @@ class ArchiveStorage(ABC):
 
     @abstractmethod
     def delete_archived_experiment(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> None:
         """Permanently delete an archived experiment directory."""
 
     @abstractmethod
-    def list_archived_experiments(
-        self, archive_dir: Optional[Path] = None
-    ) -> list[str]:
+    def list_archived_experiments(self, archive_dir: Path | None = None) -> list[str]:
         """List all archived experiment IDs."""
 
     @abstractmethod
     def archived_experiment_exists(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> bool:
         """Check if archived experiment exists."""
 
     @abstractmethod
     def get_archived_experiment_directory(
-        self, experiment_id: str, archive_dir: Optional[Path] = None
+        self, experiment_id: str, archive_dir: Path | None = None
     ) -> Path:
         """Get path to archived experiment directory."""
 

@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 import git
 import pytest
 
+from tests.test_utils import TestFileHelpers
 from yanex.core.git_utils import (
     ensure_git_available,
     get_current_commit_info,
@@ -16,7 +17,6 @@ from yanex.core.git_utils import (
     validate_clean_working_directory,
 )
 from yanex.utils.exceptions import DirtyWorkingDirectoryError, GitError
-from tests.test_utils import MockHelpers, TestFileHelpers
 
 
 class TestGetGitRepo:
@@ -43,7 +43,6 @@ class TestGetGitRepo:
         with pytest.raises(GitError, match="No git repository found"):
             get_git_repo(temp_dir)
 
-
     def test_get_repo_search_parent_directories(self, git_repo):
         """Test that repo search works in subdirectories."""
         repo_path = Path(git_repo.working_dir)
@@ -61,7 +60,7 @@ class TestGetGitRepo:
     def test_get_repo_nested_subdirectories(self, git_repo, subdir_depth):
         """Test repo search works at various nesting levels."""
         repo_path = Path(git_repo.working_dir)
-        
+
         # Create nested subdirectory structure
         current_path = repo_path
         for i in range(subdir_depth):
@@ -76,7 +75,7 @@ class TestGetGitRepo:
         """Test error handling in get_git_repo."""
         with patch("git.Repo") as mock_repo:
             mock_repo.side_effect = git.InvalidGitRepositoryError("Not a git repo")
-            
+
             with pytest.raises(GitError, match="No git repository found"):
                 get_git_repo(temp_dir)
 
@@ -97,7 +96,9 @@ class TestValidateCleanWorkingDirectory:
             ("", "Modified"),
         ],
     )
-    def test_dirty_working_directory_modified_files(self, git_repo, file_content, expected_status):
+    def test_dirty_working_directory_modified_files(
+        self, git_repo, file_content, expected_status
+    ):
         """Test validation fails for modified files with various content changes."""
         # Modify a file
         test_file = Path(git_repo.working_dir) / "test.txt"
@@ -133,7 +134,7 @@ class TestValidateCleanWorkingDirectory:
         with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
             mock_repo = Mock()
             mock_repo.is_dirty.return_value = mock_repo_state["is_dirty"]
-            
+
             if mock_repo_state["is_dirty"]:
                 # Mock git status parsing for changes
                 mock_diff = Mock()
@@ -142,7 +143,7 @@ class TestValidateCleanWorkingDirectory:
                 mock_repo.index.diff.return_value = [mock_diff]
                 mock_repo.head.commit.diff.return_value = [mock_diff]
                 mock_repo.untracked_files = []
-            
+
             mock_get_repo.return_value = mock_repo
 
             if expected_exception:
@@ -150,7 +151,7 @@ class TestValidateCleanWorkingDirectory:
                     validate_clean_working_directory(None)
             else:
                 validate_clean_working_directory(None)
-                
+
             mock_get_repo.assert_called_once()
 
     @pytest.mark.parametrize(
@@ -171,19 +172,18 @@ class TestValidateCleanWorkingDirectory:
     def test_validate_with_multiple_changes(self, clean_git_repo):
         """Test validation with multiple types of changes."""
         repo_path = Path(clean_git_repo.working_dir)
-        
+
         # Create and modify multiple files
         TestFileHelpers.create_test_file(repo_path / "modified.txt", "modified")
         TestFileHelpers.create_test_file(repo_path / "staged.txt", "staged")
         TestFileHelpers.create_test_file(repo_path / "untracked.txt", "untracked")
-        
+
         # Stage one file
         clean_git_repo.index.add([str(repo_path / "staged.txt")])
 
         with pytest.raises(DirtyWorkingDirectoryError) as exc_info:
             validate_clean_working_directory(clean_git_repo)
 
-        error_message = str(exc_info.value)
         # Should contain information about changes
         assert len(exc_info.value.changes) > 0
 
@@ -305,7 +305,9 @@ class TestGetCurrentCommitInfo:
             mock_commit.hexsha = "abc123def456"
             mock_commit.message = "Detached commit"
             mock_commit.author = "Test Author"
-            mock_commit.committed_datetime.isoformat.return_value = "2023-01-01T12:00:00"
+            mock_commit.committed_datetime.isoformat.return_value = (
+                "2023-01-01T12:00:00"
+            )
 
             mock_repo.head.commit = mock_commit
             mock_repo.head.is_detached = True
@@ -387,13 +389,14 @@ class TestGetRepositoryInfo:
             mock_repo = Mock()
             mock_repo.working_dir = "/test"
             type(mock_repo).git_dir = property(
-                lambda _: (_ for _ in ()).throw(git.GitCommandError("git", 1, "stderr", "stdout"))
+                lambda _: (_ for _ in ()).throw(
+                    git.GitCommandError("git", 1, "stderr", "stdout")
+                )
             )
             mock_get_repo.return_value = mock_repo
 
             with pytest.raises(GitError, match="Failed to get repository info"):
                 get_repository_info()
-
 
 
 class TestEnsureGitAvailable:
@@ -422,7 +425,9 @@ class TestEnsureGitAvailable:
         """Test when git command fails."""
         with patch("git.Git") as mock_git_class:
             mock_git = Mock()
-            mock_git.version.side_effect = git.GitCommandError("git", 1, "git not found", "")
+            mock_git.version.side_effect = git.GitCommandError(
+                "git", 1, "git not found", ""
+            )
             mock_git_class.return_value = mock_git
 
             with pytest.raises(GitError, match="Git command not found"):

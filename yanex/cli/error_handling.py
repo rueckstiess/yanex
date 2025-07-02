@@ -1,7 +1,8 @@
 """Centralized error handling utilities for CLI commands."""
 
 import functools
-from typing import Any, Callable, List, Optional, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import click
 
@@ -45,7 +46,7 @@ class CLIErrorHandler:
 
     @staticmethod
     def validate_targeting_options(
-        experiment_identifiers: List[str],
+        experiment_identifiers: list[str],
         has_filters: bool,
         operation_name: str = "operation",
     ) -> None:
@@ -75,10 +76,10 @@ class CLIErrorHandler:
 
     @staticmethod
     def parse_time_filters(
-        started_after: Optional[str] = None,
-        started_before: Optional[str] = None,
-        ended_after: Optional[str] = None,
-        ended_before: Optional[str] = None,
+        started_after: str | None = None,
+        started_before: str | None = None,
+        ended_after: str | None = None,
+        ended_before: str | None = None,
     ) -> tuple:
         """
         Parse time filter specifications with consistent error handling.
@@ -145,7 +146,9 @@ class BulkOperationReporter:
         self.success_count += 1
         if self.show_progress:
             name_part = f" ({experiment_name})" if experiment_name else ""
-            click.echo(f"  {CLIErrorHandler.SUCCESS_SYMBOL} {self.operation_name.title()}d {experiment_id}{name_part}")
+            click.echo(
+                f"  {CLIErrorHandler.SUCCESS_SYMBOL} {self.operation_name.title()}d {experiment_id}{name_part}"
+            )
 
     def report_failure(
         self, experiment_id: str, error: Exception, experiment_name: str = None
@@ -158,11 +161,13 @@ class BulkOperationReporter:
         if self.show_progress:
             click.echo(error_msg, err=True)
 
-        self.errors.append({
-            "experiment_id": experiment_id,
-            "experiment_name": experiment_name,
-            "error": str(error)
-        })
+        self.errors.append(
+            {
+                "experiment_id": experiment_id,
+                "experiment_name": experiment_name,
+                "error": str(error),
+            }
+        )
 
     def report_summary(self) -> None:
         """Report final summary of the bulk operation."""
@@ -198,9 +203,9 @@ class BulkOperationReporter:
 
 def validate_experiment_state(
     experiment_id: str,
-    required_status: Optional[str] = None,
-    forbidden_status: Optional[str] = None,
-    operation_name: str = "operation"
+    required_status: str | None = None,
+    forbidden_status: str | None = None,
+    operation_name: str = "operation",
 ) -> None:
     """
     Validate experiment state for operations.
@@ -242,9 +247,7 @@ def show_warning(message: str) -> None:
 
 
 def confirm_destructive_operation(
-    operation_name: str,
-    experiment_count: int,
-    force: bool = False
+    operation_name: str, experiment_count: int, force: bool = False
 ) -> bool:
     """
     Confirm destructive operations with consistent messaging.
@@ -261,6 +264,8 @@ def confirm_destructive_operation(
         return True
 
     exp_text = "experiment" if experiment_count == 1 else "experiments"
-    message = f"Are you sure you want to {operation_name} {experiment_count} {exp_text}?"
+    message = (
+        f"Are you sure you want to {operation_name} {experiment_count} {exp_text}?"
+    )
 
     return click.confirm(message)

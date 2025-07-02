@@ -4,7 +4,7 @@ Input validation utilities.
 
 import re
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from .exceptions import ValidationError
 
@@ -126,7 +126,7 @@ def validate_script_path(script_path: Path) -> Path:
     return script_path
 
 
-def validate_config_data(config_data: Dict[str, Any]) -> Dict[str, Any]:
+def validate_config_data(config_data: dict[str, Any]) -> dict[str, Any]:
     """
     Validate configuration data structure.
 
