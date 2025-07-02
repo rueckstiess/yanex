@@ -117,8 +117,10 @@ class FileSystemDirectoryManager(ExperimentDirectoryManager):
         # List regular experiments
         if self.experiments_dir.exists():
             for item in self.experiments_dir.iterdir():
-                if item.is_dir() and len(item.name) == 8 and item.name != "archived":
-                    # Basic validation that it looks like an experiment ID
+                if (item.is_dir() and 
+                    item.name != "archived" and 
+                    (item / "metadata.json").exists()):
+                    # Validate by checking for experiment metadata
                     experiment_ids.append(item.name)
 
         # List archived experiments if requested
@@ -126,8 +128,8 @@ class FileSystemDirectoryManager(ExperimentDirectoryManager):
             archive_dir = self.experiments_dir / "archived"
             if archive_dir.exists():
                 for item in archive_dir.iterdir():
-                    if item.is_dir() and len(item.name) == 8:
-                        # Basic validation that it looks like an experiment ID
+                    if item.is_dir() and (item / "metadata.json").exists():
+                        # Validate by checking for experiment metadata
                         experiment_ids.append(item.name)
 
         return sorted(experiment_ids)

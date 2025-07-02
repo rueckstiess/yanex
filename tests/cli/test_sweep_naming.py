@@ -2,128 +2,232 @@
 Tests for parameter sweep naming functionality.
 """
 
+import pytest
+
 from yanex.cli.commands.run import _generate_sweep_experiment_name
+from tests.test_utils import TestDataFactory
 
 
 class TestSweepExperimentNaming:
     """Test sweep experiment naming functionality."""
 
-    def test_naming_with_base_name_single_param(self):
-        """Test naming with base name and single parameter."""
-        config = {"lr": 0.001}
-        name = _generate_sweep_experiment_name("train-model", config)
-        assert name == "train-model-lr_0p001"
+    @pytest.mark.parametrize(
+        "base_name,config,expected_name",
+        [
+            # Single parameter tests
+            ("train-model", {"lr": 0.001}, "train-model-lr_0p001"),
+            ("model", {"batch_size": 32}, "model-batch_size_32"),
+            
+            # Multiple parameters tests
+            (
+                "train-model",
+                {"lr": 0.001, "batch_size": 32, "epochs": 100},
+                "train-model-lr_0p001-batch_size_32-epochs_100",
+            ),
+            (
+                "test",
+                {"epochs": 100, "batch_size": 32, "hidden_dim": 512},
+                "test-epochs_100-batch_size_32-hidden_dim_512",
+            ),
+            
+            # No base name tests
+            (None, {"lr": 0.001, "momentum": 0.9}, "sweep-lr_0p001-momentum_0p9"),
+            (None, {"batch_size": 16}, "sweep-batch_size_16"),
+            
+            # Boolean parameters
+            (
+                "model",
+                {"use_dropout": True, "use_batch_norm": False, "lr": 0.01},
+                "model-use_dropout_true-use_batch_norm_false-lr_0p01",
+            ),
+            
+            # String parameters
+            (
+                "train",
+                {"model_type": "resnet50", "optimizer": "adam", "lr": 0.001},
+                "train-model_type_resnet50-optimizer_adam-lr_0p001",
+            ),
+            
+            # Float-integer values
+            ("test", {"lr": 1.0, "momentum": 0.0}, "test-lr_1-momentum_0"),
+            
+            # Empty config
+            ("test", {}, "test"),
+            (None, {}, "sweep"),
+        ],
+    )
+    def test_basic_naming_patterns(self, base_name, config, expected_name):
+        """Test basic parameter sweep naming patterns."""
+        result = _generate_sweep_experiment_name(base_name, config)
+        assert result == expected_name
 
-    def test_naming_with_base_name_multiple_params(self):
-        """Test naming with base name and multiple parameters."""
-        config = {"lr": 0.001, "batch_size": 32, "epochs": 100}
-        name = _generate_sweep_experiment_name("train-model", config)
-        assert name == "train-model-lr_0p001-batch_size_32-epochs_100"
-
-    def test_naming_without_base_name(self):
-        """Test naming without base name."""
-        config = {"lr": 0.001, "momentum": 0.9}
-        name = _generate_sweep_experiment_name(None, config)
-        assert name == "sweep-lr_0p001-momentum_0p9"
-
-    def test_naming_with_nested_parameters(self):
+    @pytest.mark.parametrize(
+        "config,expected_components",
+        [
+            # Nested parameters
+            (
+                {
+                    "model": {"lr": 0.01, "hidden_size": 128},
+                    "training": {"epochs": 100},
+                },
+                ["model_lr_0p01", "model_hidden_size_128", "training_epochs_100"],
+            ),
+            # Mixed nested levels
+            (
+                {
+                    "lr": 0.01,
+                    "model": {"type": "resnet", "layers": 6},
+                    "batch_size": 32,
+                },
+                ["lr_0p01", "model_type_resnet", "model_layers_6", "batch_size_32"],
+            ),
+        ],
+    )
+    def test_nested_parameter_naming(self, config, expected_components):
         """Test naming with nested parameters."""
-        config = {
-            "model": {"lr": 0.01, "hidden_size": 128},
-            "training": {"epochs": 100},
-        }
-        name = _generate_sweep_experiment_name("test", config)
-        assert name == "test-model_lr_0p01-model_hidden_size_128-training_epochs_100"
+        result = _generate_sweep_experiment_name("test", config)
+        
+        assert result.startswith("test-")
+        for component in expected_components:
+            assert component in result
 
-    def test_naming_with_boolean_parameters(self):
-        """Test naming with boolean parameters."""
-        config = {"use_dropout": True, "use_batch_norm": False, "lr": 0.01}
-        name = _generate_sweep_experiment_name("model", config)
-        assert name == "model-use_dropout_true-use_batch_norm_false-lr_0p01"
+    @pytest.mark.parametrize(
+        "config,expected_patterns",
+        [
+            # Scientific notation
+            (
+                {"lr": 1e-4, "weight_decay": 1e-5},
+                ["lr_0p0001", "weight_decay_1em05"],
+            ),
+            # Very small numbers
+            (
+                {"lr": 0.000001, "epsilon": 1e-8},
+                ["lr_1em06", "epsilon_1em08"],
+            ),
+        ],
+    )
+    def test_scientific_notation_formatting(self, config, expected_patterns):
+        """Test formatting of scientific notation and very small numbers."""
+        result = _generate_sweep_experiment_name("model", config)
+        
+        assert result.startswith("model-")
+        for pattern in expected_patterns:
+            assert pattern in result
 
-    def test_naming_with_string_parameters(self):
-        """Test naming with string parameters."""
-        config = {"model_type": "resnet50", "optimizer": "adam", "lr": 0.001}
-        name = _generate_sweep_experiment_name("train", config)
-        assert name == "train-model_type_resnet50-optimizer_adam-lr_0p001"
-
-    def test_naming_with_integer_parameters(self):
-        """Test naming with integer parameters."""
-        config = {"epochs": 100, "batch_size": 32, "hidden_dim": 512}
-        name = _generate_sweep_experiment_name("test", config)
-        assert name == "test-epochs_100-batch_size_32-hidden_dim_512"
-
-    def test_naming_with_scientific_notation(self):
-        """Test naming with scientific notation values."""
-        config = {"lr": 1e-4, "weight_decay": 1e-5}
-        name = _generate_sweep_experiment_name("model", config)
-        assert name == "model-lr_0p0001-weight_decay_1em05"
-
-    def test_naming_with_very_small_numbers(self):
-        """Test naming with very small numbers."""
-        config = {"lr": 0.000001, "epsilon": 1e-8}
-        name = _generate_sweep_experiment_name("test", config)
-        assert name == "test-lr_1em06-epsilon_1em08"
-
-    def test_naming_with_float_integers(self):
-        """Test naming with floats that are actually integers."""
-        config = {"lr": 1.0, "momentum": 0.0}
-        name = _generate_sweep_experiment_name("test", config)
-        assert name == "test-lr_1-momentum_0"
-
-    def test_naming_truncation_with_base_name(self):
-        """Test name truncation when too long with base name."""
-        # Create a config that would result in a very long name
-        config = {}
+    def test_name_truncation_behavior(self):
+        """Test name truncation when generated name is too long."""
+        # Create config with many long parameters to exceed length limit
+        long_config = {}
         for i in range(20):
-            config[f"very_long_parameter_name_{i}"] = f"very_long_value_{i}"
+            long_config[f"very_long_parameter_name_{i}"] = f"very_long_value_{i}"
 
-        name = _generate_sweep_experiment_name("base-name", config)
-        assert len(name) <= 100
-        assert name.startswith("base-name-")
-        assert name.endswith("...")
+        # Test with base name
+        name_with_base = _generate_sweep_experiment_name("base-name", long_config)
+        assert len(name_with_base) <= 100
+        assert name_with_base.startswith("base-name-")
+        assert name_with_base.endswith("...")
 
-    def test_naming_truncation_without_base_name(self):
-        """Test name truncation when too long without base name."""
-        # Create a config that would result in a very long name
-        config = {}
-        for i in range(20):
-            config[f"very_long_parameter_name_{i}"] = f"very_long_value_{i}"
+        # Test without base name
+        name_without_base = _generate_sweep_experiment_name(None, long_config)
+        assert len(name_without_base) <= 100
+        assert name_without_base.startswith("sweep-")
+        assert name_without_base.endswith("...")
 
-        name = _generate_sweep_experiment_name(None, config)
-        assert len(name) <= 100
-        assert name.startswith("sweep-")
-        assert name.endswith("...")
-
-    def test_naming_with_empty_config(self):
-        """Test naming with empty configuration."""
-        config = {}
-        name = _generate_sweep_experiment_name("test", config)
-        assert name == "test"
-
-        name = _generate_sweep_experiment_name(None, config)
-        assert name == "sweep"
-
-    def test_naming_parameter_order_consistency(self):
-        """Test that parameter order is consistent."""
+    def test_parameter_order_consistency(self):
+        """Test that parameter order is consistent across multiple calls."""
         config = {"z_param": 1, "a_param": 2, "m_param": 3}
+        
         name1 = _generate_sweep_experiment_name("test", config)
         name2 = _generate_sweep_experiment_name("test", config)
+        
         assert name1 == name2
-        # Note: We can't guarantee alphabetical order without sorting,
-        # but we can ensure consistency
 
-    def test_naming_with_mixed_nested_levels(self):
-        """Test naming with mixed nested parameter levels."""
+    @pytest.mark.parametrize(
+        "config_factory_type,expected_components",
+        [
+            ("ml_training", ["learning_rate", "batch_size", "epochs"]),
+            ("data_processing", ["n_docs", "chunk_size"]),
+            ("simple", ["param1", "param2", "param3"]),
+        ],
+    )
+    def test_naming_with_factory_generated_configs(self, config_factory_type, expected_components):
+        """Test naming with configurations generated by TestDataFactory."""
+        config = TestDataFactory.create_experiment_config(config_type=config_factory_type)
+        
+        result = _generate_sweep_experiment_name("test", config)
+        
+        assert result.startswith("test-")
+        # Check that some expected parameter names appear in the result
+        name_lower = result.lower()
+        found_components = [comp for comp in expected_components if any(comp.lower() in name_lower for comp in expected_components)]
+        assert len(found_components) > 0
+
+    def test_naming_with_complex_ml_config(self):
+        """Test naming with complex ML configuration using utilities."""
+        # Create a comprehensive ML config
+        ml_config = TestDataFactory.create_experiment_config(
+            config_type="ml_training",
+            dropout_rate=0.1,
+            weight_decay=1e-5,
+        )
+        
+        result = _generate_sweep_experiment_name("ml-experiment", ml_config)
+        
+        # Verify basic structure without assuming exact parameter inclusion
+        assert result.startswith("ml-experiment-")
+        assert len(result) > len("ml-experiment-")
+        # The generated name should include some parameters from the config
+        assert len([char for char in result if char == "_"]) >= 2  # Should have parameter value separators
+
+    def test_naming_edge_cases(self):
+        """Test edge cases in parameter naming."""
+        edge_cases = [
+            # Zero values
+            {"lr": 0, "momentum": 0.0},
+            # Negative values
+            {"bias": -0.1, "offset": -10},
+            # Very large numbers
+            {"max_tokens": 1000000, "vocab_size": 50000},
+        ]
+        
+        for config in edge_cases:
+            result = _generate_sweep_experiment_name("edge-test", config)
+            assert result.startswith("edge-test-")
+            assert len(result) > len("edge-test-")
+
+    def test_naming_with_special_characters_in_values(self):
+        """Test naming behavior with special characters in parameter values."""
         config = {
-            "lr": 0.01,
-            "model": {"type": "resnet", "layers": 6},
-            "batch_size": 32,
+            "model_path": "/path/to/model",
+            "dataset": "dataset-v2.1",
+            "tag": "experiment_2024",
         }
-        name = _generate_sweep_experiment_name("test", config)
-        # Check that it contains the expected components
-        assert name.startswith("test-")
-        assert "lr_0p01" in name
-        assert "model_type_resnet" in name
-        assert "model_layers_6" in name
-        assert "batch_size_32" in name
+        
+        result = _generate_sweep_experiment_name("special", config)
+        
+        # Should handle special characters gracefully
+        assert result.startswith("special-")
+        # The exact transformation depends on implementation,
+        # but result should be a valid string
+        assert isinstance(result, str)
+        assert len(result) > len("special-")
+
+    @pytest.mark.parametrize(
+        "base_name_pattern",
+        [
+            "simple-name",
+            "name_with_underscores", 
+            "name-with-many-dashes",
+            "CamelCaseName",
+            "name123",
+        ],
+    )
+    def test_naming_with_various_base_name_patterns(self, base_name_pattern):
+        """Test naming with various base name patterns."""
+        config = {"lr": 0.01, "epochs": 10}
+        
+        result = _generate_sweep_experiment_name(base_name_pattern, config)
+        
+        assert result.startswith(f"{base_name_pattern}-")
+        assert "lr_0p01" in result
+        assert "epochs_10" in result

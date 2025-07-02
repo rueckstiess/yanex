@@ -149,6 +149,55 @@ class TestDataFactory:
         base_results.update(overrides)
         return base_results
 
+    @staticmethod
+    def create_result_entry(step: int, **metrics: Any) -> Dict[str, Any]:
+        """
+        Create a standardized result entry for testing.
+        
+        Args:
+            step: Training/processing step number
+            **metrics: Additional metrics to include in the result
+            
+        Returns:
+            Dictionary containing result entry with step and metrics
+        """
+        result = {
+            "step": step,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        result.update(metrics)
+        return result
+
+    @staticmethod
+    def create_comparison_data(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Create comparison data structure for testing.
+        
+        Args:
+            rows: List of row dictionaries containing experiment data
+            
+        Returns:
+            Dictionary containing comparison data structure
+        """
+        # Extract parameter and metric columns from rows
+        param_columns = set()
+        metric_columns = set()
+        
+        for row in rows:
+            for key in row.keys():
+                if key.startswith("param:"):
+                    param_columns.add(key.replace("param:", ""))
+                elif key.startswith("metric:"):
+                    metric_columns.add(key.replace("metric:", ""))
+        
+        return {
+            "rows": rows,
+            "param_columns": sorted(param_columns),
+            "metric_columns": sorted(metric_columns),
+            "column_types": {},
+            "total_experiments": len(rows),
+        }
+
 
 class TestAssertions:
     """Custom assertion helpers for domain-specific validation."""
@@ -234,6 +283,18 @@ class TestAssertions:
         if check_results:
             results_file = experiment_dir / "results.json"
             assert results_file.exists(), f"Results file missing: {results_file}"
+
+    @staticmethod
+    def assert_metadata_fields(metadata: Dict[str, Any], required_fields: List[str]) -> None:
+        """
+        Assert that metadata contains all required fields.
+        
+        Args:
+            metadata: Metadata dictionary to check
+            required_fields: List of field names that must be present
+        """
+        for field in required_fields:
+            assert field in metadata, f"Required metadata field missing: {field}"
 
 
 class TestFileHelpers:
@@ -344,6 +405,90 @@ raise ValueError("Test failure")
             
         return config_path
 
+    @staticmethod
+    def create_test_file(file_path: Path, content: str) -> Path:
+        """
+        Create a test file with specified content.
+        
+        Args:
+            file_path: Path where the file should be created
+            content: Content to write to the file
+            
+        Returns:
+            Path to the created file
+        """
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content)
+        return file_path
+
+    @staticmethod
+    def create_multiple_experiment_directories(storage: ExperimentStorage, experiment_ids: List[str]) -> None:
+        """
+        Create multiple experiment directories with metadata using storage.
+        
+        Args:
+            storage: ExperimentStorage instance to use
+            experiment_ids: List of experiment IDs to create directories for
+        """
+        for exp_id in experiment_ids:
+            storage.create_experiment_directory(exp_id)
+            # Create minimal metadata so the experiment is detected by list_experiments()
+            metadata = TestDataFactory.create_experiment_metadata(
+                experiment_id=exp_id,
+                status="completed"
+            )
+            storage.save_metadata(exp_id, metadata)
+
+    @staticmethod
+    def create_experiment_files(
+        experiment_dir: Path,
+        metadata: Dict[str, Any],
+        config: Optional[Dict[str, Any]] = None,
+        results: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Create complete experiment files in a directory.
+        
+        Args:
+            experiment_dir: Directory to create experiment files in
+            metadata: Experiment metadata to save
+            config: Optional configuration data to save
+            results: Optional results data to save
+        """
+        experiment_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save metadata.json
+        with (experiment_dir / "metadata.json").open("w") as f:
+            json.dump(metadata, f, indent=2)
+        
+        # Save config.yaml if provided
+        if config is not None:
+            try:
+                import yaml
+                with (experiment_dir / "config.yaml").open("w") as f:
+                    yaml.dump(config, f, default_flow_style=False)
+            except ImportError:
+                # Fallback to JSON
+                with (experiment_dir / "config.json").open("w") as f:
+                    json.dump(config, f, indent=2)
+        
+        # Save results.json if provided
+        if results is not None:
+            with (experiment_dir / "results.json").open("w") as f:
+                json.dump(results, f, indent=2)
+
+    @staticmethod
+    def create_temp_storage():
+        """
+        Create a temporary ExperimentStorage instance for testing.
+        
+        Returns:
+            ExperimentStorage instance using a temporary directory
+        """
+        temp_dir = Path(tempfile.mkdtemp())
+        return ExperimentStorage(temp_dir)
+
+
 
 class MockHelpers:
     """Helpers for creating standardized mocks."""
@@ -402,16 +547,19 @@ def create_isolated_storage(temp_dir: Path) -> ExperimentStorage:
     return ExperimentStorage(temp_dir)
 
 
-def create_isolated_manager(temp_dir: Path) -> ExperimentManager:
+def create_isolated_manager(temp_dir: Optional[Path] = None) -> ExperimentManager:
     """
     Create an isolated ExperimentManager instance for testing.
     
     Args:
-        temp_dir: Temporary directory for experiments
+        temp_dir: Temporary directory for experiments (creates one if None)
         
     Returns:
         ExperimentManager instance
     """
+    if temp_dir is None:
+        import tempfile
+        temp_dir = Path(tempfile.mkdtemp())
     return ExperimentManager(experiments_dir=temp_dir)
 
 
