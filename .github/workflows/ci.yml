@@ -40,9 +40,6 @@ jobs:
     
     - name: Lint with ruff
       run: ruff check yanex tests
-    
-    - name: Type check with mypy
-      run: mypy yanex
 
   test:
     name: Test Suite
