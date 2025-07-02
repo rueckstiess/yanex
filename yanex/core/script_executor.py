@@ -69,7 +69,9 @@ class ScriptExecutor:
             self.manager.cancel_experiment(
                 experiment_id, "Interrupted by user (Ctrl+C)"
             )
-            self.console.print(f"[bright_red]✗ Experiment cancelled: {experiment_id}[/]")
+            self.console.print(
+                f"[bright_red]✗ Experiment cancelled: {experiment_id}[/]"
+            )
             raise
 
         except Exception as e:
@@ -208,7 +210,9 @@ class ScriptExecutor:
 
         if return_code == 0:
             self.manager.complete_experiment(experiment_id)
-            self.console.print(f"[green]✓ Experiment completed successfully: {experiment_id}[/]")
+            self.console.print(
+                f"[green]✓ Experiment completed successfully: {experiment_id}[/]"
+            )
             self.console.print(f"[dim]  Directory: {exp_dir}[/]")
         else:
             error_msg = f"Script exited with code {return_code}"

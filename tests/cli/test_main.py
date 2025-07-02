@@ -179,7 +179,10 @@ class TestCLIMain:
             cli, ["--verbose", "run", str(script_path), "--dry-run"]
         )
         assert result.exit_code == 0
-        assert f"Running script: {script_path}" in result.output
+        # Verbose output now goes to stderr due to colored Rich console
+        stderr_text = result.stderr_bytes.decode()
+        assert "Running script:" in stderr_text
+        assert script_path.name in stderr_text  # Just check for the filename
         assert "No configuration file found" in result.output
 
     def test_run_stage_flag(self, tmp_path):

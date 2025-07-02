@@ -596,7 +596,7 @@ def create_cli_runner() -> CliRunner:
     Returns:
         CliRunner instance
     """
-    return CliRunner()
+    return CliRunner(mix_stderr=False)
 
 
 # Constants for common test data
