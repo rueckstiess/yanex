@@ -5,6 +5,7 @@ This file replaces test_api.py with equivalent functionality using the new test 
 All test logic and coverage is preserved while reducing setup duplication.
 """
 
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 
 import yanex
 from tests.test_utils import TestDataFactory, create_isolated_manager
+from yanex.utils.exceptions import ExperimentContextError
 
 
 class TestThreadLocalState:
@@ -28,6 +30,10 @@ class TestThreadLocalState:
         # And is_standalone() should return True
         assert yanex.is_standalone() is True
         assert yanex.has_context() is False
+
+        # get_experiment_dir() should return None in standalone mode
+        exp_dir = yanex.get_experiment_dir()
+        assert exp_dir is None
 
     def test_get_current_experiment_id_no_context(self):
         """Test getting experiment ID without context returns None in standalone mode."""
@@ -219,6 +225,17 @@ class TestExperimentAPI:
         """Test getting current experiment ID."""
         exp_id = yanex.get_experiment_id()
         assert exp_id == self.experiment_id
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_get_experiment_dir(self, mock_get_manager):
+        """Test getting current experiment directory."""
+        mock_get_manager.return_value = self.manager
+
+        exp_dir = yanex.get_experiment_dir()
+        expected_dir = self.manager.storage.experiments_dir / self.experiment_id
+        assert exp_dir == expected_dir
+        assert exp_dir.exists()
+        assert exp_dir.is_dir()
 
     @patch("yanex.api._get_experiment_manager")
     def test_get_metadata(self, mock_get_manager):
@@ -655,6 +672,227 @@ class TestAPIParameterizedScenarios:
 
         finally:
             yanex._clear_current_experiment_id()
+
+
+class TestExecuteBashScript:
+    """Test bash script execution functionality."""
+
+    def setup_method(self):
+        """Set up test experiment context."""
+        self.manager = create_isolated_manager()
+        self.experiment_id = "script01"
+
+        # Create experiment directory
+        exp_dir = self.manager.storage.experiments_dir / self.experiment_id
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        (exp_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+
+        # Create experiment metadata
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=self.experiment_id, status="running", name="test-script"
+        )
+        self.manager.storage.save_metadata(self.experiment_id, metadata)
+
+        # Create config with some parameters
+        config = TestDataFactory.create_experiment_config(
+            "simple", param1="value1", param2=42, nested={"key": "value"}
+        )
+        self.manager.storage.save_config(self.experiment_id, config)
+
+        # Set current experiment
+        yanex._set_current_experiment_id(self.experiment_id)
+
+    def teardown_method(self):
+        """Clean up after test."""
+        yanex._clear_current_experiment_id()
+
+    def test_execute_bash_script_standalone_mode_raises_error(self):
+        """Test that execute_bash_script raises error in standalone mode."""
+        yanex._clear_current_experiment_id()  # Ensure standalone mode
+
+        with pytest.raises(
+            ExperimentContextError, match="No active experiment context"
+        ):
+            yanex.execute_bash_script("echo 'test'")
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_success(self, mock_get_manager):
+        """Test successful script execution."""
+        mock_get_manager.return_value = self.manager
+
+        result = yanex.execute_bash_script("echo 'Hello World'", stream_output=False)
+
+        # Check return value structure
+        assert isinstance(result, dict)
+        assert result["exit_code"] == 0
+        assert "Hello World" in result["stdout"]
+        assert result["stderr"] == ""
+        assert result["execution_time"] > 0
+        assert result["command"] == "echo 'Hello World'"
+        assert "working_directory" in result
+
+        # Check that results were logged
+        logged_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(logged_results) == 1
+        assert logged_results[0]["command"] == "echo 'Hello World'"
+        assert logged_results[0]["exit_code"] == 0
+
+        # Check that stdout artifact was created
+        artifacts_dir = (
+            self.manager.storage.get_experiment_directory(self.experiment_id)
+            / "artifacts"
+        )
+        stdout_file = artifacts_dir / "script_stdout.txt"
+        assert stdout_file.exists()
+        assert "Hello World" in stdout_file.read_text()
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_failure(self, mock_get_manager):
+        """Test script execution with non-zero exit code."""
+        mock_get_manager.return_value = self.manager
+
+        result = yanex.execute_bash_script("exit 1", stream_output=False)
+
+        # Should return failure but not raise exception by default
+        assert result["exit_code"] == 1
+        assert result["stdout"] == ""
+        assert result["stderr"] == ""
+
+        # Check that failure was logged
+        logged_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(logged_results) == 1
+        assert logged_results[0]["exit_code"] == 1
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_failure_with_raise_on_error(self, mock_get_manager):
+        """Test script execution with raise_on_error=True."""
+        mock_get_manager.return_value = self.manager
+
+        with pytest.raises(subprocess.CalledProcessError) as exc_info:
+            yanex.execute_bash_script(
+                "exit 1", raise_on_error=True, stream_output=False
+            )
+
+        assert exc_info.value.returncode == 1
+        assert exc_info.value.cmd == "exit 1"
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_with_stderr(self, mock_get_manager):
+        """Test script execution that produces stderr output."""
+        mock_get_manager.return_value = self.manager
+
+        result = yanex.execute_bash_script(
+            "echo 'error message' >&2", stream_output=False
+        )
+
+        assert result["exit_code"] == 0
+        assert result["stdout"] == ""
+        assert "error message" in result["stderr"]
+
+        # Check that stderr artifact was created
+        artifacts_dir = (
+            self.manager.storage.get_experiment_directory(self.experiment_id)
+            / "artifacts"
+        )
+        stderr_file = artifacts_dir / "script_stderr.txt"
+        assert stderr_file.exists()
+        assert "error message" in stderr_file.read_text()
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_timeout(self, mock_get_manager):
+        """Test script execution with timeout."""
+        mock_get_manager.return_value = self.manager
+
+        with pytest.raises(subprocess.TimeoutExpired):
+            yanex.execute_bash_script("sleep 10", timeout=0.1, stream_output=False)
+
+        # Check that timeout was logged
+        logged_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(logged_results) == 1
+        assert logged_results[0]["exit_code"] == -1
+        assert "timed out" in logged_results[0]["error"]
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_working_directory(self, mock_get_manager):
+        """Test script execution with custom working directory."""
+        mock_get_manager.return_value = self.manager
+
+        # Create a temporary directory for testing
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            test_file = temp_path / "test.txt"
+            test_file.write_text("test content")
+
+            result = yanex.execute_bash_script(
+                "ls test.txt", working_dir=temp_path, stream_output=False
+            )
+
+            assert result["exit_code"] == 0
+            assert "test.txt" in result["stdout"]
+            assert str(temp_path) == result["working_directory"]
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_environment_variables(self, mock_get_manager):
+        """Test that experiment parameters are passed as environment variables."""
+        mock_get_manager.return_value = self.manager
+
+        result = yanex.execute_bash_script(
+            "echo $YANEX_EXPERIMENT_ID $YANEX_PARAM_param1 $YANEX_PARAM_param2",
+            stream_output=False,
+        )
+
+        assert result["exit_code"] == 0
+        output = result["stdout"]
+        assert self.experiment_id in output
+        assert "value1" in output
+        assert "42" in output
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_complex_parameters(self, mock_get_manager):
+        """Test that complex parameters are JSON-encoded in environment."""
+        mock_get_manager.return_value = self.manager
+
+        result = yanex.execute_bash_script(
+            "echo $YANEX_PARAM_nested", stream_output=False
+        )
+
+        assert result["exit_code"] == 0
+        # Should contain JSON representation of nested parameter
+        assert (
+            '{"key": "value"}' in result["stdout"]
+            or '{"key":"value"}' in result["stdout"]
+        )
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_multiple_calls(self, mock_get_manager):
+        """Test multiple script executions in same experiment."""
+        mock_get_manager.return_value = self.manager
+
+        # Execute first script
+        result1 = yanex.execute_bash_script("echo 'first'", stream_output=False)
+        assert result1["exit_code"] == 0
+
+        # Execute second script
+        result2 = yanex.execute_bash_script("echo 'second'", stream_output=False)
+        assert result2["exit_code"] == 0
+
+        # Check that both executions were logged
+        logged_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(logged_results) == 2
+
+        commands = [r["command"] for r in logged_results]
+        assert "echo 'first'" in commands
+        assert "echo 'second'" in commands
+
+        # Check that multiple stdout artifacts were created
+        artifacts_dir = (
+            self.manager.storage.get_experiment_directory(self.experiment_id)
+            / "artifacts"
+        )
+        stdout_files = list(artifacts_dir.glob("*stdout*"))
+        assert len(stdout_files) >= 1  # At least one stdout file should exist
 
 
 # Summary of improvements in the complete conversion:
