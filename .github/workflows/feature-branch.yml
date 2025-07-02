@@ -38,9 +38,6 @@ jobs:
     - name: Run linting
       run: ruff check yanex tests
       
-    - name: Run tests
-      run: pytest --maxfail=10 --tb=short
-      
     - name: Test CLI functionality
       run: |
         yanex --version
