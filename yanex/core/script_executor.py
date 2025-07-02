@@ -207,8 +207,7 @@ class ScriptExecutor:
         if return_code == 0:
             self.manager.complete_experiment(experiment_id)
             click.echo(f"✓ Experiment completed successfully: {experiment_id}")
-            if verbose:
-                click.echo(f"  Directory: {exp_dir}")
+            click.echo(f"  Directory: {exp_dir}")
         else:
             error_msg = f"Script exited with code {return_code}"
             if stderr_text:
@@ -216,7 +215,6 @@ class ScriptExecutor:
 
             self.manager.fail_experiment(experiment_id, error_msg)
             click.echo(f"✗ Experiment failed: {experiment_id}")
-            if verbose:
-                click.echo(f"  Directory: {exp_dir}")
+            click.echo(f"  Directory: {exp_dir}")
             click.echo(f"Error: {error_msg}")
             raise click.Abort()
