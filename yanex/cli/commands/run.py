@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+from rich.console import Console
 
 from ...core.config import expand_parameter_sweeps, has_sweep_parameters
 from ...core.manager import ExperimentManager
@@ -105,6 +106,7 @@ def run(
     )
 
     verbose = ctx.obj.get("verbose", False)
+    console = Console(stderr=True)
 
     # Handle mutually exclusive flags
     if stage and staged:
@@ -113,7 +115,7 @@ def run(
 
     if staged:
         # Execute staged experiments
-        _execute_staged_experiments(verbose)
+        _execute_staged_experiments(verbose, console)
         return
 
     # Validate script is provided when not using --staged
@@ -123,11 +125,11 @@ def run(
         raise click.Abort()
 
     if verbose:
-        click.echo(f"Running script: {script}")
+        console.print(f"[dim]Running script: {script}[/]")
         if config:
-            click.echo(f"Using config: {config}")
+            console.print(f"[dim]Using config: {config}[/]")
         if param:
-            click.echo(f"Parameter overrides: {param}")
+            console.print(f"[dim]Parameter overrides: {param}[/]")
 
     try:
         # Load and merge configuration
@@ -136,7 +138,7 @@ def run(
         )
 
         if verbose:
-            click.echo(f"Merged configuration: {merged_config}")
+            console.print(f"[dim]Merged configuration: {merged_config}[/]")
 
         # Validate configuration
         validate_experiment_config(
@@ -197,6 +199,7 @@ def _execute_experiment(
     ignore_dirty: bool = False,
 ) -> None:
     """Execute script as an experiment with proper lifecycle management."""
+    console = Console(stderr=True)
 
     # Create experiment
     manager = ExperimentManager()
@@ -210,7 +213,7 @@ def _execute_experiment(
     )
 
     if verbose:
-        click.echo(f"Created experiment: {experiment_id}")
+        console.print(f"[dim]Created experiment: {experiment_id}[/]")
 
     # Start experiment
     manager.start_experiment(experiment_id)
@@ -374,23 +377,25 @@ def _stage_experiment(
         click.echo("  Use 'yanex run --staged' to execute staged experiments")
 
 
-def _execute_staged_experiments(verbose: bool = False) -> None:
+def _execute_staged_experiments(verbose: bool = False, console: Console = None) -> None:
     """Execute all staged experiments."""
+    if console is None:
+        console = Console(stderr=True)
 
     manager = ExperimentManager()
     staged_experiments = manager.get_staged_experiments()
 
     if not staged_experiments:
-        click.echo("No staged experiments found")
+        console.print("[dim]No staged experiments found[/]")
         return
 
     if verbose:
-        click.echo(f"Found {len(staged_experiments)} staged experiments")
+        console.print(f"[dim]Found {len(staged_experiments)} staged experiments[/]")
 
     for experiment_id in staged_experiments:
         try:
             if verbose:
-                click.echo(f"Executing staged experiment: {experiment_id}")
+                console.print(f"[dim]Executing staged experiment: {experiment_id}[/]")
 
             # Load experiment metadata to get script path and config
             metadata = manager.storage.load_metadata(experiment_id)
@@ -410,8 +415,8 @@ def _execute_staged_experiments(verbose: bool = False) -> None:
             )
 
         except Exception as e:
-            click.echo(
-                f"✗ Failed to execute staged experiment {experiment_id}: {e}", err=True
+            console.print(
+                f"[red]✗ Failed to execute staged experiment {experiment_id}: {e}[/]"
             )
             try:
                 manager.fail_experiment(
