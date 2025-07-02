@@ -7,7 +7,8 @@ from typing import List, Optional
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES
-from ..filters import ExperimentFilter, parse_time_spec
+from ..error_handling import CLIErrorHandler
+from ..filters import ExperimentFilter
 from ..formatters import ExperimentTableFormatter
 
 
@@ -27,7 +28,7 @@ from ..formatters import ExperimentTableFormatter
 @click.option(
     "--name",
     "name_pattern",
-    help="Filter by name using glob patterns (e.g., '*tuning*')",
+    help="Filter by name using glob patterns (e.g., '*tuning*'). Use empty string '' to match unnamed experiments.",
 )
 @click.option(
     "--tag",
@@ -36,14 +37,20 @@ from ..formatters import ExperimentTableFormatter
     help="Filter by tag (repeatable, experiments must have ALL specified tags)",
 )
 @click.option(
-    "--started",
-    "started_spec",
-    help="Show experiments started on or after this time (e.g., 'today', 'last week', '2023-01-01')",
+    "--started-after",
+    help="Show experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
 )
 @click.option(
-    "--ended",
-    "ended_spec",
-    help="Show experiments ended on or after this time (e.g., 'today', 'last week', '2023-01-01')",
+    "--started-before", 
+    help="Show experiments started before date/time"
+)
+@click.option(
+    "--ended-after", 
+    help="Show experiments ended after date/time"
+)
+@click.option(
+    "--ended-before", 
+    help="Show experiments ended before date/time"
 )
 @click.option(
     "--archived",
@@ -51,6 +58,7 @@ from ..formatters import ExperimentTableFormatter
     help="Show archived experiments instead of regular experiments",
 )
 @click.pass_context
+@CLIErrorHandler.handle_cli_errors
 def list_experiments(
     ctx: click.Context,
     show_all: bool,
@@ -58,8 +66,10 @@ def list_experiments(
     status: Optional[str],
     name_pattern: Optional[str],
     tags: List[str],
-    started_spec: Optional[str],
-    ended_spec: Optional[str],
+    started_after: Optional[str],
+    started_before: Optional[str],
+    ended_after: Optional[str],
+    ended_before: Optional[str],
     archived: bool,
 ) -> None:
     """
@@ -85,45 +95,30 @@ def list_experiments(
       # Filter by name pattern
       yanex list --name "*tuning*"
 
+      # Filter unnamed experiments
+      yanex list --name ""
+
       # Filter by multiple tags (AND logic)
       yanex list --tag hyperopt --tag production
 
-      # Filter by time (started since last week)
-      yanex list --started "last week"
+      # Filter by time (started after last week)
+      yanex list --started-after "last week"
+
+      # Filter by time range
+      yanex list --started-after "last month" --started-before "last week"
 
       # Complex filtering
-      yanex list --status completed --tag production --started "last month" -n 20
+      yanex list --status completed --tag production --started-after "last month" -n 20
     """
     verbose = ctx.obj.get("verbose", False)
 
     try:
-        # Parse time specifications
-        started_after = None
-        started_before = None
-        ended_after = None
-        ended_before = None
-
-        if started_spec:
-            started_after = parse_time_spec(started_spec)
-            if started_after is None:
-                click.echo(
-                    f"Error: Could not parse start time '{started_spec}'", err=True
-                )
-                click.echo(
-                    "Examples: 'today', 'last week', '2 hours ago', '2023-01-01'",
-                    err=True,
-                )
-                raise click.Abort()
-
-        if ended_spec:
-            ended_after = parse_time_spec(ended_spec)
-            if ended_after is None:
-                click.echo(f"Error: Could not parse end time '{ended_spec}'", err=True)
-                click.echo(
-                    "Examples: 'today', 'last week', '2 hours ago', '2023-01-01'",
-                    err=True,
-                )
-                raise click.Abort()
+        # Parse time specifications using centralized error handling
+        started_after_dt, started_before_dt, ended_after_dt, ended_before_dt = (
+            CLIErrorHandler.parse_time_filters(
+                started_after, started_before, ended_after, ended_before
+            )
+        )
 
         if verbose:
             click.echo("Filtering experiments...")
@@ -133,10 +128,14 @@ def list_experiments(
                 click.echo(f"  Name pattern: {name_pattern}")
             if tags:
                 click.echo(f"  Tags: {', '.join(tags)}")
-            if started_spec:
-                click.echo(f"  Started: {started_spec}")
-            if ended_spec:
-                click.echo(f"  Ended: {ended_spec}")
+            if started_after:
+                click.echo(f"  Started after: {started_after}")
+            if started_before:
+                click.echo(f"  Started before: {started_before}")
+            if ended_after:
+                click.echo(f"  Ended after: {ended_after}")
+            if ended_before:
+                click.echo(f"  Ended before: {ended_before}")
 
         # Create filter and apply criteria
         experiment_filter = ExperimentFilter()
@@ -149,10 +148,10 @@ def list_experiments(
             status=status,
             name_pattern=name_pattern,
             tags=list(tags) if tags else None,
-            started_after=started_after,
-            started_before=started_before,
-            ended_after=ended_after,
-            ended_before=ended_before,
+            started_after=started_after_dt,
+            started_before=started_before_dt,
+            ended_after=ended_after_dt,
+            ended_before=ended_before_dt,
             limit=None if force_all else limit,
             include_all=force_all,
             include_archived=archived,
@@ -180,7 +179,7 @@ def list_experiments(
         if not experiments:
             click.echo("No experiments found.")
             _show_filter_suggestions(
-                status, name_pattern, tags, started_spec, ended_spec
+                status, name_pattern, tags, started_after, started_before, ended_after, ended_before
             )
             return
 
@@ -189,7 +188,7 @@ def list_experiments(
         formatter.print_experiments_table(experiments, title=table_title)
 
         # Show summary if filtering was applied or not showing all
-        if any([status, name_pattern, tags, started_spec, ended_spec]) or (
+        if any([status, name_pattern, tags, started_after, started_before, ended_after, ended_before]) or (
             not show_all and limit != len(experiments)
         ):
             # Get total count for summary
@@ -225,13 +224,15 @@ def _show_filter_suggestions(
     status: Optional[str],
     name_pattern: Optional[str],
     tags: List[str],
-    started_spec: Optional[str],
-    ended_spec: Optional[str],
+    started_after: Optional[str],
+    started_before: Optional[str],
+    ended_after: Optional[str],
+    ended_before: Optional[str],
 ) -> None:
     """Show helpful suggestions when no experiments are found."""
 
     # Check if any filters were applied
-    has_filters = any([status, name_pattern, tags, started_spec, ended_spec])
+    has_filters = any([status, name_pattern, tags, started_after, started_before, ended_after, ended_before])
 
     if has_filters:
         click.echo("\nTry adjusting your filters:")
