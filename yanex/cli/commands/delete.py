@@ -7,7 +7,11 @@ from typing import Optional
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES
-from ..filters import ExperimentFilter, parse_time_spec
+from ..error_handling import (
+    BulkOperationReporter,
+    CLIErrorHandler,
+)
+from ..filters import ExperimentFilter
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -44,6 +48,7 @@ from .confirm import (
 )
 @click.option("--force", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
+@CLIErrorHandler.handle_cli_errors
 def delete_experiments(
     ctx,
     experiment_identifiers: tuple,
@@ -73,131 +78,103 @@ def delete_experiments(
         yanex delete --name "*test*"         # Delete experiments with "test" in name
         yanex delete --tag temp              # Delete experiments with "temp" tag
     """
-    try:
-        filter_obj = ExperimentFilter()
+    filter_obj = ExperimentFilter()
 
-        # Validate mutually exclusive targeting
-        has_identifiers = len(experiment_identifiers) > 0
-        has_filters = any(
-            [
-                status,
-                name_pattern,
-                tags,
-                started_after,
-                started_before,
-                ended_after,
-                ended_before,
-            ]
+    # Validate mutually exclusive targeting
+    has_filters = any(
+        [
+            status,
+            name_pattern,
+            tags,
+            started_after,
+            started_before,
+            ended_after,
+            ended_before,
+        ]
+    )
+
+    CLIErrorHandler.validate_targeting_options(
+        list(experiment_identifiers),
+        has_filters,
+        "delete"
+    )
+
+    # Parse time specifications
+    started_after_dt, started_before_dt, ended_after_dt, ended_before_dt = (
+        CLIErrorHandler.parse_time_filters(
+            started_after, started_before, ended_after, ended_before
+        )
+    )
+
+    # Find experiments to delete
+    if experiment_identifiers:
+        # Delete specific experiments by ID/name
+        experiments = find_experiments_by_identifiers(
+            filter_obj, list(experiment_identifiers), include_archived=archived
+        )
+    else:
+        # Delete experiments by filter criteria
+        experiments = find_experiments_by_filters(
+            filter_obj,
+            status=status,
+            name_pattern=name_pattern,
+            tags=list(tags) if tags else None,
+            started_after=started_after_dt,
+            started_before=started_before_dt,
+            ended_after=ended_after_dt,
+            ended_before=ended_before_dt,
+            include_archived=archived,
         )
 
-        if has_identifiers and has_filters:
-            click.echo(
-                "Error: Cannot use both experiment identifiers and filter options. Choose one approach.",
-                err=True,
-            )
-            ctx.exit(1)
+    # Filter experiments based on archived flag
+    if archived:
+        experiments = [exp for exp in experiments if exp.get("archived", False)]
+    else:
+        experiments = [exp for exp in experiments if not exp.get("archived", False)]
 
-        if not has_identifiers and not has_filters:
-            click.echo(
-                "Error: Must specify either experiment identifiers or filter options",
-                err=True,
-            )
-            ctx.exit(1)
+    if not experiments:
+        location = "archived" if archived else "regular"
+        click.echo(f"No {location} experiments found to delete.")
+        return
 
-        # Parse time specifications
-        started_after_dt = parse_time_spec(started_after) if started_after else None
-        started_before_dt = parse_time_spec(started_before) if started_before else None
-        ended_after_dt = parse_time_spec(ended_after) if ended_after else None
-        ended_before_dt = parse_time_spec(ended_before) if ended_before else None
+    # Show experiments and get confirmation (always required for deletion)
+    operation_verb = "permanently deleted"
+    if not confirm_experiment_operation(
+        experiments, "delete", force, operation_verb
+    ):
+        click.echo("Delete operation cancelled.")
+        return
 
-        # Find experiments to delete
-        if experiment_identifiers:
-            # Delete specific experiments by ID/name
-            experiments = find_experiments_by_identifiers(
-                filter_obj, list(experiment_identifiers), include_archived=archived
-            )
-        else:
-            # Delete experiments by filter criteria
-
-            experiments = find_experiments_by_filters(
-                filter_obj,
-                status=status,
-                name_pattern=name_pattern,
-                tags=list(tags) if tags else None,
-                started_after=started_after_dt,
-                started_before=started_before_dt,
-                ended_after=ended_after_dt,
-                ended_before=ended_before_dt,
-                include_archived=archived,
-            )
-
-        # Filter experiments based on archived flag
-        if archived:
-            experiments = [exp for exp in experiments if exp.get("archived", False)]
-        else:
-            experiments = [exp for exp in experiments if not exp.get("archived", False)]
-
-        if not experiments:
-            location = "archived" if archived else "regular"
-            click.echo(f"No {location} experiments found to delete.")
-            return
-
-        # Show experiments and get confirmation (always required for deletion)
-        operation_verb = "permanently deleted"
-        if not confirm_experiment_operation(
-            experiments, "delete", force, operation_verb
-        ):
+    # Additional warning for bulk deletions
+    if len(experiments) > 1 and not force:
+        click.echo()
+        click.echo("⚠️  You are about to permanently delete multiple experiments.")
+        click.echo("   This action cannot be undone!")
+        if not click.confirm("Are you absolutely sure?", default=False):
             click.echo("Delete operation cancelled.")
             return
 
-        # Additional warning for bulk deletions
-        if len(experiments) > 1 and not force:
-            click.echo()
-            click.echo("⚠️  You are about to permanently delete multiple experiments.")
-            click.echo("   This action cannot be undone!")
-            if not click.confirm("Are you absolutely sure?", default=False):
-                click.echo("Delete operation cancelled.")
-                return
+    # Delete experiments using centralized reporter
+    click.echo(f"Deleting {len(experiments)} experiment(s)...")
+    reporter = BulkOperationReporter("delete")
 
-        # Delete experiments
-        click.echo(f"Deleting {len(experiments)} experiment(s)...")
+    for exp in experiments:
+        experiment_id = exp["id"]
+        exp_name = exp.get("name", "[unnamed]")
 
-        success_count = 0
-        for exp in experiments:
-            try:
-                experiment_id = exp["id"]
+        try:
+            if exp.get("archived", False):
+                # Delete from archived directory
+                filter_obj.manager.storage.delete_archived_experiment(experiment_id)
+            else:
+                # Delete from regular directory
+                filter_obj.manager.storage.delete_experiment(experiment_id)
 
-                if exp.get("archived", False):
-                    # Delete from archived directory
-                    filter_obj.manager.storage.delete_archived_experiment(experiment_id)
-                else:
-                    # Delete from regular directory
-                    filter_obj.manager.storage.delete_experiment(experiment_id)
+            reporter.report_success(experiment_id, exp_name)
+        except Exception as e:
+            reporter.report_failure(experiment_id, e, exp_name)
 
-                # Show progress
-                exp_name = exp.get("name", "[unnamed]")
-                click.echo(f"  ✓ Deleted {experiment_id} ({exp_name})")
-                success_count += 1
-
-            except Exception as e:
-                exp_name = exp.get("name", "[unnamed]")
-                click.echo(
-                    f"  ✗ Failed to delete {experiment_id} ({exp_name}): {e}", err=True
-                )
-
-        # Summary
-        if success_count == len(experiments):
-            click.echo(f"Successfully deleted {success_count} experiment(s).")
-        else:
-            failed_count = len(experiments) - success_count
-            click.echo(
-                f"Deleted {success_count} experiment(s), {failed_count} failed.",
-                err=True,
-            )
-            ctx.exit(1)
-
-    except click.ClickException:
-        raise  # Re-raise ClickException to show proper error message
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        ctx.exit(1)
+    # Report summary and exit with appropriate code
+    reporter.report_summary()
+    if reporter.has_failures():
+        ctx.exit(reporter.get_exit_code())

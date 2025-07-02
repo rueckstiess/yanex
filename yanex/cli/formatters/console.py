@@ -9,7 +9,11 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from ..filters.time_utils import format_duration, format_relative_time
+from ...utils.datetime_utils import (
+    format_duration,
+    format_relative_time,
+    parse_iso_timestamp,
+)
 
 
 class ExperimentTableFormatter:
@@ -170,38 +174,19 @@ class ExperimentTableFormatter:
             return Text("-", style="dim")
 
         try:
-            if started_at.endswith("Z"):
-                start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-            elif "+" in started_at:
-                start_time = datetime.fromisoformat(started_at)
-            else:
-                # No timezone info, assume UTC
-                from datetime import timezone
+            start_time = parse_iso_timestamp(started_at)
+            if start_time is None:
+                return Text("-", style="dim")
 
-                start_time = datetime.fromisoformat(started_at).replace(
-                    tzinfo=timezone.utc
-                )
             end_time = None
-
             if ended_at:
-                if ended_at.endswith("Z"):
-                    end_time = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
-                elif "+" in ended_at or ended_at.endswith("Z"):
-                    end_time = datetime.fromisoformat(ended_at)
-                else:
-                    # No timezone info, assume UTC
-                    from datetime import timezone
-
-                    end_time = datetime.fromisoformat(ended_at).replace(
-                        tzinfo=timezone.utc
-                    )
+                end_time = parse_iso_timestamp(ended_at)
             elif status == "running":
                 # For running experiments, end_time stays None to show "(ongoing)"
                 pass
             else:
                 # For non-running experiments without end time, use current time as fallback
                 from datetime import timezone
-
                 end_time = datetime.now(timezone.utc)
 
             duration_str = format_duration(start_time, end_time)
@@ -243,68 +228,43 @@ class ExperimentTableFormatter:
         if not started_at:
             return Text("-", style="dim")
 
-        try:
-            if started_at.endswith("Z"):
-                start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-            elif "+" in started_at:
-                start_time = datetime.fromisoformat(started_at)
-            else:
-                # No timezone info, assume UTC
-                from datetime import timezone
-
-                start_time = datetime.fromisoformat(started_at).replace(
-                    tzinfo=timezone.utc
-                )
-            relative_str = format_relative_time(start_time)
-            return Text(relative_str, style="cyan")
-        except Exception:
+        start_time = parse_iso_timestamp(started_at)
+        if start_time is None:
             return Text("unknown", style="dim")
+
+        relative_str = format_relative_time(start_time)
+        return Text(relative_str, style="cyan")
 
     def _format_time(self, time_str: str) -> str:
         """Format timestamp for detailed display."""
-        try:
-            from datetime import datetime, timezone
+        if isinstance(time_str, str):
+            dt = parse_iso_timestamp(time_str)
+            if dt is None:
+                return str(time_str)
+        else:
+            dt = time_str
 
-            if isinstance(time_str, str):
-                dt = datetime.fromisoformat(time_str)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-            else:
-                dt = time_str
-
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return str(time_str)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
 
     def _calculate_duration(
         self, start_time: str, end_time: Optional[str] = None
     ) -> str:
         """Calculate and format duration between two times."""
-        try:
-            from datetime import datetime, timezone
+        if isinstance(start_time, str):
+            start_dt = parse_iso_timestamp(start_time)
+            if start_dt is None:
+                return "unknown"
+        else:
+            start_dt = start_time
 
-            from yanex.cli.filters.time_utils import format_duration
-
-            if isinstance(start_time, str):
-                start_dt = datetime.fromisoformat(start_time)
-                if start_dt.tzinfo is None:
-                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+        end_dt = None
+        if end_time:
+            if isinstance(end_time, str):
+                end_dt = parse_iso_timestamp(end_time)
             else:
-                start_dt = start_time
+                end_dt = end_time
 
-            if end_time:
-                if isinstance(end_time, str):
-                    end_dt = datetime.fromisoformat(end_time)
-                    if end_dt.tzinfo is None:
-                        end_dt = end_dt.replace(tzinfo=timezone.utc)
-                else:
-                    end_dt = end_time
-            else:
-                end_dt = None
-
-            return format_duration(start_dt, end_dt)
-        except Exception:
-            return "unknown"
+        return format_duration(start_dt, end_dt)
 
     def _format_file_size(self, size_bytes: int) -> str:
         """Format file size in human-readable format."""

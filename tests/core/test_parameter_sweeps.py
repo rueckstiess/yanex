@@ -9,13 +9,11 @@ from yanex.core.config import (
     ListSweep,
     LogspaceSweep,
     RangeSweep,
-    _parse_non_sweep_value,
-    _parse_numeric_value,
-    _parse_sweep_syntax,
     expand_parameter_sweeps,
     has_sweep_parameters,
     parse_param_overrides,
 )
+from yanex.core.parameter_parsers import BasicParameterParser, SweepParameterParser
 from yanex.utils.exceptions import ConfigError
 
 
@@ -125,29 +123,33 @@ class TestSweepSyntaxParsing:
 
     def test_parse_numeric_value(self):
         """Test numeric value parsing."""
-        assert _parse_numeric_value("42") == 42
-        assert _parse_numeric_value("3.14") == 3.14
-        assert _parse_numeric_value("-1") == -1
-        assert _parse_numeric_value("1e-3") == 0.001
+        sweep_parser = SweepParameterParser()
+        assert sweep_parser._parse_numeric_value("42") == 42
+        assert sweep_parser._parse_numeric_value("3.14") == 3.14
+        assert sweep_parser._parse_numeric_value("-1") == -1
+        assert sweep_parser._parse_numeric_value("1e-3") == 0.001
 
     def test_parse_numeric_value_error(self):
         """Test numeric parsing error."""
+        sweep_parser = SweepParameterParser()
         with pytest.raises(ConfigError, match="Expected numeric value"):
-            _parse_numeric_value("not_a_number")
+            sweep_parser._parse_numeric_value("not_a_number")
 
     def test_parse_non_sweep_value(self):
         """Test non-sweep value parsing."""
-        assert _parse_non_sweep_value("42") == 42
-        assert _parse_non_sweep_value("3.14") == 3.14
-        assert _parse_non_sweep_value("true") is True
-        assert _parse_non_sweep_value("false") is False
-        assert _parse_non_sweep_value("hello") == "hello"
-        assert _parse_non_sweep_value('"quoted"') == "quoted"
-        assert _parse_non_sweep_value("'quoted'") == "quoted"
+        basic_parser = BasicParameterParser()
+        assert basic_parser.parse("42") == 42
+        assert basic_parser.parse("3.14") == 3.14
+        assert basic_parser.parse("true") is True
+        assert basic_parser.parse("false") is False
+        assert basic_parser.parse("hello") == "hello"
+        assert basic_parser.parse('"quoted"') == "quoted"
+        assert basic_parser.parse("'quoted'") == "quoted"
 
     def test_parse_range_syntax(self):
         """Test range() syntax parsing."""
-        result = _parse_sweep_syntax("range(0.01, 0.1, 0.01)")
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse("range(0.01, 0.1, 0.01)")
         assert isinstance(result, RangeSweep)
         assert result.start == 0.01
         assert result.stop == 0.1
@@ -155,13 +157,15 @@ class TestSweepSyntaxParsing:
 
     def test_parse_range_syntax_with_spaces(self):
         """Test range() syntax parsing with extra spaces."""
-        result = _parse_sweep_syntax("range( 0.01 , 0.1 , 0.01 )")
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse("range( 0.01 , 0.1 , 0.01 )")
         assert isinstance(result, RangeSweep)
         assert result.start == 0.01
 
     def test_parse_linspace_syntax(self):
         """Test linspace() syntax parsing."""
-        result = _parse_sweep_syntax("linspace(0.01, 0.1, 5)")
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse("linspace(0.01, 0.1, 5)")
         assert isinstance(result, LinspaceSweep)
         assert result.start == 0.01
         assert result.stop == 0.1
@@ -169,7 +173,8 @@ class TestSweepSyntaxParsing:
 
     def test_parse_logspace_syntax(self):
         """Test logspace() syntax parsing."""
-        result = _parse_sweep_syntax("logspace(-3, -1, 3)")
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse("logspace(-3, -1, 3)")
         assert isinstance(result, LogspaceSweep)
         assert result.start == -3
         assert result.stop == -1
@@ -177,43 +182,56 @@ class TestSweepSyntaxParsing:
 
     def test_parse_list_syntax(self):
         """Test list() syntax parsing."""
-        result = _parse_sweep_syntax("list(16, 32, 64)")
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse("list(16, 32, 64)")
         assert isinstance(result, ListSweep)
         assert result.items == [16, 32, 64]
 
     def test_parse_list_syntax_mixed_types(self):
         """Test list() syntax with mixed types."""
-        result = _parse_sweep_syntax("list(foo, 42, true)")
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse("list(foo, 42, true)")
         assert isinstance(result, ListSweep)
         assert result.items == ["foo", 42, True]
 
     def test_parse_list_syntax_quoted_strings(self):
         """Test list() syntax with quoted strings."""
-        result = _parse_sweep_syntax('list("hello", "world")')
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse('list("hello", "world")')
         assert isinstance(result, ListSweep)
         assert result.items == ["hello", "world"]
 
     def test_parse_non_sweep_syntax(self):
         """Test non-sweep syntax returns None."""
-        assert _parse_sweep_syntax("42") is None
-        assert _parse_sweep_syntax("hello") is None
-        assert _parse_sweep_syntax("range") is None  # incomplete
+        sweep_parser = SweepParameterParser()
+        # Non-sweep values should fail the can_parse check, so use a different approach
+        assert not sweep_parser.can_parse("42")
+        assert not sweep_parser.can_parse("hello")
+        assert not sweep_parser.can_parse("range")  # incomplete
 
     def test_parse_invalid_sweep_syntax(self):
         """Test invalid sweep syntax raises errors."""
-        # Incomplete syntax should return None (treated as regular value)
-        assert _parse_sweep_syntax("range(0.01, 0.1)") is None  # missing step
-        assert _parse_sweep_syntax("linspace(0.01)") is None  # missing arguments
+        sweep_parser = SweepParameterParser()
+        # Incomplete syntax should match can_parse (based on pattern) but fail during parsing
+        assert sweep_parser.can_parse("range(0.01, 0.1)")  # missing step - matches pattern
+        assert sweep_parser.can_parse("linspace(0.01)")  # missing arguments - matches pattern
+
+        # Incomplete syntax should raise errors during parsing
+        with pytest.raises(ConfigError, match="Invalid sweep syntax"):
+            sweep_parser.parse("range(0.01, 0.1)")  # missing step
+
+        with pytest.raises(ConfigError, match="Invalid sweep syntax"):
+            sweep_parser.parse("linspace(0.01)")  # missing arguments
 
         # Invalid syntax that matches pattern should raise errors
         with pytest.raises(ConfigError, match="Invalid range\\(\\) syntax"):
-            _parse_sweep_syntax("range(not_a_number, 0.1, 0.01)")
+            sweep_parser.parse("range(not_a_number, 0.1, 0.01)")
 
         with pytest.raises(ConfigError, match="Invalid linspace\\(\\) syntax"):
-            _parse_sweep_syntax("linspace(0.01, 0.1, not_a_number)")
+            sweep_parser.parse("linspace(0.01, 0.1, not_a_number)")
 
         with pytest.raises(ConfigError, match="Invalid list\\(\\) syntax"):
-            _parse_sweep_syntax("list()")  # empty list
+            sweep_parser.parse("list()")  # empty list
 
 
 class TestParameterSweepIntegration:
