@@ -64,7 +64,9 @@ class ScriptExecutor:
             )
 
         except KeyboardInterrupt:
-            self.manager.cancel_experiment(experiment_id, "Interrupted by user (Ctrl+C)")
+            self.manager.cancel_experiment(
+                experiment_id, "Interrupted by user (Ctrl+C)"
+            )
             click.echo(f"✗ Experiment cancelled: {experiment_id}")
             raise
 
@@ -122,7 +124,9 @@ class ScriptExecutor:
             cwd=Path.cwd(),
         )
 
-        def stream_output(pipe: Any, capture_list: List[str], output_stream: Any) -> None:
+        def stream_output(
+            pipe: Any, capture_list: List[str], output_stream: Any
+        ) -> None:
             """Stream output line by line while capturing it."""
             for line in iter(pipe.readline, ""):
                 # Display in real-time
@@ -216,4 +220,3 @@ class ScriptExecutor:
                 click.echo(f"  Directory: {exp_dir}")
             click.echo(f"Error: {error_msg}")
             raise click.Abort()
-

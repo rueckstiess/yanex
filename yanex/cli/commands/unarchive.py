@@ -85,9 +85,7 @@ def unarchive_experiments(
     )
 
     CLIErrorHandler.validate_targeting_options(
-        list(experiment_identifiers),
-        has_filters,
-        "unarchive"
+        list(experiment_identifiers), has_filters, "unarchive"
     )
 
     # Parse time specifications

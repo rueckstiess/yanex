@@ -40,7 +40,9 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         self, experiment_id: str, include_archived: bool = False
     ) -> Path:
         """Get path to experiment directory."""
-        return self.directory_manager.get_experiment_directory(experiment_id, include_archived)
+        return self.directory_manager.get_experiment_directory(
+            experiment_id, include_archived
+        )
 
     def experiment_exists(
         self, experiment_id: str, include_archived: bool = False
@@ -115,13 +117,17 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         self, experiment_id: str, artifact_name: str, source_path: Path
     ) -> Path:
         """Save an artifact file."""
-        return self.artifact_storage.save_artifact(experiment_id, artifact_name, source_path)
+        return self.artifact_storage.save_artifact(
+            experiment_id, artifact_name, source_path
+        )
 
     def save_text_artifact(
         self, experiment_id: str, artifact_name: str, content: str
     ) -> Path:
         """Save text content as an artifact."""
-        return self.artifact_storage.save_text_artifact(experiment_id, artifact_name, content)
+        return self.artifact_storage.save_text_artifact(
+            experiment_id, artifact_name, content
+        )
 
     def get_log_paths(self, experiment_id: str) -> Dict[str, Path]:
         """Get paths for log files."""
@@ -160,10 +166,14 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         self, experiment_id: str, archive_dir: Optional[Path] = None
     ) -> bool:
         """Check if archived experiment exists."""
-        return self.archive_storage.archived_experiment_exists(experiment_id, archive_dir)
+        return self.archive_storage.archived_experiment_exists(
+            experiment_id, archive_dir
+        )
 
     def get_archived_experiment_directory(
         self, experiment_id: str, archive_dir: Optional[Path] = None
     ) -> Path:
         """Get path to archived experiment directory."""
-        return self.archive_storage.get_archived_experiment_directory(experiment_id, archive_dir)
+        return self.archive_storage.get_archived_experiment_directory(
+            experiment_id, archive_dir
+        )

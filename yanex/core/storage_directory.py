@@ -117,9 +117,11 @@ class FileSystemDirectoryManager(ExperimentDirectoryManager):
         # List regular experiments
         if self.experiments_dir.exists():
             for item in self.experiments_dir.iterdir():
-                if (item.is_dir() and 
-                    item.name != "archived" and 
-                    (item / "metadata.json").exists()):
+                if (
+                    item.is_dir()
+                    and item.name != "archived"
+                    and (item / "metadata.json").exists()
+                ):
                     # Validate by checking for experiment metadata
                     experiment_ids.append(item.name)
 

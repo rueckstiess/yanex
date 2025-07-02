@@ -41,7 +41,9 @@ def parse_iso_timestamp(timestamp: str) -> Optional[datetime]:
             return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
 
         # Handle explicit timezone offset (e.g., +00:00, -05:00)
-        elif "+" in timestamp or timestamp.count("-") > 2:  # Account for date separators
+        elif (
+            "+" in timestamp or timestamp.count("-") > 2
+        ):  # Account for date separators
             return datetime.fromisoformat(timestamp)
 
         # No timezone info - assume UTC for consistency
@@ -53,7 +55,9 @@ def parse_iso_timestamp(timestamp: str) -> Optional[datetime]:
         return None
 
 
-def ensure_timezone_aware(dt: datetime, default_tz: timezone = timezone.utc) -> datetime:
+def ensure_timezone_aware(
+    dt: datetime, default_tz: timezone = timezone.utc
+) -> datetime:
     """Ensure datetime object has timezone information.
 
     Args:

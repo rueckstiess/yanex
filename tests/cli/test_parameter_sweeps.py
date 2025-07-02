@@ -3,10 +3,11 @@ Tests for CLI parameter sweep functionality.
 """
 
 import os
+
 import pytest
 
-from yanex.cli.main import cli
 from tests.test_utils import TestFileHelpers
+from yanex.cli.main import cli
 
 
 class TestCLIParameterSweeps:
@@ -84,10 +85,7 @@ class TestCLIParameterSweeps:
                 in result.output
             )
             assert "Staged 2 sweep experiments" in result.output
-            assert (
-                "sweep-test-sweep-001" in result.output
-                or "IDs:" in result.output
-            )
+            assert "sweep-test-sweep-001" in result.output or "IDs:" in result.output
         finally:
             if old_yanex_dir:
                 os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
@@ -133,7 +131,10 @@ class TestCLIParameterSweeps:
     def test_mixed_sweep_and_regular_parameters(self, tmp_path, cli_runner):
         """Test mix of sweep and regular parameters."""
         script_path = TestFileHelpers.create_test_script(
-            tmp_path, "mixed_params_script.py", "simple", test_message="mixed params test"
+            tmp_path,
+            "mixed_params_script.py",
+            "simple",
+            test_message="mixed params test",
         )
 
         # Use isolated experiment directory
@@ -171,7 +172,10 @@ class TestCLIParameterSweeps:
     def test_nested_parameter_sweep(self, tmp_path, cli_runner):
         """Test parameter sweep with nested keys."""
         script_path = TestFileHelpers.create_test_script(
-            tmp_path, "nested_params_script.py", "simple", test_message="nested params test"
+            tmp_path,
+            "nested_params_script.py",
+            "simple",
+            test_message="nested params test",
         )
 
         # Use isolated experiment directory
@@ -207,7 +211,10 @@ class TestCLIParameterSweeps:
     def test_regular_parameters_without_sweeps(self, tmp_path, cli_runner):
         """Test that regular parameters work normally without --stage."""
         script_path = TestFileHelpers.create_test_script(
-            tmp_path, "regular_params_script.py", "simple", test_message="regular params test"
+            tmp_path,
+            "regular_params_script.py",
+            "simple",
+            test_message="regular params test",
         )
 
         result = cli_runner.invoke(
@@ -237,7 +244,9 @@ class TestCLIParameterSweeps:
             ("lr=list()", "Invalid list() syntax: list()"),
         ],
     )
-    def test_sweep_syntax_validation_errors(self, tmp_path, cli_runner, invalid_param, expected_error_fragment):
+    def test_sweep_syntax_validation_errors(
+        self, tmp_path, cli_runner, invalid_param, expected_error_fragment
+    ):
         """Test that invalid sweep syntax produces helpful errors."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "test_script.py", "simple"
@@ -343,11 +352,23 @@ class TestCLIParameterSweeps:
             (["lr=range(0.01, 0.04, 0.01)"], 3),  # 3 values: 0.01, 0.02, 0.03
             (["lr=list(0.001, 0.01, 0.1)"], 3),  # 3 explicit values
             (["lr=linspace(0.01, 0.02, 3)"], 3),  # 3 linearly spaced values
-            (["lr=range(0.01, 0.03, 0.01)", "batch_size=list(16, 32)"], 4),  # 2x2 cross-product
-            (["lr=list(0.001, 0.01)", "batch_size=list(16, 32)", "epochs=list(10, 20)"], 8),  # 2x2x2 cross-product
+            (
+                ["lr=range(0.01, 0.03, 0.01)", "batch_size=list(16, 32)"],
+                4,
+            ),  # 2x2 cross-product
+            (
+                [
+                    "lr=list(0.001, 0.01)",
+                    "batch_size=list(16, 32)",
+                    "epochs=list(10, 20)",
+                ],
+                8,
+            ),  # 2x2x2 cross-product
         ],
     )
-    def test_sweep_expansion_counts(self, tmp_path, cli_runner, sweep_params, expected_count):
+    def test_sweep_expansion_counts(
+        self, tmp_path, cli_runner, sweep_params, expected_count
+    ):
         """Test that parameter sweeps expand to correct number of experiments."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "count_test_script.py", "simple"
@@ -365,13 +386,16 @@ class TestCLIParameterSweeps:
                 "--stage",
                 "--ignore-dirty",
             ]
-            
+
             for param in sweep_params:
                 command.extend(["--param", param])
 
             result = cli_runner.invoke(cli, command)
             assert result.exit_code == 0
-            assert f"Parameter sweep detected: expanding into {expected_count} experiments" in result.output
+            assert (
+                f"Parameter sweep detected: expanding into {expected_count} experiments"
+                in result.output
+            )
             assert f"Staged {expected_count} sweep experiments" in result.output
         finally:
             if old_yanex_dir:

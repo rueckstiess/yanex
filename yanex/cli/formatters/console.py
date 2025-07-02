@@ -187,6 +187,7 @@ class ExperimentTableFormatter:
             else:
                 # For non-running experiments without end time, use current time as fallback
                 from datetime import timezone
+
                 end_time = datetime.now(timezone.utc)
 
             duration_str = format_duration(start_time, end_time)

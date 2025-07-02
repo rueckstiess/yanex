@@ -154,9 +154,7 @@ def update_experiments(
     )
 
     CLIErrorHandler.validate_targeting_options(
-        list(experiment_identifiers),
-        has_filters,
-        "update"
+        list(experiment_identifiers), has_filters, "update"
     )
 
     # Parse time specifications

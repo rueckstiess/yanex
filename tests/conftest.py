@@ -84,6 +84,7 @@ yanex.log_results(result)
 # Additional fixtures for test infrastructure consolidation
 # These supplement existing fixtures without replacing them
 
+
 @pytest.fixture
 def isolated_experiments_dir(temp_dir: Path) -> Path:
     """Create an isolated experiments directory for testing."""
@@ -96,6 +97,7 @@ def isolated_experiments_dir(temp_dir: Path) -> Path:
 def isolated_storage(isolated_experiments_dir: Path):
     """Create an isolated ExperimentStorage instance."""
     from yanex.core.storage import ExperimentStorage
+
     return ExperimentStorage(isolated_experiments_dir)
 
 
@@ -103,6 +105,7 @@ def isolated_storage(isolated_experiments_dir: Path):
 def isolated_manager(isolated_experiments_dir: Path):
     """Create an isolated ExperimentManager instance."""
     from yanex.core.manager import ExperimentManager
+
     return ExperimentManager(experiments_dir=isolated_experiments_dir)
 
 
@@ -110,6 +113,7 @@ def isolated_manager(isolated_experiments_dir: Path):
 def cli_runner():
     """Create a Click CLI runner for testing."""
     from click.testing import CliRunner
+
     return CliRunner()
 
 
@@ -117,8 +121,7 @@ def cli_runner():
 def sample_experiment_metadata():
     """Create sample experiment metadata for testing."""
     from tests.test_utils import TestDataFactory
+
     return TestDataFactory.create_experiment_metadata(
-        experiment_id="test001",
-        name="Test Experiment",
-        tags=["test", "sample"]
+        experiment_id="test001", name="Test Experiment", tags=["test", "sample"]
     )

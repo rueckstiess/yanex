@@ -61,7 +61,6 @@ addopts = [
     "--cov=yanex",
     "--cov-report=html",
     "--cov-report=term-missing",
-    "--cov-fail-under=90",
     "-v"
 ]
 

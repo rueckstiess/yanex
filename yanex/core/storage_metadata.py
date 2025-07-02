@@ -35,7 +35,9 @@ class FileSystemMetadataStorage(MetadataStorage):
         Raises:
             StorageError: If metadata cannot be saved
         """
-        exp_dir = self.directory_manager.get_experiment_directory(experiment_id, include_archived)
+        exp_dir = self.directory_manager.get_experiment_directory(
+            experiment_id, include_archived
+        )
         metadata_path = exp_dir / "metadata.json"
 
         # Add timestamp
@@ -63,7 +65,9 @@ class FileSystemMetadataStorage(MetadataStorage):
         Raises:
             StorageError: If metadata cannot be loaded
         """
-        exp_dir = self.directory_manager.get_experiment_directory(experiment_id, include_archived)
+        exp_dir = self.directory_manager.get_experiment_directory(
+            experiment_id, include_archived
+        )
         metadata_path = exp_dir / "metadata.json"
 
         if not metadata_path.exists():

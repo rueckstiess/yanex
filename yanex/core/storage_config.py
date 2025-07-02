@@ -51,7 +51,9 @@ class FileSystemConfigurationStorage(ConfigurationStorage):
         Raises:
             StorageError: If configuration cannot be loaded
         """
-        exp_dir = self.directory_manager.get_experiment_directory(experiment_id, include_archived)
+        exp_dir = self.directory_manager.get_experiment_directory(
+            experiment_id, include_archived
+        )
         config_path = exp_dir / "config.yaml"
 
         if not config_path.exists():

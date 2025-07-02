@@ -59,7 +59,7 @@ class SweepParameterParser(ParameterParser):
 
     def can_parse(self, value_str: str) -> bool:
         """Check if value contains sweep syntax."""
-        return bool(re.match(r'(range|linspace|logspace|list)\s*\(', value_str.strip()))
+        return bool(re.match(r"(range|linspace|logspace|list)\s*\(", value_str.strip()))
 
     def parse(self, value_str: str) -> SweepParameter:
         """Parse sweep syntax into SweepParameter objects."""
@@ -231,9 +231,8 @@ class QuotedStringParser(ParameterParser):
     def can_parse(self, value_str: str) -> bool:
         """Check if value is a quoted string."""
         stripped = value_str.strip()
-        return (
-            (stripped.startswith('"') and stripped.endswith('"')) or
-            (stripped.startswith("'") and stripped.endswith("'"))
+        return (stripped.startswith('"') and stripped.endswith('"')) or (
+            stripped.startswith("'") and stripped.endswith("'")
         )
 
     def parse(self, value_str: str) -> str:
@@ -275,4 +274,3 @@ class BasicParameterParser:
 
         # Should never reach here since StringParser accepts everything
         return value_str
-

@@ -94,9 +94,7 @@ def delete_experiments(
     )
 
     CLIErrorHandler.validate_targeting_options(
-        list(experiment_identifiers),
-        has_filters,
-        "delete"
+        list(experiment_identifiers), has_filters, "delete"
     )
 
     # Parse time specifications
@@ -139,9 +137,7 @@ def delete_experiments(
 
     # Show experiments and get confirmation (always required for deletion)
     operation_verb = "permanently deleted"
-    if not confirm_experiment_operation(
-        experiments, "delete", force, operation_verb
-    ):
+    if not confirm_experiment_operation(experiments, "delete", force, operation_verb):
         click.echo("Delete operation cancelled.")
         return
 

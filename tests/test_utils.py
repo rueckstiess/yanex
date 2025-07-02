@@ -9,10 +9,9 @@ import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from unittest.mock import Mock
 
-import pytest
 from click.testing import CliRunner
 
 from yanex.core.manager import ExperimentManager
@@ -27,17 +26,17 @@ class TestDataFactory:
         experiment_id: str,
         status: str = "completed",
         name: Optional[str] = None,
-        **overrides: Any
+        **overrides: Any,
     ) -> Dict[str, Any]:
         """
         Create standard experiment metadata for testing.
-        
+
         Args:
             experiment_id: Unique experiment identifier
             status: Experiment status (completed, failed, running, etc.)
             name: Optional experiment name
             **overrides: Additional fields to override defaults
-            
+
         Returns:
             Dictionary containing experiment metadata
         """
@@ -50,10 +49,10 @@ class TestDataFactory:
             "tags": [],
             "archived": False,
         }
-        
+
         if name:
             base_metadata["name"] = name
-            
+
         if status == "completed":
             base_metadata["completed_at"] = "2023-01-01T12:05:00Z"
             base_metadata["duration"] = 299.0
@@ -63,23 +62,22 @@ class TestDataFactory:
         elif status == "running":
             # Remove end time fields for running experiments
             pass
-            
+
         # Apply any overrides
         base_metadata.update(overrides)
         return base_metadata
 
     @staticmethod
     def create_experiment_config(
-        config_type: str = "ml_training",
-        **overrides: Any
+        config_type: str = "ml_training", **overrides: Any
     ) -> Dict[str, Any]:
         """
         Create standard experiment configuration for testing.
-        
+
         Args:
             config_type: Type of config template to use
             **overrides: Additional fields to override defaults
-            
+
         Returns:
             Dictionary containing experiment configuration
         """
@@ -101,25 +99,24 @@ class TestDataFactory:
                 "param1": "value1",
                 "param2": 42,
                 "param3": True,
-            }
+            },
         }
-        
+
         base_config = config_templates.get(config_type, config_templates["simple"])
         base_config.update(overrides)
         return base_config
 
     @staticmethod
     def create_experiment_results(
-        result_type: str = "ml_metrics",
-        **overrides: Any
+        result_type: str = "ml_metrics", **overrides: Any
     ) -> Dict[str, Any]:
         """
         Create standard experiment results for testing.
-        
+
         Args:
             result_type: Type of results template to use
             **overrides: Additional fields to override defaults
-            
+
         Returns:
             Dictionary containing experiment results
         """
@@ -142,9 +139,9 @@ class TestDataFactory:
                 "value": 123.45,
                 "status": "success",
                 "timestamp": "2023-01-01T12:05:00Z",
-            }
+            },
         }
-        
+
         base_results = result_templates.get(result_type, result_templates["simple"])
         base_results.update(overrides)
         return base_results
@@ -153,11 +150,11 @@ class TestDataFactory:
     def create_result_entry(step: int, **metrics: Any) -> Dict[str, Any]:
         """
         Create a standardized result entry for testing.
-        
+
         Args:
             step: Training/processing step number
             **metrics: Additional metrics to include in the result
-            
+
         Returns:
             Dictionary containing result entry with step and metrics
         """
@@ -172,24 +169,24 @@ class TestDataFactory:
     def create_comparison_data(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Create comparison data structure for testing.
-        
+
         Args:
             rows: List of row dictionaries containing experiment data
-            
+
         Returns:
             Dictionary containing comparison data structure
         """
         # Extract parameter and metric columns from rows
         param_columns = set()
         metric_columns = set()
-        
+
         for row in rows:
             for key in row.keys():
                 if key.startswith("param:"):
                     param_columns.add(key.replace("param:", ""))
                 elif key.startswith("metric:"):
                     metric_columns.add(key.replace("metric:", ""))
-        
+
         return {
             "rows": rows,
             "param_columns": sorted(param_columns),
@@ -206,26 +203,37 @@ class TestAssertions:
     def assert_valid_experiment_metadata(metadata: Dict[str, Any]) -> None:
         """
         Assert that experiment metadata has required structure.
-        
+
         Args:
             metadata: Experiment metadata dictionary to validate
         """
         required_fields = ["id", "status", "created_at"]
         for field in required_fields:
             assert field in metadata, f"Missing required field: {field}"
-            
+
         # Validate status is one of known values
-        valid_statuses = ["created", "running", "completed", "failed", "cancelled", "staged"]
-        assert metadata["status"] in valid_statuses, f"Invalid status: {metadata['status']}"
-        
+        valid_statuses = [
+            "created",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "staged",
+        ]
+        assert metadata["status"] in valid_statuses, (
+            f"Invalid status: {metadata['status']}"
+        )
+
         # Validate ID format (should be non-empty string)
-        assert isinstance(metadata["id"], str) and len(metadata["id"]) > 0, "ID must be non-empty string"
+        assert isinstance(metadata["id"], str) and len(metadata["id"]) > 0, (
+            "ID must be non-empty string"
+        )
 
     @staticmethod
     def assert_valid_experiment_config(config: Dict[str, Any]) -> None:
         """
         Assert that experiment configuration is valid.
-        
+
         Args:
             config: Experiment configuration dictionary to validate
         """
@@ -236,7 +244,7 @@ class TestAssertions:
     def assert_valid_experiment_results(results: Dict[str, Any]) -> None:
         """
         Assert that experiment results are valid.
-        
+
         Args:
             results: Experiment results dictionary to validate
         """
@@ -247,23 +255,34 @@ class TestAssertions:
     def assert_experiment_directory_structure(experiment_dir: Path) -> None:
         """
         Assert that experiment directory has the expected structure.
-        
+
         Args:
             experiment_dir: Path to experiment directory
         """
-        assert experiment_dir.exists(), f"Experiment directory does not exist: {experiment_dir}"
-        assert experiment_dir.is_dir(), f"Experiment path is not a directory: {experiment_dir}"
-        
+        assert experiment_dir.exists(), (
+            f"Experiment directory does not exist: {experiment_dir}"
+        )
+        assert experiment_dir.is_dir(), (
+            f"Experiment path is not a directory: {experiment_dir}"
+        )
+
         # Check for artifacts subdirectory (created by default)
         artifacts_dir = experiment_dir / "artifacts"
         assert artifacts_dir.exists(), f"Artifacts directory missing: {artifacts_dir}"
-        assert artifacts_dir.is_dir(), f"Artifacts path is not a directory: {artifacts_dir}"
+        assert artifacts_dir.is_dir(), (
+            f"Artifacts path is not a directory: {artifacts_dir}"
+        )
 
     @staticmethod
-    def assert_experiment_files_exist(experiment_dir: Path, check_metadata: bool = True, check_config: bool = False, check_results: bool = False) -> None:
+    def assert_experiment_files_exist(
+        experiment_dir: Path,
+        check_metadata: bool = True,
+        check_config: bool = False,
+        check_results: bool = False,
+    ) -> None:
         """
         Assert that specific experiment files exist in directory.
-        
+
         Args:
             experiment_dir: Path to experiment directory
             check_metadata: Whether to check for metadata.json
@@ -271,24 +290,26 @@ class TestAssertions:
             check_results: Whether to check for results.json
         """
         TestAssertions.assert_experiment_directory_structure(experiment_dir)
-        
+
         if check_metadata:
             metadata_file = experiment_dir / "metadata.json"
             assert metadata_file.exists(), f"Metadata file missing: {metadata_file}"
-            
+
         if check_config:
             config_file = experiment_dir / "config.json"
             assert config_file.exists(), f"Config file missing: {config_file}"
-            
+
         if check_results:
             results_file = experiment_dir / "results.json"
             assert results_file.exists(), f"Results file missing: {results_file}"
 
     @staticmethod
-    def assert_metadata_fields(metadata: Dict[str, Any], required_fields: List[str]) -> None:
+    def assert_metadata_fields(
+        metadata: Dict[str, Any], required_fields: List[str]
+    ) -> None:
         """
         Assert that metadata contains all required fields.
-        
+
         Args:
             metadata: Metadata dictionary to check
             required_fields: List of field names that must be present
@@ -305,27 +326,27 @@ class TestFileHelpers:
         temp_dir: Path,
         script_name: str = "test_script.py",
         script_type: str = "simple",
-        **template_vars: Any
+        **template_vars: Any,
     ) -> Path:
         """
         Create a test Python script with specified content.
-        
+
         Args:
             temp_dir: Directory to create script in
             script_name: Name of the script file
             script_type: Type of script template to use
             **template_vars: Variables to substitute in template
-            
+
         Returns:
             Path to created script file
         """
         script_templates = {
-            "simple": '''
+            "simple": """
 import sys
 print("Hello from test script")
 sys.exit(0)
-''',
-            "yanex_basic": '''
+""",
+            "yanex_basic": """
 import yanex
 
 # Get parameters
@@ -335,11 +356,11 @@ print(f"Running with params: {{params}}")
 # Log some results
 results = {{"test_metric": 42, "status": "success"}}
 yanex.log_results(results)
-''',
-            "yanex_ml": '''
+""",
+            "yanex_ml": """
 import yanex
 
-# Get parameters  
+# Get parameters
 params = yanex.get_params()
 learning_rate = params.get("learning_rate", 0.001)
 epochs = params.get("epochs", 10)
@@ -348,7 +369,6 @@ epochs = params.get("epochs", 10)
 for epoch in range(epochs):
     accuracy = 0.7 + (epoch * 0.03)  # Fake improvement
     loss = 1.0 - accuracy
-    
     yanex.log_results({{
         "epoch": epoch,
         "accuracy": accuracy,
@@ -357,63 +377,62 @@ for epoch in range(epochs):
     }})
 
 print("Training completed")
-''',
-            "failing": '''
+""",
+            "failing": """
 import sys
 print("This script will fail")
 raise ValueError("Test failure")
-''',
+""",
         }
-        
+
         template = script_templates.get(script_type, script_templates["simple"])
-        
+
         # Simple template variable substitution
         for var, value in template_vars.items():
             template = template.replace(f"{{{var}}}", str(value))
-            
+
         script_path = temp_dir / script_name
         script_path.write_text(template)
         return script_path
 
     @staticmethod
     def create_config_file(
-        temp_dir: Path,
-        config_data: Dict[str, Any],
-        filename: str = "config.yaml"
+        temp_dir: Path, config_data: Dict[str, Any], filename: str = "config.yaml"
     ) -> Path:
         """
         Create a configuration file with specified data.
-        
+
         Args:
             temp_dir: Directory to create config in
             config_data: Configuration data to write
             filename: Name of config file
-            
+
         Returns:
             Path to created config file
         """
         config_path = temp_dir / filename
-        
-        if filename.endswith('.json'):
+
+        if filename.endswith(".json"):
             config_path.write_text(json.dumps(config_data, indent=2))
-        elif filename.endswith('.yaml') or filename.endswith('.yml'):
+        elif filename.endswith(".yaml") or filename.endswith(".yml"):
             import yaml
+
             config_path.write_text(yaml.dump(config_data, default_flow_style=False))
         else:
             # Fallback to JSON
             config_path.write_text(json.dumps(config_data, indent=2))
-            
+
         return config_path
 
     @staticmethod
     def create_test_file(file_path: Path, content: str) -> Path:
         """
         Create a test file with specified content.
-        
+
         Args:
             file_path: Path where the file should be created
             content: Content to write to the file
-            
+
         Returns:
             Path to the created file
         """
@@ -422,10 +441,12 @@ raise ValueError("Test failure")
         return file_path
 
     @staticmethod
-    def create_multiple_experiment_directories(storage: ExperimentStorage, experiment_ids: List[str]) -> None:
+    def create_multiple_experiment_directories(
+        storage: ExperimentStorage, experiment_ids: List[str]
+    ) -> None:
         """
         Create multiple experiment directories with metadata using storage.
-        
+
         Args:
             storage: ExperimentStorage instance to use
             experiment_ids: List of experiment IDs to create directories for
@@ -434,8 +455,7 @@ raise ValueError("Test failure")
             storage.create_experiment_directory(exp_id)
             # Create minimal metadata so the experiment is detected by list_experiments()
             metadata = TestDataFactory.create_experiment_metadata(
-                experiment_id=exp_id,
-                status="completed"
+                experiment_id=exp_id, status="completed"
             )
             storage.save_metadata(exp_id, metadata)
 
@@ -444,11 +464,11 @@ raise ValueError("Test failure")
         experiment_dir: Path,
         metadata: Dict[str, Any],
         config: Optional[Dict[str, Any]] = None,
-        results: Optional[Dict[str, Any]] = None
+        results: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Create complete experiment files in a directory.
-        
+
         Args:
             experiment_dir: Directory to create experiment files in
             metadata: Experiment metadata to save
@@ -456,22 +476,23 @@ raise ValueError("Test failure")
             results: Optional results data to save
         """
         experiment_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Save metadata.json
         with (experiment_dir / "metadata.json").open("w") as f:
             json.dump(metadata, f, indent=2)
-        
+
         # Save config.yaml if provided
         if config is not None:
             try:
                 import yaml
+
                 with (experiment_dir / "config.yaml").open("w") as f:
                     yaml.dump(config, f, default_flow_style=False)
             except ImportError:
                 # Fallback to JSON
                 with (experiment_dir / "config.json").open("w") as f:
                     json.dump(config, f, indent=2)
-        
+
         # Save results.json if provided
         if results is not None:
             with (experiment_dir / "results.json").open("w") as f:
@@ -481,13 +502,12 @@ raise ValueError("Test failure")
     def create_temp_storage():
         """
         Create a temporary ExperimentStorage instance for testing.
-        
+
         Returns:
             ExperimentStorage instance using a temporary directory
         """
         temp_dir = Path(tempfile.mkdtemp())
         return ExperimentStorage(temp_dir)
-
 
 
 class MockHelpers:
@@ -497,50 +517,55 @@ class MockHelpers:
     def create_git_validation_mocks():
         """
         Create standard mocks for git validation.
-        
+
         Returns:
             Dictionary of common git-related mocks
         """
         return {
-            'validate_clean_working_directory': Mock(return_value=None),
-            'get_git_commit_hash': Mock(return_value="abc123def456"),
-            'get_git_branch': Mock(return_value="main"),
-            'is_git_repo': Mock(return_value=True),
+            "validate_clean_working_directory": Mock(return_value=None),
+            "get_git_commit_hash": Mock(return_value="abc123def456"),
+            "get_git_branch": Mock(return_value="main"),
+            "is_git_repo": Mock(return_value=True),
         }
 
     @staticmethod
     def create_environment_mocks():
         """
         Create standard mocks for environment capture.
-        
+
         Returns:
             Dictionary of common environment mocks
         """
         return {
-            'capture_environment': Mock(return_value={
-                "python_version": "3.11.0",
-                "platform": "linux",
-                "hostname": "test-host",
-                "user": "test-user",
-            }),
-            'get_system_info': Mock(return_value={
-                "cpu_count": 4,
-                "memory_gb": 16,
-                "disk_free_gb": 100,
-            }),
+            "capture_environment": Mock(
+                return_value={
+                    "python_version": "3.11.0",
+                    "platform": "linux",
+                    "hostname": "test-host",
+                    "user": "test-user",
+                }
+            ),
+            "get_system_info": Mock(
+                return_value={
+                    "cpu_count": 4,
+                    "memory_gb": 16,
+                    "disk_free_gb": 100,
+                }
+            ),
         }
 
 
 # Additional fixtures that supplement the existing conftest.py
 # These are kept separate to avoid conflicts
 
+
 def create_isolated_storage(temp_dir: Path) -> ExperimentStorage:
     """
     Create an isolated ExperimentStorage instance for testing.
-    
+
     Args:
         temp_dir: Temporary directory for storage
-        
+
     Returns:
         ExperimentStorage instance
     """
@@ -550,15 +575,16 @@ def create_isolated_storage(temp_dir: Path) -> ExperimentStorage:
 def create_isolated_manager(temp_dir: Optional[Path] = None) -> ExperimentManager:
     """
     Create an isolated ExperimentManager instance for testing.
-    
+
     Args:
         temp_dir: Temporary directory for experiments (creates one if None)
-        
+
     Returns:
         ExperimentManager instance
     """
     if temp_dir is None:
         import tempfile
+
         temp_dir = Path(tempfile.mkdtemp())
     return ExperimentManager(experiments_dir=temp_dir)
 
@@ -566,7 +592,7 @@ def create_isolated_manager(temp_dir: Optional[Path] = None) -> ExperimentManage
 def create_cli_runner() -> CliRunner:
     """
     Create a Click CLI runner for testing.
-    
+
     Returns:
         CliRunner instance
     """
@@ -576,7 +602,7 @@ def create_cli_runner() -> CliRunner:
 # Constants for common test data
 TEST_EXPERIMENT_IDS = [
     "test001",
-    "test002", 
+    "test002",
     "test003",
     "exp001",
     "exp002",
@@ -594,7 +620,7 @@ TEST_EXPERIMENT_NAMES = [
 
 TEST_TAGS = [
     "test",
-    "production", 
+    "production",
     "experimental",
     "ml-training",
     "data-processing",

@@ -8,12 +8,12 @@ All test logic and coverage is preserved while reducing setup duplication.
 import threading
 import time
 from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 import pytest
 
 import yanex
-from tests.test_utils import TestDataFactory, create_isolated_manager, TestAssertions
+from tests.test_utils import TestDataFactory, create_isolated_manager
 
 
 class TestThreadLocalState:
@@ -90,34 +90,32 @@ class TestExperimentAPI:
         # NEW: Much cleaner setup using utilities
         self.manager = create_isolated_manager()
         self.experiment_id = "api12345"
-        
+
         # Create experiment directory
         exp_dir = self.manager.storage.experiments_dir / self.experiment_id
         exp_dir.mkdir(parents=True, exist_ok=True)
         (exp_dir / "artifacts").mkdir(parents=True, exist_ok=True)
-        
+
         # NEW: Use factory for standardized metadata
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=self.experiment_id,
-            status="running",
-            name="test-experiment"
+            experiment_id=self.experiment_id, status="running", name="test-experiment"
         )
         self.manager.storage.save_metadata(self.experiment_id, metadata)
-        
+
         # NEW: Use factory for config with custom overrides
         config = TestDataFactory.create_experiment_config(
             "ml_training",
             learning_rate=0.01,  # Override default
             epochs=10,
             model={
-                "architecture": "resnet", 
+                "architecture": "resnet",
                 "layers": 18,
                 "optimizer": {"type": "adam", "lr": 0.001, "weight_decay": 1e-4},
             },
-            data={"batch_size": 32, "augmentation": True}
+            data={"batch_size": 32, "augmentation": True},
         )
         self.manager.storage.save_config(self.experiment_id, config)
-        
+
         # Set current experiment
         yanex._set_current_experiment_id(self.experiment_id)
 
@@ -286,7 +284,10 @@ class TestExperimentAPI:
 
         # Verify artifact was saved
         artifact_path = (
-            self.manager.storage.experiments_dir / self.experiment_id / "artifacts" / "test.txt"
+            self.manager.storage.experiments_dir
+            / self.experiment_id
+            / "artifacts"
+            / "test.txt"
         )
         assert artifact_path.exists()
         assert artifact_path.read_text() == "test content"
@@ -301,7 +302,10 @@ class TestExperimentAPI:
 
         # Verify text artifact was saved
         artifact_path = (
-            self.manager.storage.experiments_dir / self.experiment_id / "artifacts" / "output.txt"
+            self.manager.storage.experiments_dir
+            / self.experiment_id
+            / "artifacts"
+            / "output.txt"
         )
         assert artifact_path.exists()
         assert artifact_path.read_text() == content
@@ -338,18 +342,17 @@ class TestManualExperimentControl:
         # NEW: Much cleaner setup
         self.manager = create_isolated_manager()
         self.experiment_id = "control123"
-        
+
         # Create experiment directory
         exp_dir = self.manager.storage.experiments_dir / self.experiment_id
         exp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # NEW: Use factory for metadata
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=self.experiment_id,
-            status="running"
+            experiment_id=self.experiment_id, status="running"
         )
         self.manager.storage.save_metadata(self.experiment_id, metadata)
-        
+
         yanex._set_current_experiment_id(self.experiment_id)
 
     def teardown_method(self):
@@ -405,16 +408,14 @@ class TestExperimentContext:
         # NEW: Cleaner setup with utilities
         self.manager = create_isolated_manager()
         self.experiment_id = "context123"
-        
+
         # Create experiment directory
         exp_dir = self.manager.storage.experiments_dir / self.experiment_id
         exp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # NEW: Use factory for 'created' status metadata
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=self.experiment_id,
-            status="created",
-            started_at=None
+            experiment_id=self.experiment_id, status="created", started_at=None
         )
         self.manager.storage.save_metadata(self.experiment_id, metadata)
 
@@ -522,7 +523,7 @@ class TestExperimentCreation:
         mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
-        
+
         mock_get_manager.return_value = self.manager
 
         script_path = Path(__file__)
@@ -547,11 +548,10 @@ class TestExperimentCreation:
         experiment_id = "test1234"
         exp_dir = self.manager.storage.experiments_dir / experiment_id
         exp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # NEW: Use factory for metadata
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="created"
+            experiment_id=experiment_id, status="created"
         )
         self.manager.storage.save_metadata(experiment_id, metadata)
 
@@ -573,84 +573,92 @@ class TestExperimentCreation:
 
 class TestAPIParameterizedScenarios:
     """Additional tests using utilities for comprehensive scenarios."""
-    
-    @pytest.mark.parametrize("status,expected_fields", [
-        ("running", ["started_at"]),
-        ("completed", ["completed_at", "duration"]),
-        ("failed", ["failed_at", "error"]),
-    ])
-    def test_get_metadata_different_statuses(self, isolated_manager, status, expected_fields):
+
+    @pytest.mark.parametrize(
+        "status,expected_fields",
+        [
+            ("running", ["started_at"]),
+            ("completed", ["completed_at", "duration"]),
+            ("failed", ["failed_at", "error"]),
+        ],
+    )
+    def test_get_metadata_different_statuses(
+        self, isolated_manager, status, expected_fields
+    ):
         """Test getting metadata for experiments in different statuses."""
         experiment_id = f"{status[:4].ljust(4, 'x')}test"
-        
+
         # Create experiment directory
         exp_dir = isolated_manager.storage.experiments_dir / experiment_id
         exp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # NEW: Use factory for different status types
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status=status
+            experiment_id=experiment_id, status=status
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
-        
+
         yanex._set_current_experiment_id(experiment_id)
-        
+
         try:
             with patch("yanex.api._get_experiment_manager") as mock_get_manager:
                 mock_get_manager.return_value = isolated_manager
-                
+
                 retrieved_metadata = yanex.get_metadata()
                 assert retrieved_metadata["status"] == status
-                
+
                 # Verify status-specific fields are present
                 for field in expected_fields:
                     assert field in retrieved_metadata
-                    
+
         finally:
             yanex._clear_current_experiment_id()
-    
-    @pytest.mark.parametrize("config_type,expected_params", [
-        ("ml_training", ["learning_rate", "batch_size", "epochs"]),
-        ("data_processing", ["n_docs", "chunk_size", "format"]),
-        ("simple", ["param1", "param2", "param3"]),
-    ])
-    def test_get_params_different_config_types(self, isolated_manager, config_type, expected_params):
+
+    @pytest.mark.parametrize(
+        "config_type,expected_params",
+        [
+            ("ml_training", ["learning_rate", "batch_size", "epochs"]),
+            ("data_processing", ["n_docs", "chunk_size", "format"]),
+            ("simple", ["param1", "param2", "param3"]),
+        ],
+    )
+    def test_get_params_different_config_types(
+        self, isolated_manager, config_type, expected_params
+    ):
         """Test getting parameters for different config types."""
         experiment_id = f"{config_type[:4].ljust(4, 'x')}cfg1"
-        
+
         # Create experiment
         exp_dir = isolated_manager.storage.experiments_dir / experiment_id
         exp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id,
-            status="running"
+            experiment_id=experiment_id, status="running"
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
-        
+
         # NEW: Use factory for different config types
         config = TestDataFactory.create_experiment_config(config_type)
         isolated_manager.storage.save_config(experiment_id, config)
-        
+
         yanex._set_current_experiment_id(experiment_id)
-        
+
         try:
             with patch("yanex.api._get_experiment_manager") as mock_get_manager:
                 mock_get_manager.return_value = isolated_manager
-                
+
                 params = yanex.get_params()
-                
+
                 # Verify expected parameters are present
                 for param in expected_params:
                     assert param in params
-                    
+
         finally:
             yanex._clear_current_experiment_id()
 
 
 # Summary of improvements in the complete conversion:
-# 
+#
 # 1. **Setup Reduction**: 20+ lines → 8-10 lines (50-60% reduction)
 # 2. **Factory Usage**: All metadata and config creation uses standardized factories
 # 3. **Isolated Environment**: create_isolated_manager() provides clean test environment

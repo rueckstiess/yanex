@@ -86,9 +86,7 @@ def archive_experiments(
     )
 
     CLIErrorHandler.validate_targeting_options(
-        list(experiment_identifiers),
-        has_filters,
-        "archive"
+        list(experiment_identifiers), has_filters, "archive"
     )
 
     # Parse time specifications

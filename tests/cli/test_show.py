@@ -4,16 +4,15 @@ Tests for yanex CLI show command functionality.
 
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.test_utils import TestDataFactory, TestFileHelpers
 from yanex.cli.commands.show import find_experiment
 from yanex.cli.filters import ExperimentFilter
 from yanex.cli.formatters.console import ExperimentTableFormatter
 from yanex.core.manager import ExperimentManager
-from tests.test_utils import TestDataFactory, TestFileHelpers
 
 
 class TestFindExperiment:
@@ -63,7 +62,9 @@ class TestFindExperiment:
             ("unique-experiment", "ijkl9012", "unique-experiment"),
         ],
     )
-    def test_find_experiment_by_identifier_success(self, identifier, expected_id, expected_name):
+    def test_find_experiment_by_identifier_success(
+        self, identifier, expected_id, expected_name
+    ):
         """Test finding experiment by ID or unique name."""
         with patch.object(
             self.filter, "_load_all_experiments", return_value=self.sample_experiments
@@ -203,14 +204,31 @@ class TestMetricsDisplayLogic:
         """Test metric selection for experiments with many metrics prioritizes key metrics."""
         # Create scenario with many metrics using utilities
         all_metrics = [
-            "accuracy", "loss", "epoch", "learning_rate", "f1_score",
-            "precision", "recall", "auc", "custom_metric_1", "custom_metric_2",
-            "metric_a", "metric_b", "metric_c", "metric_d", "metric_e",
+            "accuracy",
+            "loss",
+            "epoch",
+            "learning_rate",
+            "f1_score",
+            "precision",
+            "recall",
+            "auc",
+            "custom_metric_1",
+            "custom_metric_2",
+            "metric_a",
+            "metric_b",
+            "metric_c",
+            "metric_d",
+            "metric_e",
         ]
 
         key_metrics = [
-            "accuracy", "loss", "epoch", "learning_rate",
-            "f1_score", "precision", "recall",
+            "accuracy",
+            "loss",
+            "epoch",
+            "learning_rate",
+            "f1_score",
+            "precision",
+            "recall",
         ]
         shown_metrics = []
 
@@ -259,7 +277,9 @@ class TestMetricsDisplayLogic:
             ),
         ],
     )
-    def test_requested_metrics_validation(self, all_metrics, requested_metrics, expected_shown, expected_missing):
+    def test_requested_metrics_validation(
+        self, all_metrics, requested_metrics, expected_shown, expected_missing
+    ):
         """Test validation of user-requested metrics."""
         shown_metrics = []
         missing_metrics = []
@@ -299,16 +319,17 @@ class TestMetricsDisplayLogic:
 
         # Extract metrics (simulate what the formatter would do)
         all_metrics = list(experiment_results.keys())
-        
+
         # Should have more than 8 metrics to test selection
         assert len(all_metrics) >= 8
 
         # Test key metrics are available in the results
         key_metrics_in_results = [
-            metric for metric in ["accuracy", "loss", "precision", "recall", "f1_score"]
+            metric
+            for metric in ["accuracy", "loss", "precision", "recall", "f1_score"]
             if metric in all_metrics
         ]
-        
+
         # Should find some key metrics
         assert len(key_metrics_in_results) > 0
         assert "accuracy" in key_metrics_in_results

@@ -184,11 +184,11 @@ class ExperimentFilter:
         """Check if experiment name matches glob pattern."""
         name = experiment.get("name", "")
         original_name = name
-        
+
         # Special case: empty pattern should match empty names
         if not pattern:
             return not original_name
-        
+
         if not name:
             # Handle unnamed experiments - convert to searchable form
             name = "[unnamed]"

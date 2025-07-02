@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+from tests.test_utils import TestDataFactory, TestFileHelpers
 from yanex.core.config import (
     load_yaml_config,
     merge_configs,
@@ -15,7 +16,6 @@ from yanex.core.config import (
     save_yaml_config,
 )
 from yanex.utils.exceptions import ConfigError
-from tests.test_utils import TestDataFactory, TestFileHelpers
 
 
 class TestLoadYamlConfig:
@@ -38,7 +38,7 @@ class TestLoadYamlConfig:
 
         result = load_yaml_config(config_path)
         assert result == config_data
-        
+
         # Verify expected keys are present
         for key in expected_keys:
             assert key in result
@@ -99,7 +99,7 @@ class TestSaveYamlConfig:
         "config_type",
         [
             "ml_training",
-            "data_processing", 
+            "data_processing",
             "simple",
         ],
     )
@@ -152,8 +152,14 @@ class TestParseParamOverrides:
     @pytest.mark.parametrize(
         "param_strings,expected_result",
         [
-            (["param1=value1", "param2=123", "param3=true"], {"param1": "value1", "param2": 123, "param3": True}),
-            (["learning_rate=0.01", "epochs=100"], {"learning_rate": 0.01, "epochs": 100}),
+            (
+                ["param1=value1", "param2=123", "param3=true"],
+                {"param1": "value1", "param2": 123, "param3": True},
+            ),
+            (
+                ["learning_rate=0.01", "epochs=100"],
+                {"learning_rate": 0.01, "epochs": 100},
+            ),
             (["batch_size=32", "dropout=0.5"], {"batch_size": 32, "dropout": 0.5}),
         ],
     )
@@ -240,7 +246,10 @@ class TestParseParamOverrides:
         "param_strings,expected_result",
         [
             (["empty_param="], {"empty_param": ""}),
-            (["url=http://example.com?param=value"], {"url": "http://example.com?param=value"}),
+            (
+                ["url=http://example.com?param=value"],
+                {"url": "http://example.com?param=value"},
+            ),
             (["equation=x=y+z"], {"equation": "x=y+z"}),
         ],
     )
@@ -269,11 +278,21 @@ class TestMergeConfigs:
     @pytest.mark.parametrize(
         "base_config_type,override_params,expected_overrides",
         [
-            ("ml_training", {"learning_rate": 0.001, "new_param": "test"}, {"learning_rate": 0.001, "new_param": "test"}),
-            ("simple", {"param1": "overridden", "param4": "new"}, {"param1": "overridden", "param4": "new"}),
+            (
+                "ml_training",
+                {"learning_rate": 0.001, "new_param": "test"},
+                {"learning_rate": 0.001, "new_param": "test"},
+            ),
+            (
+                "simple",
+                {"param1": "overridden", "param4": "new"},
+                {"param1": "overridden", "param4": "new"},
+            ),
         ],
     )
-    def test_merge_simple_configs(self, base_config_type, override_params, expected_overrides):
+    def test_merge_simple_configs(
+        self, base_config_type, override_params, expected_overrides
+    ):
         """Test merging simple configurations."""
         base = TestDataFactory.create_experiment_config(config_type=base_config_type)
         override = override_params
@@ -283,7 +302,7 @@ class TestMergeConfigs:
         # Check that all override values are present
         for key, value in expected_overrides.items():
             assert result[key] == value
-        
+
         # Check that non-overridden base values are preserved
         for key, value in base.items():
             if key not in override:
@@ -331,7 +350,9 @@ class TestMergeConfigs:
             ({"complex": {"structure": [1, 2, 3]}}, None, type(None)),
         ],
     )
-    def test_merge_override_nested_with_non_dict(self, base_section, override_value, expected_type):
+    def test_merge_override_nested_with_non_dict(
+        self, base_section, override_value, expected_type
+    ):
         """Test overriding nested dict with non-dict value."""
         base = {"section": base_section}
         override = {"section": override_value}
@@ -365,7 +386,9 @@ class TestResolveConfig:
 
     def test_resolve_with_default_config(self, temp_dir):
         """Test resolving config with default config file."""
-        config_data = TestDataFactory.create_experiment_config(config_type="ml_training")
+        config_data = TestDataFactory.create_experiment_config(
+            config_type="ml_training"
+        )
         TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
 
         with patch("yanex.core.config.Path.cwd") as mock_cwd:
@@ -385,22 +408,36 @@ class TestResolveConfig:
     @pytest.mark.parametrize(
         "base_config_type,param_overrides,expected_overrides",
         [
-            ("ml_training", ["learning_rate=0.001", "new_param=test"], {"learning_rate": 0.001, "new_param": "test"}),
-            ("simple", ["param1=overridden", "param4=new"], {"param1": "overridden", "param4": "new"}),
+            (
+                "ml_training",
+                ["learning_rate=0.001", "new_param=test"],
+                {"learning_rate": 0.001, "new_param": "test"},
+            ),
+            (
+                "simple",
+                ["param1=overridden", "param4=new"],
+                {"param1": "overridden", "param4": "new"},
+            ),
         ],
     )
-    def test_resolve_with_param_overrides(self, temp_dir, base_config_type, param_overrides, expected_overrides):
+    def test_resolve_with_param_overrides(
+        self, temp_dir, base_config_type, param_overrides, expected_overrides
+    ):
         """Test resolving config with parameter overrides."""
         config_path = temp_dir / "config.yaml"
-        config_data = TestDataFactory.create_experiment_config(config_type=base_config_type)
+        config_data = TestDataFactory.create_experiment_config(
+            config_type=base_config_type
+        )
         TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
 
-        result = resolve_config(config_path=config_path, param_overrides=param_overrides)
+        result = resolve_config(
+            config_path=config_path, param_overrides=param_overrides
+        )
 
         # Check that overrides are applied
         for key, value in expected_overrides.items():
             assert result[key] == value
-        
+
         # Check that non-overridden values are preserved
         for key, value in config_data.items():
             if key not in expected_overrides:
@@ -410,7 +447,10 @@ class TestResolveConfig:
         "param_overrides,expected_result",
         [
             (["param1=value1", "param2=123"], {"param1": "value1", "param2": 123}),
-            (["learning_rate=0.01", "epochs=100"], {"learning_rate": 0.01, "epochs": 100}),
+            (
+                ["learning_rate=0.01", "epochs=100"],
+                {"learning_rate": 0.01, "epochs": 100},
+            ),
         ],
     )
     def test_resolve_only_param_overrides(self, param_overrides, expected_result):
@@ -426,7 +466,9 @@ class TestResolveConfig:
             ("settings.yaml", "simple"),
         ],
     )
-    def test_resolve_custom_default_config_name(self, temp_dir, custom_name, config_type):
+    def test_resolve_custom_default_config_name(
+        self, temp_dir, custom_name, config_type
+    ):
         """Test resolving with custom default config name."""
         config_data = TestDataFactory.create_experiment_config(config_type=config_type)
         TestFileHelpers.create_config_file(temp_dir, config_data, custom_name)
@@ -451,20 +493,22 @@ class TestResolveConfig:
         # Apply overrides
         param_overrides = [
             "learning_rate=0.001",  # Override existing
-            "batch_size=64",        # Add new
+            "batch_size=64",  # Add new
             "model.type=transformer",  # Add nested
         ]
 
-        result = resolve_config(config_path=config_path, param_overrides=param_overrides)
+        result = resolve_config(
+            config_path=config_path, param_overrides=param_overrides
+        )
 
         # Verify overrides applied
         assert result["learning_rate"] == 0.001
         assert result["batch_size"] == 64
         assert result["model"]["type"] == "transformer"
-        
+
         # Verify original values preserved where not overridden
         assert result["epochs"] == 100
-        
+
         # Verify structure is complete
         assert isinstance(result, dict)
         assert len(result) >= 4  # At least the added/modified keys

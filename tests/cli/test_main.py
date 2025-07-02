@@ -2,14 +2,11 @@
 Tests for yanex CLI main entry point.
 """
 
-import tempfile
-from pathlib import Path
 
 import pytest
-from click.testing import CliRunner
 
-from yanex.cli.main import cli
 from tests.test_utils import TestFileHelpers, create_cli_runner
+from yanex.cli.main import cli
 
 
 class TestCLIMain:
@@ -62,11 +59,11 @@ class TestCLIMain:
         [
             (
                 ["learning_rate=0.01", "epochs=100"],
-                ["learning_rate", "epochs", "0.01", "100"]
+                ["learning_rate", "epochs", "0.01", "100"],
             ),
             (
                 ["batch_size=32", "model=transformer"],
-                ["batch_size", "model", "32", "transformer"]
+                ["batch_size", "model", "32", "transformer"],
             ),
         ],
     )
@@ -97,7 +94,7 @@ class TestCLIMain:
                 "--dry-run",
             ],
         )
-        
+
         assert result.exit_code == 0
         for expected in expected_in_output:
             assert str(expected) in result.output
@@ -127,7 +124,7 @@ class TestCLIMain:
                 "--dry-run",
             ],
         )
-        
+
         assert result.exit_code != 0
         assert expected_error in result.output
 
@@ -147,7 +144,7 @@ class TestCLIMain:
                 "--dry-run",
             ],
         )
-        
+
         # Empty values should be allowed
         assert result.exit_code == 0
         assert "empty_param" in result.output
@@ -248,14 +245,13 @@ class TestCLIMain:
         )
 
         import os
+
         old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
         os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
 
         try:
             # This should work - script argument is optional when using --staged
-            result = self.runner.invoke(
-                cli, ["run", str(script_path), "--staged"]
-            )
+            result = self.runner.invoke(cli, ["run", str(script_path), "--staged"])
             assert result.exit_code == 0
             assert "No staged experiments found" in result.output
         finally:
