@@ -24,7 +24,7 @@ class ScriptExecutor:
             manager: The experiment manager instance to use for operations.
         """
         self.manager = manager
-        self.console = Console(stderr=True)  # Use stderr for yanex messages
+        self.console = Console()  # Use stdout with colors for yanex messages
 
     def execute_script(
         self,

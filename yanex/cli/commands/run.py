@@ -106,7 +106,7 @@ def run(
     )
 
     verbose = ctx.obj.get("verbose", False)
-    console = Console(stderr=True)
+    console = Console()  # Use stdout with colors
 
     # Handle mutually exclusive flags
     if stage and staged:
@@ -199,7 +199,7 @@ def _execute_experiment(
     ignore_dirty: bool = False,
 ) -> None:
     """Execute script as an experiment with proper lifecycle management."""
-    console = Console(stderr=True)
+    console = Console()  # Use stdout with colors
 
     # Create experiment
     manager = ExperimentManager()
@@ -380,7 +380,7 @@ def _stage_experiment(
 def _execute_staged_experiments(verbose: bool = False, console: Console = None) -> None:
     """Execute all staged experiments."""
     if console is None:
-        console = Console(stderr=True)
+        console = Console()  # Use stdout with colors
 
     manager = ExperimentManager()
     staged_experiments = manager.get_staged_experiments()
