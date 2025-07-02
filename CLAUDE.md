@@ -26,6 +26,12 @@ make lint           # Run ruff linting and mypy type checking
 make format         # Format code with ruff
 make format-check   # Check formatting without changes
 make check          # Run all quality checks (format-check + lint + test)
+
+# Direct ruff commands (use these during development)
+python -m ruff check              # Check for linting errors
+python -m ruff check --fix        # Auto-fix linting errors where possible
+python -m ruff format             # Format all code with ruff
+python -m ruff format --check     # Check if formatting is needed
 ```
 
 ### Build and Distribution
@@ -111,6 +117,20 @@ make clean          # Clean build artifacts and cache files
 - Use type hints (mypy configuration enforces strict typing)
 - Follow existing patterns and conventions
 
+### CRITICAL Development Workflow
+**ALWAYS run these commands after implementing new code:**
+```bash
+python -m ruff check --fix    # Auto-fix linting issues
+python -m ruff format         # Apply consistent formatting
+python -m ruff check          # Verify no remaining lint errors
+```
+
+**Why this is essential:**
+- GitHub Actions CI will fail if ruff check or format issues exist
+- Local ruff behavior may differ from CI environment
+- Prevents CI failures and maintains code quality standards
+- Modern Python 3.10+ type annotations are required (use `X | None` not `Optional[X]`)
+
 ### Recent Architecture Changes
 The codebase has undergone significant refactoring to:
 - Centralize CLI error handling and eliminate duplication
@@ -118,6 +138,7 @@ The codebase has undergone significant refactoring to:
 - Extract configuration parsing complexity into strategy pattern
 - Add test infrastructure utilities to reduce duplication
 - Eliminate date/time parsing duplication using centralized utilities
+- Modernize type annotations for Python 3.10+ (completed Dec 2024)
 
 ### Working with Experiments
 - Experiments have unique 8-character hex IDs
