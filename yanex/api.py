@@ -6,7 +6,10 @@ and thread-local storage for safe concurrent usage.
 """
 
 import os
+import subprocess
 import threading
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -164,6 +167,20 @@ def get_experiment_id() -> str | None:
     return _get_current_experiment_id()
 
 
+def get_experiment_dir() -> Path | None:
+    """Get absolute path to current experiment directory.
+
+    Returns:
+        Path to experiment directory, or None in standalone mode
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return None
+
+    manager = _get_experiment_manager()
+    return manager.storage.get_experiment_directory(experiment_id)
+
+
 def get_metadata() -> dict[str, Any]:
     """Get complete experiment metadata.
 
@@ -283,6 +300,203 @@ def log_matplotlib_figure(fig, filename: str, **kwargs) -> None:
             # Clean up temporary file
             if temp_path.exists():
                 os.unlink(temp_path)
+
+
+def execute_bash_script(
+    command: str,
+    timeout: float | None = None,
+    raise_on_error: bool = False,
+    stream_output: bool = True,
+    working_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Execute bash script/command within experiment context.
+
+    Args:
+        command: Shell command to execute
+        timeout: Optional timeout in seconds
+        raise_on_error: Raise exception on non-zero exit code
+        stream_output: Print output in real-time
+        working_dir: Working directory (defaults to experiment directory)
+
+    Returns:
+        Execution result dictionary with exit_code, stdout, stderr, etc.
+
+    Raises:
+        ExperimentContextError: If no active experiment context
+        subprocess.TimeoutExpired: If command times out
+        subprocess.CalledProcessError: If raise_on_error=True and command fails
+
+    Note:
+        Does nothing in standalone mode (no active experiment context)
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        raise ExperimentContextError(
+            "No active experiment context. Cannot execute bash script in standalone mode."
+        )
+
+    manager = _get_experiment_manager()
+
+    # Set working directory to experiment directory if not specified
+    if working_dir is None:
+        working_dir = manager.storage.get_experiment_directory(experiment_id)
+
+    # Prepare environment with experiment context
+    env = os.environ.copy()
+    env["YANEX_EXPERIMENT_ID"] = experiment_id
+
+    # Add experiment parameters as environment variables
+    try:
+        params = get_params()
+        for key, value in params.items():
+            # Convert nested parameters to JSON for complex types
+            if isinstance(value, dict | list):
+                import json
+
+                env[f"YANEX_PARAM_{key}"] = json.dumps(value)
+            else:
+                env[f"YANEX_PARAM_{key}"] = str(value)
+    except Exception:
+        # If we can't get params, continue without them
+        pass
+
+    # Record start time
+    start_time = time.time()
+    start_timestamp = datetime.utcnow().isoformat()
+
+    stdout_lines = []
+    stderr_lines = []
+
+    try:
+        # Execute command
+        if stream_output:
+            # Stream output in real-time
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=working_dir,
+                env=env,
+                bufsize=1,
+                universal_newlines=True,
+            )
+
+            # Read output line by line and print
+            while True:
+                stdout_line = process.stdout.readline()
+                stderr_line = process.stderr.readline()
+
+                if stdout_line:
+                    print(stdout_line.rstrip())
+                    stdout_lines.append(stdout_line.rstrip())
+
+                if stderr_line:
+                    print(stderr_line.rstrip(), file=__import__("sys").stderr)
+                    stderr_lines.append(stderr_line.rstrip())
+
+                if not stdout_line and not stderr_line and process.poll() is not None:
+                    break
+
+            # Wait for process to complete
+            exit_code = process.wait(timeout=timeout)
+        else:
+            # Capture all output at once
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=working_dir,
+                env=env,
+                timeout=timeout,
+            )
+            exit_code = result.returncode
+            stdout_lines = result.stdout.splitlines() if result.stdout else []
+            stderr_lines = result.stderr.splitlines() if result.stderr else []
+
+        # Calculate execution time
+        execution_time = time.time() - start_time
+
+        # Prepare result data
+        result_data = {
+            "command": command,
+            "exit_code": exit_code,
+            "execution_time": execution_time,
+            "stdout_lines": len(stdout_lines),
+            "stderr_lines": len(stderr_lines),
+            "working_directory": str(working_dir),
+            "timestamp": start_timestamp,
+        }
+
+        # Log execution details as a result step
+        log_results(result_data)
+
+        # Save stdout and stderr as artifacts if non-empty
+        if stdout_lines:
+            stdout_content = "\n".join(stdout_lines)
+            log_text(stdout_content, "script_stdout.txt")
+
+        if stderr_lines:
+            stderr_content = "\n".join(stderr_lines)
+            log_text(stderr_content, "script_stderr.txt")
+
+        # Prepare return value
+        execution_result = {
+            "exit_code": exit_code,
+            "stdout": "\n".join(stdout_lines),
+            "stderr": "\n".join(stderr_lines),
+            "execution_time": execution_time,
+            "command": command,
+            "working_directory": str(working_dir),
+        }
+
+        # Raise exception if requested and command failed
+        if raise_on_error and exit_code != 0:
+            raise subprocess.CalledProcessError(
+                exit_code, command, "\n".join(stdout_lines), "\n".join(stderr_lines)
+            )
+
+        return execution_result
+
+    except subprocess.TimeoutExpired:
+        execution_time = time.time() - start_time
+
+        # Log timeout as failed execution
+        timeout_result = {
+            "command": command,
+            "exit_code": -1,
+            "execution_time": execution_time,
+            "stdout_lines": len(stdout_lines),
+            "stderr_lines": len(stderr_lines),
+            "working_directory": str(working_dir),
+            "timestamp": start_timestamp,
+            "error": f"Command timed out after {timeout} seconds",
+        }
+        log_results(timeout_result)
+
+        # Re-raise the timeout exception
+        raise
+
+    except Exception as e:
+        execution_time = time.time() - start_time
+
+        # Log execution error
+        error_result = {
+            "command": command,
+            "exit_code": -1,
+            "execution_time": execution_time,
+            "stdout_lines": len(stdout_lines),
+            "stderr_lines": len(stderr_lines),
+            "working_directory": str(working_dir),
+            "timestamp": start_timestamp,
+            "error": str(e),
+        }
+        log_results(error_result)
+
+        # Re-raise the exception
+        raise
 
 
 def completed() -> None:

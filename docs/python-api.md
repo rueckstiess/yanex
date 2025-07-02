@@ -302,6 +302,79 @@ print(f"Description: {metadata.get('description')}")
 **Returns:**
 - `dict`: Complete experiment metadata
 
+#### `yanex.get_experiment_dir()`
+
+Get absolute path to current experiment directory. Returns None in standalone mode.
+
+```python
+exp_dir = yanex.get_experiment_dir()
+if exp_dir:
+    print(f"Experiment directory: {exp_dir}")
+    
+    # Save files directly to experiment directory
+    output_file = exp_dir / "custom_results.txt"
+    output_file.write_text("Custom output data")
+```
+
+**Returns:**
+- `Path` or `None`: Absolute path to experiment directory
+
+#### `yanex.execute_bash_script(command, timeout=None, raise_on_error=False, stream_output=True, working_dir=None)`
+
+Execute bash script or shell command within experiment context. No-op in standalone mode.
+
+```python
+# Execute a script with automatic parameter passing
+result = yanex.execute_bash_script("./linkbench.sh")
+
+# Execute with command line arguments
+result = yanex.execute_bash_script("./benchmark.sh --workload mixed --verbose")
+
+# Execute with timeout and error handling
+result = yanex.execute_bash_script(
+    "./long_script.sh",
+    timeout=300,  # 5 minutes
+    raise_on_error=True,
+    stream_output=False  # Capture output silently
+)
+
+print(f"Exit code: {result['exit_code']}")
+print(f"Execution time: {result['execution_time']:.2f}s")
+print(f"Output: {result['stdout']}")
+```
+
+**Features:**
+- **Automatic parameter passing** - Experiment parameters available as `YANEX_PARAM_*` environment variables
+- **Experiment context** - Script receives `YANEX_EXPERIMENT_ID` environment variable
+- **Output capture** - stdout/stderr automatically saved as artifacts
+- **Working directory** - Defaults to experiment directory
+- **Comprehensive logging** - Execution details logged as experiment results
+
+**Parameters:**
+- `command` (str): Shell command or script to execute
+- `timeout` (float, optional): Timeout in seconds
+- `raise_on_error` (bool): Raise exception on non-zero exit code (default: False)
+- `stream_output` (bool): Print output in real-time (default: True)
+- `working_dir` (Path, optional): Working directory (defaults to experiment directory)
+
+**Returns:**
+- `dict`: Execution result with keys:
+  - `exit_code` (int): Process exit code
+  - `stdout` (str): Standard output
+  - `stderr` (str): Standard error output
+  - `execution_time` (float): Execution time in seconds
+  - `command` (str): The executed command
+  - `working_directory` (str): Working directory used
+
+**Raises:**
+- `ExperimentContextError`: If no active experiment context
+- `subprocess.TimeoutExpired`: If command times out
+- `subprocess.CalledProcessError`: If `raise_on_error=True` and command fails
+
+**Environment Variables (available to scripts):**
+- `YANEX_EXPERIMENT_ID`: Current experiment identifier
+- `YANEX_PARAM_*`: All experiment parameters (e.g., `YANEX_PARAM_learning_rate`)
+
 ---
 
 ## Advanced API
@@ -510,6 +583,81 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
+
+### Bash Script Integration
+
+```python
+# experiment_with_script.py - Integrating external scripts
+import yanex
+from pathlib import Path
+
+def main():
+    # Get experiment directory for file operations
+    exp_dir = yanex.get_experiment_dir()
+    print(f"Experiment directory: {exp_dir}")
+    
+    # Get parameters
+    params = yanex.get_params()
+    duration = params.get('duration', 10)
+    threads = params.get('threads', 4)
+    
+    print(f"Running benchmark for {duration}s with {threads} threads")
+    
+    # Execute external bash script (parameters passed automatically)
+    result = yanex.execute_bash_script(
+        "./benchmark.sh --workload mixed --verbose",
+        timeout=duration + 30,  # Allow extra time
+        stream_output=True
+    )
+    
+    # Log execution results
+    yanex.log_results({
+        "script_exit_code": result["exit_code"],
+        "script_execution_time": result["execution_time"],
+        "benchmark_duration": duration,
+        "thread_count": threads
+    })
+    
+    # Parse script output if needed
+    if "SUCCESS" in result["stdout"]:
+        print("Benchmark completed successfully!")
+    
+    # Create custom output in experiment directory
+    summary_file = exp_dir / "experiment_summary.txt"
+    summary_file.write_text(f"""
+Experiment Summary
+==================
+Duration: {duration}s
+Threads: {threads}
+Script Exit Code: {result['exit_code']}
+Execution Time: {result['execution_time']:.2f}s
+""")
+    
+    yanex.log_artifact("experiment_summary.txt", summary_file)
+
+if __name__ == "__main__":
+    main()
+```
+
+```bash
+# benchmark.sh - Example bash script
+#!/bin/bash
+echo "Benchmark starting..."
+echo "Experiment ID: $YANEX_EXPERIMENT_ID"
+echo "Duration: $YANEX_PARAM_duration seconds"
+echo "Threads: $YANEX_PARAM_threads"
+echo "Command args: $@"
+
+# Your benchmark logic here
+sleep ${YANEX_PARAM_duration:-5}
+
+echo "Benchmark SUCCESS"
+```
+
+```bash
+# Run the experiment
+yanex run experiment_with_script.py --param duration=15 --param threads=8
 ```
 
 ### Dual-Mode Script
