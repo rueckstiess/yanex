@@ -19,8 +19,11 @@ from .api import (
     create_context,
     # Experiment creation (advanced)
     create_experiment,
+    # Script execution
+    execute_bash_script,
     fail,
     # Experiment information
+    get_experiment_dir,
     get_experiment_id,
     get_metadata,
     get_param,
@@ -52,8 +55,11 @@ __all__ = [
     "log_artifact",
     "log_text",
     "log_matplotlib_figure",
+    # Script execution
+    "execute_bash_script",
     # Experiment information
     "get_experiment_id",
+    "get_experiment_dir",
     "get_status",
     "get_metadata",
     # Experiment creation (advanced)
