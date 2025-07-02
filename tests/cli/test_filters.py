@@ -126,6 +126,79 @@ class TestExperimentFilter:
             for exp_id in expected_ids:
                 assert exp_id in result_ids
 
+    def test_filter_by_empty_name_pattern(self):
+        """Test filtering by empty pattern matches only unnamed experiments."""
+        with patch.object(
+            self.filter, "_load_all_experiments", return_value=self.sample_experiments
+        ):
+            # Test empty string pattern
+            results = self.filter.filter_experiments(name_pattern="")
+            
+            # Should only match the unnamed experiment (exp11111)
+            assert len(results) == 1
+            assert results[0]["id"] == "exp11111"
+            assert results[0].get("name") is None
+
+    def test_filter_empty_name_edge_cases(self):
+        """Test edge cases for empty name filtering."""
+        # Create additional test cases including empty string names
+        test_experiments = [
+            {
+                **TestDataFactory.create_experiment_metadata(
+                    experiment_id="exp_none",
+                    status="completed"
+                ),
+                # Explicitly omit name key to simulate None name
+            },
+            {
+                **TestDataFactory.create_experiment_metadata(
+                    experiment_id="exp_empty",
+                    status="completed"
+                ),
+                "name": "",  # Empty string name
+            },
+            {
+                **TestDataFactory.create_experiment_metadata(
+                    experiment_id="exp_named",
+                    status="completed"
+                ),
+                "name": "actual-name",
+            },
+        ]
+
+        with patch.object(
+            self.filter, "_load_all_experiments", return_value=test_experiments
+        ):
+            # Empty pattern should match both None and empty string names
+            results = self.filter.filter_experiments(name_pattern="")
+            
+            assert len(results) == 2
+            result_ids = [exp["id"] for exp in results]
+            assert "exp_none" in result_ids
+            assert "exp_empty" in result_ids
+            assert "exp_named" not in result_ids
+
+    def test_filter_unnamed_vs_named_patterns(self):
+        """Test that unnamed filtering works correctly vs named filtering."""
+        with patch.object(
+            self.filter, "_load_all_experiments", return_value=self.sample_experiments
+        ):
+            # Empty pattern - should get only unnamed
+            unnamed_results = self.filter.filter_experiments(name_pattern="")
+            assert len(unnamed_results) == 1
+            assert unnamed_results[0].get("name") is None
+
+            # Pattern that matches named experiments
+            named_results = self.filter.filter_experiments(name_pattern="test-*")
+            assert len(named_results) == 2
+            assert all(exp["name"] is not None for exp in named_results)
+            assert all(exp["name"].startswith("test-") for exp in named_results)
+
+            # Pattern that should match unnamed (alternative method)
+            unnamed_alt_results = self.filter.filter_experiments(name_pattern="*unnamed*")
+            assert len(unnamed_alt_results) == 1
+            assert unnamed_alt_results[0].get("name") is None
+
     @pytest.mark.parametrize(
         "tags,expected_count,expected_ids",
         [

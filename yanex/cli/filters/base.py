@@ -183,8 +183,14 @@ class ExperimentFilter:
     def _matches_name_pattern(self, experiment: Dict[str, Any], pattern: str) -> bool:
         """Check if experiment name matches glob pattern."""
         name = experiment.get("name", "")
+        original_name = name
+        
+        # Special case: empty pattern should match empty names
+        if not pattern:
+            return not original_name
+        
         if not name:
-            # Handle unnamed experiments
+            # Handle unnamed experiments - convert to searchable form
             name = "[unnamed]"
         return fnmatch.fnmatch(name.lower(), pattern.lower())
 
