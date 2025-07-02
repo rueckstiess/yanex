@@ -2,7 +2,6 @@
 Tests for yanex CLI main entry point.
 """
 
-
 import pytest
 
 from tests.test_utils import TestFileHelpers, create_cli_runner
