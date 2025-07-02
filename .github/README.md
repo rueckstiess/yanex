@@ -7,14 +7,14 @@ This directory contains GitHub Actions workflows and templates for the Yanex pro
 ### 🔄 `ci.yml` - Full CI Pipeline
 **Triggers**: Push to `main`/`develop`, all pull requests
 - **Lint Job**: Format checking, linting (ruff), type checking (mypy)
-- **Test Job**: Matrix testing across Python 3.8-3.12 and Ubuntu/macOS/Windows
+- **Test Job**: Matrix testing across Python 3.10-3.11 and Ubuntu/macOS/Windows
 - **Build Job**: Package building and artifact upload
 - **Integration Job**: CLI functionality testing
 
 ### ⚡ `feature-branch.yml` - Fast Development Feedback  
 **Triggers**: Push to feature branches (not main/develop)
 - **Quick Check**: Format, lint, type check, basic tests
-- **Core Tests**: Python 3.9/3.11/3.12 testing with focus on recent changes
+- **Core Tests**: Python 3.10/3.11 testing with focus on recent changes
 - Optimized for speed with caching and reduced matrix
 
 ### 🚀 `release.yml` - Release Automation
