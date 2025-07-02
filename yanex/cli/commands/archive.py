@@ -2,7 +2,6 @@
 Archive experiments - move them to archived directory.
 """
 
-
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES

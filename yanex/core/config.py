@@ -236,9 +236,7 @@ class SweepParameter:
 class RangeSweep(SweepParameter):
     """Range-based parameter sweep: range(start, stop, step)"""
 
-    def __init__(
-        self, start: int | float, stop: int | float, step: int | float
-    ):
+    def __init__(self, start: int | float, stop: int | float, step: int | float):
         self.start = start
         self.stop = stop
         self.step = step

@@ -2,7 +2,6 @@
 List command implementation for yanex CLI.
 """
 
-
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES

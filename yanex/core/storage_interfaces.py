@@ -142,9 +142,7 @@ class ArchiveStorage(ABC):
         """Permanently delete an archived experiment directory."""
 
     @abstractmethod
-    def list_archived_experiments(
-        self, archive_dir: Path | None = None
-    ) -> list[str]:
+    def list_archived_experiments(self, archive_dir: Path | None = None) -> list[str]:
         """List all archived experiment IDs."""
 
     @abstractmethod

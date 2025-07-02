@@ -156,9 +156,7 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         """Permanently delete an archived experiment directory."""
         self.archive_storage.delete_archived_experiment(experiment_id, archive_dir)
 
-    def list_archived_experiments(
-        self, archive_dir: Path | None = None
-    ) -> list[str]:
+    def list_archived_experiments(self, archive_dir: Path | None = None) -> list[str]:
         """List all archived experiment IDs."""
         return self.archive_storage.list_archived_experiments(archive_dir)
 

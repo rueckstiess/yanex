@@ -2,7 +2,6 @@
 Compare experiments - interactive table with parameters and metrics.
 """
 
-
 import click
 
 from ...core.comparison import ExperimentComparisonData

@@ -2,7 +2,6 @@
 Delete experiments permanently.
 """
 
-
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES

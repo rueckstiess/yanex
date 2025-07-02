@@ -247,9 +247,7 @@ class ExperimentTableFormatter:
 
         return dt.strftime("%Y-%m-%d %H:%M:%S")
 
-    def _calculate_duration(
-        self, start_time: str, end_time: str | None = None
-    ) -> str:
+    def _calculate_duration(self, start_time: str, end_time: str | None = None) -> str:
         """Calculate and format duration between two times."""
         if isinstance(start_time, str):
             start_dt = parse_iso_timestamp(start_time)

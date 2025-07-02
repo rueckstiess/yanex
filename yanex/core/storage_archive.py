@@ -125,9 +125,7 @@ class FileSystemArchiveStorage(ArchiveStorage):
         except Exception as e:
             raise StorageError(f"Failed to delete archived experiment: {e}") from e
 
-    def list_archived_experiments(
-        self, archive_dir: Path | None = None
-    ) -> list[str]:
+    def list_archived_experiments(self, archive_dir: Path | None = None) -> list[str]:
         """List all archived experiment IDs.
 
         Args:

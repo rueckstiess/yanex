@@ -82,11 +82,12 @@ class TestCompareCommand:
             ]
         )
 
-        with patch(
-            "yanex.cli.commands.compare.find_experiments_by_identifiers"
-        ) as mock_find, patch.object(
-            ExperimentComparisonData, "get_comparison_data"
-        ) as mock_data:
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_identifiers"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
             mock_find.return_value = mock_experiments
             mock_data.return_value = mock_comparison_data
 
@@ -120,11 +121,12 @@ class TestCompareCommand:
             ]
         )
 
-        with patch(
-            "yanex.cli.commands.compare.find_experiments_by_identifiers"
-        ) as mock_find, patch.object(
-            ExperimentComparisonData, "get_comparison_data"
-        ) as mock_data:
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_identifiers"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
             mock_find.return_value = mock_experiments
             mock_data.return_value = mock_comparison_data
 
@@ -232,11 +234,12 @@ class TestCompareCommand:
             ]
         )
 
-        with patch(
-            "yanex.cli.commands.compare.find_experiments_by_identifiers"
-        ) as mock_find, patch.object(
-            ExperimentComparisonData, "get_comparison_data"
-        ) as mock_data:
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_identifiers"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
             mock_find.return_value = mock_experiments
             mock_data.return_value = mock_comparison_data
 
@@ -272,11 +275,12 @@ class TestCompareCommand:
 
     def test_compare_no_comparison_data(self):
         """Test when no comparison data is available."""
-        with patch(
-            "yanex.cli.commands.compare.find_experiments_by_filters"
-        ) as mock_find, patch.object(
-            ExperimentComparisonData, "get_comparison_data"
-        ) as mock_data:
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_filters"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
             mock_find.return_value = [{"id": "exp001", "name": "test"}]
             mock_data.return_value = {"rows": []}  # No data
 

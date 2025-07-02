@@ -2,7 +2,6 @@
 Update experiment metadata - name, description, status, and tags.
 """
 
-
 import click
 
 from ...core.constants import EXPERIMENT_STATUSES
