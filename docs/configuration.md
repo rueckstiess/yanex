@@ -14,7 +14,7 @@ model_type: "transformer"
 
 ```bash
 # Override parameters at runtime
-yanex run train.py --param learning_rate=0.01 --param epochs=50
+yanex run train.py --config config.yaml --param learning_rate=0.01 --param epochs=50
 ```
 
 ## Configuration Files
@@ -51,15 +51,12 @@ data:
 ```python
 import yanex
 
-# Load configuration
+# Load configuration as a dictionary
 params = yanex.get_params()
 
-# Access parameters
-lr = params['model']['learning_rate']  # 0.001
-epochs = params['training']['epochs']   # 100
-
-# Safe access with defaults
-dropout = params.get('model', {}).get('dropout', 0.0)
+# Load individual parameters (with defaults)
+lr = yanex.get_param('learning_rate', default=0.001)
+batch_size = yanex.get_param('batch_size', default=32)
 ```
 
 ## Parameter Hierarchy
@@ -130,6 +127,21 @@ yanex run script.py --param data.validation_split=0.3
 --param "tags=[\"exp\",\"test\"]"    # List of strings
 ```
 
+### Parameter Sweeps
+
+```bash
+# Explicit parameter lists
+--param "batch_size=list(32, 64, 128)"
+
+# Ranges (using Python's range syntax)
+--param "workload_size=range(4, 8, 1)"  # Generates [4, 5, 6, 7]
+
+# Linspace and logspace
+--param "n_nodes=linspace(10, 100, 5)"  # Generates [10, 30, 50, 70, 100]
+--param "learning_rate=logspace(-4, -1, 4)"  # Generates [0.0001, 0.001, 0.01, 0.
+```
+
+
 ## Environment Variables
 
 Set parameters using environment variables with `YANEX_PARAM_` prefix:
@@ -152,17 +164,6 @@ export YANEX_PARAM_model__learning_rate=0.01
 export YANEX_PARAM_training__epochs=200
 ```
 
-## Multiple Configuration Files
-
-### Custom Config Files
-
-```bash
-# Use specific config file
-yanex run script.py --config custom_config.yaml
-
-# Chain multiple configs (later files override earlier ones)
-yanex run script.py --config base.yaml --config experiment.yaml
-```
 
 ### Environment-Specific Configs
 

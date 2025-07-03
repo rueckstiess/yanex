@@ -20,7 +20,9 @@ def main():
     result = yanex.execute_bash_script(f"{script_path} --workload mixed --verbose")
 
     # Log results
-    yanex.log_results({"exit_code": result["exit_code"], "execution_time": result["execution_time"]})
+    yanex.log_results(
+        {"exit_code": result["exit_code"], "execution_time": result["execution_time"]}
+    )
 
     print(f"Script completed in {result['execution_time']:.1f}s")
 

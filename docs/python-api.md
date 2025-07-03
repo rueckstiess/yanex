@@ -28,8 +28,8 @@ yanex run script.py --param learning_rate=0.01
 with yanex.create_experiment(
     script_path=Path(__file__),
     name="my-experiment"
-) as exp:
-    exp.log_results({"accuracy": 0.95})
+):
+    yanex.log_results({"accuracy": 0.95})
 ```
 
 ---
@@ -84,14 +84,14 @@ with yanex.create_experiment(
     config={"learning_rate": 0.01, "batch_size": 32},
     tags=["sweep", "optimization"],
     description="Grid search over learning rates"
-) as exp:
+):
     
     # Your experiment code
     accuracy = train_model()
     
     # Log results using context manager methods
-    exp.log_results({"accuracy": accuracy})
-    exp.log_artifact("model.pth", "path/to/model.pth")
+    yanex.log_results({"accuracy": accuracy})
+    yanex.log_artifact("model.pth", "path/to/model.pth")
 ```
 
 > **Important:** Don't mix patterns! If you use `yanex.create_experiment()` in a script, don't run it with `yanex run` - this will raise an error.
@@ -497,232 +497,6 @@ with yanex.create_experiment(Path(__file__)) as exp:
 - `ExperimentContextError`: If no active experiment context
 
 ---
-
-## Usage Examples
-
-### Basic Training Script
-
-```python
-# train.py
-import yanex
-
-def main():
-    # Get parameters (works in both modes)
-    params = yanex.get_params()
-    lr = params.get('learning_rate', 0.001)
-    epochs = params.get('epochs', 10)
-    
-    print(f"Training with lr={lr}, epochs={epochs}")
-    
-    # Training loop
-    for epoch in range(epochs):
-        loss = train_epoch(lr)
-        yanex.log_results({"epoch": epoch, "loss": loss})
-    
-    # Final evaluation
-    accuracy = evaluate_model()
-    yanex.log_results({"final_accuracy": accuracy})
-    
-    # Save model
-    save_model("model.pth")
-    yanex.log_artifact("model.pth", Path("model.pth"))
-
-if __name__ == "__main__":
-    main()
-```
-
-```bash
-# Run standalone
-python train.py
-
-# Run with yanex
-yanex run train.py --param learning_rate=0.01 --param epochs=50
-```
-
-### Parameter Sweep with Explicit Creation
-
-```python
-# sweep.py
-import yanex
-from pathlib import Path
-
-def run_single_experiment(lr, batch_size):
-    """Run one experiment configuration."""
-    with yanex.create_experiment(
-        script_path=Path(__file__),
-        name=f"sweep-lr{lr}-bs{batch_size}",
-        config={"learning_rate": lr, "batch_size": batch_size},
-        tags=["parameter-sweep"]
-    ) as exp:
-        
-        # Train model with these parameters
-        accuracy = train_model(lr=lr, batch_size=batch_size)
-        
-        exp.log_results({
-            "learning_rate": lr,
-            "batch_size": batch_size,
-            "accuracy": accuracy
-        })
-        
-        return accuracy
-
-def main():
-    # Define search space
-    learning_rates = [0.001, 0.01, 0.1]
-    batch_sizes = [16, 32, 64]
-    
-    results = []
-    for lr in learning_rates:
-        for bs in batch_sizes:
-            accuracy = run_single_experiment(lr, bs)
-            results.append((lr, bs, accuracy))
-    
-    # Find best configuration
-    best_lr, best_bs, best_acc = max(results, key=lambda x: x[2])
-    print(f"Best: lr={best_lr}, bs={best_bs}, acc={best_acc}")
-
-if __name__ == "__main__":
-    main()
-```
-
-### Bash Script Integration
-
-```python
-# experiment_with_script.py - Integrating external scripts
-import yanex
-from pathlib import Path
-
-def main():
-    # Get experiment directory for file operations
-    exp_dir = yanex.get_experiment_dir()
-    print(f"Experiment directory: {exp_dir}")
-    
-    # Get parameters
-    params = yanex.get_params()
-    duration = params.get('duration', 10)
-    threads = params.get('threads', 4)
-    
-    print(f"Running benchmark for {duration}s with {threads} threads")
-    
-    # Execute external bash script (parameters passed automatically)
-    result = yanex.execute_bash_script(
-        "./benchmark.sh --workload mixed --verbose",
-        timeout=duration + 30,  # Allow extra time
-        stream_output=True
-    )
-    
-    # Log execution results
-    yanex.log_results({
-        "script_exit_code": result["exit_code"],
-        "script_execution_time": result["execution_time"],
-        "benchmark_duration": duration,
-        "thread_count": threads
-    })
-    
-    # Parse script output if needed
-    if "SUCCESS" in result["stdout"]:
-        print("Benchmark completed successfully!")
-    
-    # Create custom output in experiment directory
-    summary_file = exp_dir / "experiment_summary.txt"
-    summary_file.write_text(f"""
-Experiment Summary
-==================
-Duration: {duration}s
-Threads: {threads}
-Script Exit Code: {result['exit_code']}
-Execution Time: {result['execution_time']:.2f}s
-""")
-    
-    yanex.log_artifact("experiment_summary.txt", summary_file)
-
-if __name__ == "__main__":
-    main()
-```
-
-```bash
-# benchmark.sh - Example bash script
-#!/bin/bash
-echo "Benchmark starting..."
-echo "Experiment ID: $YANEX_EXPERIMENT_ID"
-echo "Duration: $YANEX_PARAM_duration seconds"
-echo "Threads: $YANEX_PARAM_threads"
-echo "Command args: $@"
-
-# Your benchmark logic here
-sleep ${YANEX_PARAM_duration:-5}
-
-echo "Benchmark SUCCESS"
-```
-
-```bash
-# Run the experiment
-yanex run experiment_with_script.py --param duration=15 --param threads=8
-```
-
-### Dual-Mode Script
-
-```python
-# flexible.py - Works in both contexts
-import yanex
-
-def main():
-    # Detect mode
-    if yanex.is_standalone():
-        print("Running in standalone mode")
-    else:
-        print(f"Running as experiment: {yanex.get_experiment_id()}")
-    
-    # Get parameters (adaptive to context)
-    params = yanex.get_params()
-    lr = params.get('learning_rate', 0.001)
-    
-    # Your code here
-    accuracy = train_model(lr)
-    
-    # Logging (works in both modes)
-    yanex.log_results({"accuracy": accuracy})
-    
-    # Conditional behavior based on context
-    if yanex.has_context():
-        # Additional logging when tracked
-        yanex.log_text(f"Experiment completed with accuracy: {accuracy}", "summary.txt")
-
-if __name__ == "__main__":
-    main()
-```
-
----
-
-## Error Handling
-
-### Common Errors
-
-**Mixing patterns:**
-```python
-# DON'T DO THIS - Will raise ExperimentContextError
-with yanex.create_experiment(Path(__file__)) as exp:
-    pass
-```
-```bash
-yanex run script.py  # Error: Cannot use create_experiment with yanex run
-```
-
-**Missing experiment context:**
-```python
-# These functions require active experiment context:
-yanex.completed()  # ExperimentContextError if no context
-yanex.fail("error")  # ExperimentContextError if no context
-yanex.cancel("cancelled")  # ExperimentContextError if no context
-```
-
-### Best Practices
-
-1. **Prefer CLI-first pattern** for most use cases
-2. **Use explicit creation** only when you need fine control
-3. **Don't mix patterns** in the same script
-4. **Handle both modes gracefully** when writing dual-mode scripts
-5. **Use safe parameter access** with `.get()` and defaults
 
 ---
 

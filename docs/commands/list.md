@@ -33,11 +33,11 @@ yanex list --limit 10
 ### By Status
 
 ```bash
-yanex list --status created     # Not yet started
 yanex list --status running     # Currently executing
 yanex list --status completed   # Finished successfully
 yanex list --status failed      # Failed with error
 yanex list --status cancelled   # Manually stopped
+yanex list --status staged      # Staged experiments
 ```
 
 ### By Name Pattern
@@ -60,9 +60,6 @@ yanex list --tag production
 
 # Multiple tags (experiments must have ALL tags)
 yanex list --tag baseline --tag validated
-
-# Tag patterns
-yanex list --tag "*test*"
 ```
 
 ### By Time Range
@@ -113,81 +110,8 @@ yanex list --tag development --started-after "1 week ago"
 yanex list --name "*resnet*" --status completed
 ```
 
-### Research Analysis
-
-```bash
-# Hyperparameter sweep results
-yanex list --tag "hp-sweep" --status completed
-
-# Ablation studies
-yanex list --tag ablation --started-after "1 month ago"
-
-# Baseline comparisons
-yanex list --tag baseline
-```
-
-## Output Format
-
-The list shows key experiment information:
-
-```
-ID       Name                Started              Duration   Status     Tags
-abc1234  baseline-model      2023-12-15 10:30:00  01:23:45   completed  baseline, prod
-def5678  improved-model      2023-12-15 14:20:00  02:10:30   completed  improved, prod
-ghi9012  ablation-study      2023-12-15 16:45:00  00:45:20   failed     ablation
-```
-
-### Columns
-
-- **ID**: Unique experiment identifier (8 characters)
-- **Name**: Human-readable experiment name
-- **Started**: Experiment start timestamp
-- **Duration**: Runtime (HH:MM:SS, or "running" for active experiments)
-- **Status**: Current experiment status
-- **Tags**: Comma-separated list of tags
-
-## Advanced Usage
-
-### Combining Filters
-
-```bash
-# Complex filtering
-yanex list \
-  --status completed \
-  --tag production \
-  --started-after "1 month ago" \
-  --name "*model*" \
-  --limit 20
-```
-
-### Integration with Other Commands
-
-```bash
-# Get IDs for comparison
-EXPERIMENTS=$(yanex list --tag baseline --status completed | tail -n +2 | cut -d' ' -f1)
-yanex compare $EXPERIMENTS
-
-# Archive old failed experiments
-yanex list --status failed --started-before "3 months ago" | \
-  tail -n +2 | cut -d' ' -f1 | \
-  xargs yanex archive --confirm
-```
-
-### Shell Scripting
-
-```bash
-#!/bin/bash
-# Find best performing experiments
-yanex list --tag hyperparameter-search --status completed | \
-  while read id name started duration status tags; do
-    accuracy=$(yanex show $id --raw | jq -r '.results.accuracy // 0')
-    echo "$id $accuracy $name"
-  done | sort -k2 -nr | head -5
-```
-
 ---
 
 **Related:**
 - [`yanex show`](show.md) - Detailed experiment information
 - [`yanex compare`](compare.md) - Compare experiments
-- [Filtering Guide](../filtering.md)

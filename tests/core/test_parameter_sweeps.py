@@ -272,8 +272,9 @@ class TestParameterSweepIntegration:
         """Test expansion of single sweep parameter."""
         config = {"lr": RangeSweep(0.01, 0.03, 0.01), "batch_size": 32}
 
-        expanded = expand_parameter_sweeps(config)
+        expanded, sweep_paths = expand_parameter_sweeps(config)
         assert len(expanded) == 2
+        assert sweep_paths == ["lr"]
 
         assert expanded[0]["lr"] == 0.01
         assert expanded[0]["batch_size"] == 32
@@ -289,8 +290,9 @@ class TestParameterSweepIntegration:
             "epochs": 100,
         }
 
-        expanded = expand_parameter_sweeps(config)
+        expanded, sweep_paths = expand_parameter_sweeps(config)
         assert len(expanded) == 4  # 2 x 2 cross-product
+        assert set(sweep_paths) == {"lr", "batch_size"}
 
         # Check all combinations exist
         lr_values = {cfg["lr"] for cfg in expanded}
@@ -307,8 +309,9 @@ class TestParameterSweepIntegration:
             "training": {"epochs": 100},
         }
 
-        expanded = expand_parameter_sweeps(config)
+        expanded, sweep_paths = expand_parameter_sweeps(config)
         assert len(expanded) == 2
+        assert sweep_paths == ["model.lr"]
 
         assert expanded[0]["model"]["lr"] == 0.01
         assert expanded[0]["model"]["architecture"] == "resnet"
@@ -320,8 +323,9 @@ class TestParameterSweepIntegration:
         """Test expansion with no sweep parameters returns original config."""
         config = {"lr": 0.01, "batch_size": 32}
 
-        expanded = expand_parameter_sweeps(config)
+        expanded, sweep_paths = expand_parameter_sweeps(config)
         assert len(expanded) == 1
+        assert sweep_paths == []
         assert expanded[0] == config
 
     def test_expand_parameter_sweeps_preserves_original(self):
@@ -329,11 +333,12 @@ class TestParameterSweepIntegration:
         original_config = {"lr": RangeSweep(0.01, 0.03, 0.01), "nested": {"value": 42}}
         config_copy = original_config.copy()
 
-        expanded = expand_parameter_sweeps(original_config)
+        expanded, sweep_paths = expand_parameter_sweeps(original_config)
 
         # Original config should be unchanged
         assert original_config == config_copy
         assert isinstance(original_config["lr"], RangeSweep)
+        assert sweep_paths == ["lr"]
 
         # Expanded configs should have concrete values
         for expanded_config in expanded:

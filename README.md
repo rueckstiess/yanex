@@ -13,10 +13,6 @@ import yanex
 lr = yanex.get_param('lr', default=0.001)
 epochs = yanex.get_param('epochs', default=10)
 
-# access nested parameters with dot notation
-model_lr = yanex.get_param('model.learning_rate', default=0.001)
-optimizer_type = yanex.get_param('model.optimizer.type', default='adam')
-
 # your experiment code
 # ...
 
@@ -30,11 +26,10 @@ Run from the command line:
 
 ```bash
 # Run with yanex CLI for automatic tracking
-yanex run train.py --name "my-exp" --tag testing --param lr=10e-3 --param epochs=10
+yanex run train.py --param lr=10e-3 --param epochs=10
 ```
 
-That's it. Yanex tracks the experiment, saves the logged results and files, stdout and stderr outptus, Python environment
-information, and even the Git state of your code repository. You can then compare results, search experiments, and reproduce them with ease.
+That's it. Yanex creates a separate directory for each experiment, saves the logged results and files, stdout and stderr outptus, Python environment information, and even the Git state of your code repository. You can then compare results, search experiments, and reproduce them with ease.
 
 ## Key Features
 
@@ -149,13 +144,14 @@ For Jupyter notebook usage, or when you need fine control:
 import yanex
 from pathlib import Path
 
-with yanex.create_experiment(
-    script_path=Path(__file__),
-    name="my-experiment",
-    config={"learning_rate": 0.01}
-) as exp:
+experiment = yanex.create_experiment(script_path=Path(__file__), name="my-exp", config={"lr": 0.01})
+
+with experiment:
+    
     # Your code here
-    exp.log_results({"accuracy": 0.95})
+    # ...
+
+    yanex.log_results({"accuracy": 0.95})
 ```
 
 > **Note:** Don't mix both patterns! Use CLI-first for most cases, explicit creation for advanced scenarios.

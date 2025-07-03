@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+from rich.console import Console
 
 from yanex.core.manager import ExperimentManager
 
@@ -23,6 +24,7 @@ class ScriptExecutor:
             manager: The experiment manager instance to use for operations.
         """
         self.manager = manager
+        self.console = Console()  # Use stdout with colors for yanex messages
 
     def execute_script(
         self,
@@ -48,7 +50,7 @@ class ScriptExecutor:
             env = self._prepare_environment(experiment_id, config)
 
             if verbose:
-                click.echo(f"Starting script execution: {script_path}")
+                self.console.print(f"[dim]Starting script execution: {script_path}[/]")
 
             # Execute script with real-time output streaming
             return_code, stdout_text, stderr_text = self._execute_with_streaming(
@@ -67,13 +69,15 @@ class ScriptExecutor:
             self.manager.cancel_experiment(
                 experiment_id, "Interrupted by user (Ctrl+C)"
             )
-            click.echo(f"✗ Experiment cancelled: {experiment_id}")
+            self.console.print(
+                f"[bright_red]✗ Experiment cancelled: {experiment_id}[/]"
+            )
             raise
 
         except Exception as e:
             self.manager.fail_experiment(experiment_id, f"Unexpected error: {str(e)}")
-            click.echo(f"✗ Experiment failed: {experiment_id}")
-            click.echo(f"Error: {e}")
+            self.console.print(f"[red]✗ Experiment failed: {experiment_id}[/]")
+            self.console.print(f"[red]Error: {e}[/]")
             raise click.Abort() from e
 
     def _prepare_environment(
@@ -206,17 +210,17 @@ class ScriptExecutor:
 
         if return_code == 0:
             self.manager.complete_experiment(experiment_id)
-            click.echo(f"✓ Experiment completed successfully: {experiment_id}")
-            if verbose:
-                click.echo(f"  Directory: {exp_dir}")
+            self.console.print(
+                f"[green]✓ Experiment completed successfully: {experiment_id}[/]"
+            )
+            self.console.print(f"[dim]  Directory: {exp_dir}[/]")
         else:
             error_msg = f"Script exited with code {return_code}"
             if stderr_text:
                 error_msg += f": {stderr_text.strip()}"
 
             self.manager.fail_experiment(experiment_id, error_msg)
-            click.echo(f"✗ Experiment failed: {experiment_id}")
-            if verbose:
-                click.echo(f"  Directory: {exp_dir}")
-            click.echo(f"Error: {error_msg}")
+            self.console.print(f"[red]✗ Experiment failed: {experiment_id}[/]")
+            self.console.print(f"[dim]  Directory: {exp_dir}[/]")
+            self.console.print(f"[red]Error: {error_msg}[/]")
             raise click.Abort()

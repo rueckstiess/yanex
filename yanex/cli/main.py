@@ -22,8 +22,8 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     """
     Yet Another Experiment Tracker - A lightweight experiment tracking harness.
 
-    Use yanex to track machine learning experiments with automatic versioning,
-    parameter management, and artifact storage.
+    Use yanex to track experiments with automatic versioning, parameter management
+    and artifact storage.
     """
     # Ensure context object exists
     ctx.ensure_object(dict)
