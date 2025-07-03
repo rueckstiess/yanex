@@ -27,10 +27,6 @@ def validate_experiment_name(name: str) -> str:
 
     name = name.strip()
 
-    # Check length
-    if len(name) > 100:
-        raise ValidationError("Experiment name cannot exceed 100 characters")
-
     # Check for invalid characters (basic validation)
     if not re.match(r"^[a-zA-Z0-9_\-\s]+$", name):
         raise ValidationError(

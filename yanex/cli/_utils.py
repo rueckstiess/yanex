@@ -81,8 +81,6 @@ def validate_experiment_config(
             raise click.ClickException("Experiment name cannot be empty")
 
         # Basic name validation (more detailed validation will be in core.validation)
-        if len(name) > 100:
-            raise click.ClickException("Experiment name too long (max 100 characters)")
 
     # Validate tags if provided
     for tag in tags:

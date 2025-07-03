@@ -48,12 +48,6 @@ class TestValidateExperimentName:
         with pytest.raises(ValidationError, match="cannot be empty"):
             validate_experiment_name(None)
 
-    def test_name_too_long(self):
-        """Test names that are too long."""
-        long_name = "a" * 101
-        with pytest.raises(ValidationError, match="cannot exceed 100 characters"):
-            validate_experiment_name(long_name)
-
     def test_invalid_characters(self):
         """Test names with invalid characters."""
         invalid_names = [

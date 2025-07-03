@@ -224,7 +224,9 @@ def _execute_experiment(
 
 
 def _generate_sweep_experiment_name(
-    base_name: str | None, config: dict[str, Any]
+    base_name: str | None,
+    config: dict[str, Any],
+    sweep_param_paths: list[str] | None = None,
 ) -> str:
     """
     Generate a descriptive name for a sweep experiment based on its parameters.
@@ -232,9 +234,10 @@ def _generate_sweep_experiment_name(
     Args:
         base_name: Base experiment name (can be None)
         config: Configuration dictionary with parameter values
+        sweep_param_paths: List of parameter paths that were sweep parameters (only these will be included in name)
 
     Returns:
-        Generated experiment name with parameter suffixes
+        Generated experiment name with parameter suffixes for sweep parameters only
     """
     # Start with base name or default
     if base_name:
@@ -249,37 +252,42 @@ def _generate_sweep_experiment_name(
         for key, value in d.items():
             if isinstance(value, dict):
                 # Handle nested parameters
-                new_prefix = f"{prefix}_{key}" if prefix else key
+                new_prefix = f"{prefix}.{key}" if prefix else key
                 extract_params(value, new_prefix)
             else:
-                # Format parameter name
-                param_name = f"{prefix}_{key}" if prefix else key
+                # Format parameter path (using dots to match sweep_param_paths format)
+                param_path = f"{prefix}.{key}" if prefix else key
 
-                # Format parameter value
-                if isinstance(value, bool):
-                    param_value = str(value).lower()
-                elif isinstance(value, int | float):
-                    # Format numbers with reasonable precision
-                    if isinstance(value, float):
-                        # Remove trailing zeros and unnecessary decimal point
-                        if value == int(value):
-                            param_value = str(int(value))
+                # Only include this parameter if it's in the sweep paths or if no sweep paths specified
+                if sweep_param_paths is None or param_path in sweep_param_paths:
+                    # Format parameter name for display (using underscores)
+                    param_name = param_path.replace(".", "_")
+
+                    # Format parameter value
+                    if isinstance(value, bool):
+                        param_value = str(value).lower()
+                    elif isinstance(value, int | float):
+                        # Format numbers with reasonable precision
+                        if isinstance(value, float):
+                            # Remove trailing zeros and unnecessary decimal point
+                            if value == int(value):
+                                param_value = str(int(value))
+                            else:
+                                formatted = f"{value:.6g}"  # Up to 6 significant digits
+                                # Replace dots with 'p' and handle scientific notation
+                                param_value = (
+                                    formatted.replace(".", "p")
+                                    .replace("e", "e")
+                                    .replace("+", "")
+                                    .replace("-", "m")
+                                )
                         else:
-                            formatted = f"{value:.6g}"  # Up to 6 significant digits
-                            # Replace dots with 'p' and handle scientific notation
-                            param_value = (
-                                formatted.replace(".", "p")
-                                .replace("e", "e")
-                                .replace("+", "")
-                                .replace("-", "m")
-                            )
+                            param_value = str(value)
                     else:
+                        # String values
                         param_value = str(value)
-                else:
-                    # String values
-                    param_value = str(value)
 
-                param_parts.append(f"{param_name}_{param_value}")
+                    param_parts.append(f"{param_name}_{param_value}")
 
     extract_params(config)
 
@@ -288,21 +296,6 @@ def _generate_sweep_experiment_name(
         name_parts.extend(param_parts)
 
     result = "-".join(name_parts)
-
-    # Ensure name isn't too long (limit to 100 characters)
-    if len(result) > 100:
-        # Truncate but keep the base name and at least one parameter
-        if base_name:
-            base_len = len(base_name)
-            remaining = 97 - base_len  # Leave room for "-..."
-            if param_parts:
-                truncated_params = param_parts[0][:remaining]
-                result = f"{base_name}-{truncated_params}..."
-            else:
-                result = base_name[:97] + "..."
-        else:
-            result = result[:97] + "..."
-
     return result
 
 
@@ -322,7 +315,7 @@ def _stage_experiment(
     # Check if this is a parameter sweep
     if has_sweep_parameters(config):
         # Expand parameter sweeps into individual configurations
-        expanded_configs = expand_parameter_sweeps(config)
+        expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
 
         click.echo(
             f"✓ Parameter sweep detected: expanding into {len(expanded_configs)} experiments"
@@ -331,7 +324,9 @@ def _stage_experiment(
         experiment_ids = []
         for i, expanded_config in enumerate(expanded_configs):
             # Generate descriptive name for each sweep experiment
-            sweep_name = _generate_sweep_experiment_name(name, expanded_config)
+            sweep_name = _generate_sweep_experiment_name(
+                name, expanded_config, sweep_param_paths
+            )
 
             experiment_id = manager.create_experiment(
                 script_path=script,

@@ -108,25 +108,6 @@ class TestSweepExperimentNaming:
         for pattern in expected_patterns:
             assert pattern in result
 
-    def test_name_truncation_behavior(self):
-        """Test name truncation when generated name is too long."""
-        # Create config with many long parameters to exceed length limit
-        long_config = {}
-        for i in range(20):
-            long_config[f"very_long_parameter_name_{i}"] = f"very_long_value_{i}"
-
-        # Test with base name
-        name_with_base = _generate_sweep_experiment_name("base-name", long_config)
-        assert len(name_with_base) <= 100
-        assert name_with_base.startswith("base-name-")
-        assert name_with_base.endswith("...")
-
-        # Test without base name
-        name_without_base = _generate_sweep_experiment_name(None, long_config)
-        assert len(name_without_base) <= 100
-        assert name_without_base.startswith("sweep-")
-        assert name_without_base.endswith("...")
-
     def test_parameter_order_consistency(self):
         """Test that parameter order is consistent across multiple calls."""
         config = {"z_param": 1, "a_param": 2, "m_param": 3}
@@ -235,3 +216,111 @@ class TestSweepExperimentNaming:
         assert result.startswith(f"{base_name_pattern}-")
         assert "lr_0p01" in result
         assert "epochs_10" in result
+
+    def test_sweep_vs_constant_parameter_filtering(self):
+        """Test that only sweep parameters are included in names, not constant parameters."""
+        # Configuration with both sweep and constant parameters
+        config = {
+            "lr": 0.01,  # This varies in sweep
+            "batch_size": 32,  # This is constant across sweep
+            "epochs": 100,  # This is constant across sweep
+        }
+
+        # Test with only lr as sweep parameter
+        sweep_paths = ["lr"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+
+        # Should only include lr, not batch_size or epochs
+        assert result == "test-lr_0p01"
+        assert "batch_size" not in result
+        assert "epochs" not in result
+
+    def test_sweep_vs_constant_parameter_filtering_multiple_sweeps(self):
+        """Test filtering with multiple sweep parameters and constants."""
+        config = {
+            "lr": 0.01,  # Sweep parameter
+            "momentum": 0.9,  # Sweep parameter
+            "batch_size": 32,  # Constant parameter
+            "epochs": 100,  # Constant parameter
+            "model": "resnet",  # Constant parameter
+        }
+
+        sweep_paths = ["lr", "momentum"]
+        result = _generate_sweep_experiment_name("ml", config, sweep_paths)
+
+        # Should only include lr and momentum
+        assert result == "ml-lr_0p01-momentum_0p9"
+        assert "batch_size" not in result
+        assert "epochs" not in result
+        assert "model" not in result
+
+    def test_sweep_vs_constant_parameter_filtering_nested(self):
+        """Test filtering with nested sweep and constant parameters."""
+        config = {
+            "model": {
+                "lr": 0.01,  # Sweep parameter
+                "architecture": "resnet",  # Constant parameter
+                "layers": 18,  # Constant parameter
+            },
+            "training": {
+                "epochs": 100,  # Constant parameter
+                "batch_size": 32,  # Sweep parameter
+            },
+            "optimizer": "adam",  # Constant parameter
+        }
+
+        sweep_paths = ["model.lr", "training.batch_size"]
+        result = _generate_sweep_experiment_name("deep", config, sweep_paths)
+
+        # Should only include model.lr and training.batch_size
+        assert result == "deep-model_lr_0p01-training_batch_size_32"
+        assert "architecture" not in result
+        assert "layers" not in result
+        assert "epochs" not in result
+        assert "optimizer" not in result
+
+    def test_sweep_parameter_filtering_backwards_compatibility(self):
+        """Test that function works without sweep_param_paths (backwards compatibility)."""
+        config = {
+            "lr": 0.01,
+            "batch_size": 32,
+            "epochs": 100,
+        }
+
+        # When no sweep_param_paths provided, should include all parameters (old behavior)
+        result = _generate_sweep_experiment_name("test", config, None)
+
+        # Should include all parameters when sweep_param_paths is None
+        assert "lr_0p01" in result
+        assert "batch_size_32" in result
+        assert "epochs_100" in result
+
+    def test_sweep_parameter_filtering_empty_sweep_paths(self):
+        """Test behavior with empty sweep paths list."""
+        config = {
+            "lr": 0.01,
+            "batch_size": 32,
+        }
+
+        # Empty sweep paths should result in just the base name
+        result = _generate_sweep_experiment_name("test", config, [])
+
+        assert result == "test"
+        assert "lr" not in result
+        assert "batch_size" not in result
+
+    def test_sweep_parameter_filtering_no_matching_paths(self):
+        """Test behavior when sweep paths don't match any config parameters."""
+        config = {
+            "lr": 0.01,
+            "batch_size": 32,
+        }
+
+        # Sweep paths that don't exist in config
+        sweep_paths = ["nonexistent", "another_missing"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+
+        # Should result in just the base name
+        assert result == "test"
+        assert "lr" not in result
+        assert "batch_size" not in result

@@ -351,7 +351,9 @@ def has_sweep_parameters(config: dict[str, Any]) -> bool:
     return check_dict(config)
 
 
-def expand_parameter_sweeps(config: dict[str, Any]) -> list[dict[str, Any]]:
+def expand_parameter_sweeps(
+    config: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
     """
     Expand parameter sweeps into individual configurations.
 
@@ -361,17 +363,19 @@ def expand_parameter_sweeps(config: dict[str, Any]) -> list[dict[str, Any]]:
         config: Configuration dictionary potentially containing SweepParameter instances
 
     Returns:
-        List of configuration dictionaries with sweep parameters expanded
+        Tuple of:
+        - List of configuration dictionaries with sweep parameters expanded
+        - List of parameter paths that were sweep parameters
 
     Example:
         Input: {"lr": RangeSweep(0.01, 0.03, 0.01), "batch_size": 32}
-        Output: [
-            {"lr": 0.01, "batch_size": 32},
-            {"lr": 0.02, "batch_size": 32}
-        ]
+        Output: (
+            [{"lr": 0.01, "batch_size": 32}, {"lr": 0.02, "batch_size": 32}],
+            ["lr"]
+        )
     """
     if not has_sweep_parameters(config):
-        return [config]
+        return [config], []
 
     # Find all sweep parameters and their paths
     sweep_params = []
@@ -388,7 +392,7 @@ def expand_parameter_sweeps(config: dict[str, Any]) -> list[dict[str, Any]]:
     find_sweeps(config)
 
     if not sweep_params:
-        return [config]
+        return [config], []
 
     # Generate all combinations using itertools.product
     import itertools
@@ -408,4 +412,4 @@ def expand_parameter_sweeps(config: dict[str, Any]) -> list[dict[str, Any]]:
 
         expanded_configs.append(expanded_config)
 
-    return expanded_configs
+    return expanded_configs, list(sweep_paths)
