@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Input Validation**: Enhanced validation throughout the system with proper error handling
 - **Safe Operations**: Improved file operations and Git state verification
 
-## [0.1.0] - 2024-XX-XX
+## [0.1.0] - 2025-07-01
 
 ### Added
 - Initial release of Yanex experiment tracking system
