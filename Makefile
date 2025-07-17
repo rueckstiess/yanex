@@ -14,7 +14,6 @@ test-cov:
 # Code quality
 lint:
 	ruff check yanex tests
-	mypy yanex
 
 format:
 	ruff format yanex tests

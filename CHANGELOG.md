@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-07-17
+
+### Added
+- **Configurable Artifact Prefix**: `execute_bash_script()` now accepts an optional `artifact_prefix` parameter to customize output filenames
+  - Default behavior unchanged (uses "script" prefix: `script_stdout.txt`, `script_stderr.txt`)
+  - Custom prefix enables better organization: `artifact_prefix="task1"` creates `task1_stdout.txt`, `task1_stderr.txt`
+  - Comprehensive unit tests cover both default and custom prefix scenarios
+
 ## [0.2.0] - 2025-07-03
 
 ### Added
