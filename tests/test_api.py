@@ -886,24 +886,64 @@ class TestExecuteBashScript:
         assert "echo 'first'" in commands
         assert "echo 'second'" in commands
 
-        # Check that multiple stdout artifacts were created
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_default_artifact_prefix(self, mock_get_manager):
+        """Test that default artifact_prefix creates files with 'script' prefix."""
+        mock_get_manager.return_value = self.manager
+
+        result = yanex.execute_bash_script(
+            "echo 'Hello World'; echo 'Error message' >&2", stream_output=False
+        )
+
+        assert result["exit_code"] == 0
+        assert "Hello World" in result["stdout"]
+        assert "Error message" in result["stderr"]
+
+        # Check that artifacts were created with default 'script' prefix
         artifacts_dir = (
             self.manager.storage.get_experiment_directory(self.experiment_id)
             / "artifacts"
         )
-        stdout_files = list(artifacts_dir.glob("*stdout*"))
-        assert len(stdout_files) >= 1  # At least one stdout file should exist
 
+        stdout_file = artifacts_dir / "script_stdout.txt"
+        stderr_file = artifacts_dir / "script_stderr.txt"
 
-# Summary of improvements in the complete conversion:
-#
-# 1. **Setup Reduction**: 20+ lines → 8-10 lines (50-60% reduction)
-# 2. **Factory Usage**: All metadata and config creation uses standardized factories
-# 3. **Isolated Environment**: create_isolated_manager() provides clean test environment
-# 4. **Consistent Data**: TestDataFactory ensures uniform test data across all tests
-# 5. **Parametrized Tests**: Added comprehensive parametrized scenarios for different statuses/configs
-# 6. **Maintenance**: Changes to metadata/config structure only need updates in factory
-# 7. **Validation**: Implicit validation through factory methods ensures data consistency
-#
-# Test coverage preserved: All original test methods have equivalent functionality
-# Additional coverage: New parametrized tests provide broader scenario coverage
+        assert stdout_file.exists()
+        assert stderr_file.exists()
+        assert "Hello World" in stdout_file.read_text()
+        assert "Error message" in stderr_file.read_text()
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_execute_bash_script_custom_artifact_prefix(self, mock_get_manager):
+        """Test that custom artifact_prefix creates files with specified prefix."""
+        mock_get_manager.return_value = self.manager
+
+        result = yanex.execute_bash_script(
+            "echo 'Custom output'; echo 'Custom error' >&2",
+            stream_output=False,
+            artifact_prefix="custom_task",
+        )
+
+        assert result["exit_code"] == 0
+        assert "Custom output" in result["stdout"]
+        assert "Custom error" in result["stderr"]
+
+        # Check that artifacts were created with custom prefix
+        artifacts_dir = (
+            self.manager.storage.get_experiment_directory(self.experiment_id)
+            / "artifacts"
+        )
+
+        stdout_file = artifacts_dir / "custom_task_stdout.txt"
+        stderr_file = artifacts_dir / "custom_task_stderr.txt"
+
+        assert stdout_file.exists()
+        assert stderr_file.exists()
+        assert "Custom output" in stdout_file.read_text()
+        assert "Custom error" in stderr_file.read_text()
+
+        # Ensure default prefix files were NOT created
+        default_stdout = artifacts_dir / "script_stdout.txt"
+        default_stderr = artifacts_dir / "script_stderr.txt"
+        assert not default_stdout.exists()
+        assert not default_stderr.exists()
