@@ -308,6 +308,7 @@ def execute_bash_script(
     raise_on_error: bool = False,
     stream_output: bool = True,
     working_dir: Path | None = None,
+    artifact_prefix: str = "script",
 ) -> dict[str, Any]:
     """Execute bash script/command within experiment context.
 
@@ -436,11 +437,11 @@ def execute_bash_script(
         # Save stdout and stderr as artifacts if non-empty
         if stdout_lines:
             stdout_content = "\n".join(stdout_lines)
-            log_text(stdout_content, "script_stdout.txt")
+            log_text(stdout_content, f"{artifact_prefix}_stdout.txt")
 
         if stderr_lines:
             stderr_content = "\n".join(stderr_lines)
-            log_text(stderr_content, "script_stderr.txt")
+            log_text(stderr_content, f"{artifact_prefix}_stderr.txt")
 
         # Prepare return value
         execution_result = {
