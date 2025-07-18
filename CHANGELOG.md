@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Deprecated
+
+## [0.4.0] - 2025-07-18
+
+### Added
 - **Config-based CLI Defaults**: The `yanex run` command now supports setting CLI parameter defaults via the config file
   - Add a `yanex` section to your config file to set defaults for `--name`, `--tag`, `--description`, `--ignore-dirty`, `--dry-run`, and `--stage`
   - CLI arguments still override config defaults, maintaining expected precedence
@@ -41,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic migration from legacy `results.json` to `metrics.json` with full backward compatibility
   - Script execution metadata (command, exit code, timing, etc.) now stored separately from user metrics
   - Cleaner separation between user-defined experiment metrics and system-generated script execution data
+- **GitHub Actions CI Configuration**: Fixed invalid workflow configuration that caused CI failures on PR merges
+  - Removed duplicate `push` events in workflow trigger configuration
+  - Streamlined CI to use lightweight feature branch testing only
+  - Eliminated spurious failure notifications after successful PR merges
 
 ### Deprecated
 - **`log_results()` Method**: Use `log_metrics()` instead for logging experiment metrics
