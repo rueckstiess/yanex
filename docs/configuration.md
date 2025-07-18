@@ -61,12 +61,14 @@ batch_size = yanex.get_param('batch_size', default=32)
 
 ## Parameter Hierarchy
 
-Parameters are resolved in order of priority (highest first):
+Experiment parameters are resolved in order of priority (highest first):
 
 1. **CLI overrides** (`--param key=value`)
 2. **Environment variables** (`YANEX_PARAM_key=value`)
 3. **Configuration file** (`config.yaml`)
 4. **Default values** (in your code)
+
+> **Note:** CLI argument defaults (from the `yanex` section) follow a separate hierarchy where CLI arguments override config defaults. See [CLI Defaults from Config](#cli-defaults-from-config) for details.
 
 ### Example
 
@@ -141,6 +143,56 @@ yanex run script.py --param data.validation_split=0.3
 --param "learning_rate=logspace(-4, -1, 4)"  # Generates [0.0001, 0.001, 0.01, 0.
 ```
 
+## CLI Defaults from Config
+
+You can set default values for `yanex run` CLI arguments directly in your configuration file using a special `yanex` section. This allows you to avoid repeating common CLI options while still allowing them to be overridden when needed.
+
+### Setting CLI Defaults
+
+```yaml
+# config.yaml
+# Your experiment parameters
+learning_rate: 0.001
+batch_size: 32
+epochs: 100
+
+# CLI defaults for yanex run command
+yanex:
+  name: "transformer-experiment"
+  tag: ["ml", "transformer", "dev"]
+  description: "Training transformer model on text data"
+  ignore_dirty: true
+  dry_run: false
+  stage: false
+```
+
+### CLI Override Precedence
+
+CLI arguments still override config defaults, maintaining expected precedence:
+
+```bash
+# Uses name from config ("transformer-experiment")
+yanex run train.py --config config.yaml
+
+# Overrides name from config
+yanex run train.py --config config.yaml --name "custom-experiment"
+
+# Uses tags from config but overrides name
+yanex run train.py --config config.yaml --name "override" --tag production
+```
+
+### Supported CLI Parameters
+
+The `yanex` section supports these `yanex run` parameters:
+
+- `name`: Experiment name
+- `tag`: Tags (single string or list)
+- `description`: Experiment description  
+- `ignore_dirty`: Allow dirty git state (boolean)
+- `dry_run`: Dry run mode (boolean)
+- `stage`: Stage changes before run (boolean)
+
+**Note:** This feature only works with the `yanex run` command - other commands like `list`, `show`, etc. are not affected.
 
 ## Environment Variables
 
