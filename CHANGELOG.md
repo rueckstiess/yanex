@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Config-based CLI Defaults**: The `yanex run` command now supports setting CLI parameter defaults via the config file
+  - Add a `yanex` section to your config file to set defaults for `--name`, `--tag`, `--description`, `--ignore-dirty`, `--dry-run`, and `--stage`
+  - CLI arguments still override config defaults, maintaining expected precedence
+  - Example: `yanex: {name: "my-experiment", tag: [dev, testing], ignore_dirty: true}`
+  - Fully backwards compatible - existing configs without `yanex` section work unchanged
+  - Includes comprehensive test coverage and documentation
+
 ## [0.3.0] - 2025-07-17
 
 ### Added

@@ -187,7 +187,7 @@ def resolve_config(
     config_path: Path | None = None,
     param_overrides: list[str] | None = None,
     default_config_name: str = "config.yaml",
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Resolve final configuration from file and parameter overrides.
 
@@ -197,7 +197,9 @@ def resolve_config(
         default_config_name: Default config filename to look for
 
     Returns:
-        Resolved configuration dictionary
+        Tuple of (experiment_config, cli_defaults)
+        - experiment_config: Configuration for experiment parameters
+        - cli_defaults: CLI parameter defaults from 'yanex' section
 
     Raises:
         ConfigError: If configuration cannot be resolved
@@ -214,12 +216,15 @@ def resolve_config(
     if config_path is not None:
         config = load_yaml_config(config_path)
 
-    # Apply parameter overrides
+    # Extract CLI defaults from 'yanex' key
+    cli_defaults = config.pop("yanex", {})
+
+    # Apply parameter overrides to experiment config only
     if param_overrides:
         override_config = parse_param_overrides(param_overrides)
         config = merge_configs(config, override_config)
 
-    return config
+    return config, cli_defaults
 
 
 # Parameter Sweep Classes and Functions

@@ -133,55 +133,72 @@ def run(
 
     try:
         # Load and merge configuration
-        merged_config = load_and_merge_config(
+        experiment_config, cli_defaults = load_and_merge_config(
             config_path=config, param_overrides=list(param), verbose=verbose
         )
 
+        # Resolve CLI parameters with config defaults and CLI overrides
+        resolved_name = name if name is not None else cli_defaults.get("name")
+        resolved_tags = (
+            list(tag) if tag else _normalize_tags(cli_defaults.get("tag", []))
+        )
+        resolved_description = (
+            description if description is not None else cli_defaults.get("description")
+        )
+        resolved_ignore_dirty = ignore_dirty or cli_defaults.get("ignore_dirty", False)
+        resolved_dry_run = dry_run or cli_defaults.get("dry_run", False)
+        resolved_stage = stage or cli_defaults.get("stage", False)
+
         if verbose:
-            console.print(f"[dim]Merged configuration: {merged_config}[/]")
+            console.print(f"[dim]Experiment configuration: {experiment_config}[/]")
+            if cli_defaults:
+                console.print(f"[dim]CLI defaults from config: {cli_defaults}[/]")
+            console.print(
+                f"[dim]Resolved CLI parameters: name={resolved_name}, tags={resolved_tags}, description={resolved_description}, ignore_dirty={resolved_ignore_dirty}, dry_run={resolved_dry_run}, stage={resolved_stage}[/]"
+            )
 
         # Validate configuration
         validate_experiment_config(
             script=script,
-            name=name,
-            tags=list(tag),
-            description=description,
-            config=merged_config,
+            name=resolved_name,
+            tags=resolved_tags,
+            description=resolved_description,
+            config=experiment_config,
         )
 
         # Validate sweep requirements
-        validate_sweep_requirements(merged_config, stage)
+        validate_sweep_requirements(experiment_config, resolved_stage)
 
-        if dry_run:
+        if resolved_dry_run:
             click.echo("✓ Configuration validation passed")
             click.echo("Dry run completed - experiment would be created with:")
             click.echo(f"  Script: {script}")
-            click.echo(f"  Name: {name}")
-            click.echo(f"  Tags: {list(tag)}")
-            click.echo(f"  Description: {description}")
-            click.echo(f"  Config: {merged_config}")
+            click.echo(f"  Name: {resolved_name}")
+            click.echo(f"  Tags: {resolved_tags}")
+            click.echo(f"  Description: {resolved_description}")
+            click.echo(f"  Config: {experiment_config}")
             return
 
         # Phase 3: Execute or stage experiment
-        if stage:
+        if resolved_stage:
             _stage_experiment(
                 script=script,
-                name=name,
-                tags=list(tag),
-                description=description,
-                config=merged_config,
+                name=resolved_name,
+                tags=resolved_tags,
+                description=resolved_description,
+                config=experiment_config,
                 verbose=verbose,
-                ignore_dirty=ignore_dirty,
+                ignore_dirty=resolved_ignore_dirty,
             )
         else:
             _execute_experiment(
                 script=script,
-                name=name,
-                tags=list(tag),
-                description=description,
-                config=merged_config,
+                name=resolved_name,
+                tags=resolved_tags,
+                description=resolved_description,
+                config=experiment_config,
                 verbose=verbose,
-                ignore_dirty=ignore_dirty,
+                ignore_dirty=resolved_ignore_dirty,
             )
 
     except Exception as e:
@@ -433,3 +450,13 @@ def _execute_staged_script(
     # Execute script using ScriptExecutor
     executor = ScriptExecutor(manager)
     executor.execute_script(experiment_id, script_path, config, verbose)
+
+
+def _normalize_tags(tag_value: Any) -> list[str]:
+    """Convert config tag value to list format matching CLI --tag behavior."""
+    if isinstance(tag_value, str):
+        return [tag_value]
+    elif isinstance(tag_value, list):
+        return [str(t) for t in tag_value]
+    else:
+        return []

@@ -380,9 +380,10 @@ class TestResolveConfig:
         config_data = TestDataFactory.create_experiment_config(config_type=config_type)
         TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
 
-        result = resolve_config(config_path=config_path)
+        experiment_config, cli_defaults = resolve_config(config_path=config_path)
 
-        assert result == config_data
+        assert experiment_config == config_data
+        assert cli_defaults == {}
 
     def test_resolve_with_default_config(self, temp_dir):
         """Test resolving config with default config file."""
@@ -393,17 +394,19 @@ class TestResolveConfig:
 
         with patch("yanex.core.config.Path.cwd") as mock_cwd:
             mock_cwd.return_value = temp_dir
-            result = resolve_config()
+            experiment_config, cli_defaults = resolve_config()
 
-        assert result == config_data
+        assert experiment_config == config_data
+        assert cli_defaults == {}
 
     def test_resolve_no_config_file(self, temp_dir):
         """Test resolving config when no file exists."""
         with patch("yanex.core.config.Path.cwd") as mock_cwd:
             mock_cwd.return_value = temp_dir
-            result = resolve_config()
+            experiment_config, cli_defaults = resolve_config()
 
-        assert result == {}
+        assert experiment_config == {}
+        assert cli_defaults == {}
 
     @pytest.mark.parametrize(
         "base_config_type,param_overrides,expected_overrides",
@@ -430,18 +433,20 @@ class TestResolveConfig:
         )
         TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
 
-        result = resolve_config(
+        experiment_config, cli_defaults = resolve_config(
             config_path=config_path, param_overrides=param_overrides
         )
 
         # Check that overrides are applied
         for key, value in expected_overrides.items():
-            assert result[key] == value
+            assert experiment_config[key] == value
 
         # Check that non-overridden values are preserved
         for key, value in config_data.items():
             if key not in expected_overrides:
-                assert result[key] == value
+                assert experiment_config[key] == value
+
+        assert cli_defaults == {}
 
     @pytest.mark.parametrize(
         "param_overrides,expected_result",
@@ -455,8 +460,11 @@ class TestResolveConfig:
     )
     def test_resolve_only_param_overrides(self, param_overrides, expected_result):
         """Test resolving config with only parameter overrides."""
-        result = resolve_config(param_overrides=param_overrides)
-        assert result == expected_result
+        experiment_config, cli_defaults = resolve_config(
+            param_overrides=param_overrides
+        )
+        assert experiment_config == expected_result
+        assert cli_defaults == {}
 
     @pytest.mark.parametrize(
         "custom_name,config_type",
@@ -475,9 +483,12 @@ class TestResolveConfig:
 
         with patch("yanex.core.config.Path.cwd") as mock_cwd:
             mock_cwd.return_value = temp_dir
-            result = resolve_config(default_config_name=custom_name)
+            experiment_config, cli_defaults = resolve_config(
+                default_config_name=custom_name
+            )
 
-        assert result == config_data
+        assert experiment_config == config_data
+        assert cli_defaults == {}
 
     def test_resolve_comprehensive_workflow(self, temp_dir):
         """Test comprehensive config resolution workflow."""
@@ -497,18 +508,112 @@ class TestResolveConfig:
             "model.type=transformer",  # Add nested
         ]
 
-        result = resolve_config(
+        experiment_config, cli_defaults = resolve_config(
             config_path=config_path, param_overrides=param_overrides
         )
 
         # Verify overrides applied
-        assert result["learning_rate"] == 0.001
-        assert result["batch_size"] == 64
-        assert result["model"]["type"] == "transformer"
+        assert experiment_config["learning_rate"] == 0.001
+        assert experiment_config["batch_size"] == 64
+        assert experiment_config["model"]["type"] == "transformer"
 
         # Verify original values preserved where not overridden
-        assert result["epochs"] == 100
+        assert experiment_config["epochs"] == 100
 
         # Verify structure is complete
-        assert isinstance(result, dict)
-        assert len(result) >= 4  # At least the added/modified keys
+        assert isinstance(experiment_config, dict)
+        assert len(experiment_config) >= 4  # At least the added/modified keys
+        assert cli_defaults == {}
+
+    def test_resolve_with_cli_defaults(self, temp_dir):
+        """Test resolving config with yanex CLI defaults section."""
+        config_data = {
+            "learning_rate": 0.01,
+            "epochs": 100,
+            "yanex": {
+                "name": "test-experiment",
+                "tag": ["ml", "testing"],
+                "description": "Test description",
+                "ignore_dirty": True,
+                "dry_run": False,
+                "stage": False,
+            },
+        }
+        config_path = temp_dir / "config.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
+
+        experiment_config, cli_defaults = resolve_config(config_path=config_path)
+
+        # Verify experiment config doesn't contain yanex section
+        expected_experiment_config = {"learning_rate": 0.01, "epochs": 100}
+        assert experiment_config == expected_experiment_config
+
+        # Verify CLI defaults extracted correctly
+        expected_cli_defaults = {
+            "name": "test-experiment",
+            "tag": ["ml", "testing"],
+            "description": "Test description",
+            "ignore_dirty": True,
+            "dry_run": False,
+            "stage": False,
+        }
+        assert cli_defaults == expected_cli_defaults
+
+    def test_resolve_with_cli_defaults_and_overrides(self, temp_dir):
+        """Test config with CLI defaults and parameter overrides."""
+        config_data = {
+            "learning_rate": 0.01,
+            "batch_size": 32,
+            "yanex": {"name": "config-experiment", "tag": "config"},
+        }
+        config_path = temp_dir / "config.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
+
+        param_overrides = ["learning_rate=0.001", "epochs=200"]
+
+        experiment_config, cli_defaults = resolve_config(
+            config_path=config_path, param_overrides=param_overrides
+        )
+
+        # Verify experiment config has overrides applied, no yanex section
+        expected_experiment_config = {
+            "learning_rate": 0.001,  # Overridden
+            "batch_size": 32,  # Original
+            "epochs": 200,  # New
+        }
+        assert experiment_config == expected_experiment_config
+
+        # Verify CLI defaults unchanged by param overrides
+        expected_cli_defaults = {"name": "config-experiment", "tag": "config"}
+        assert cli_defaults == expected_cli_defaults
+
+    def test_resolve_empty_yanex_section(self, temp_dir):
+        """Test config with empty yanex section."""
+        config_data = {
+            "learning_rate": 0.01,
+            "yanex": {},
+        }
+        config_path = temp_dir / "config.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
+
+        experiment_config, cli_defaults = resolve_config(config_path=config_path)
+
+        assert experiment_config == {"learning_rate": 0.01}
+        assert cli_defaults == {}
+
+    def test_normalize_tags_helper(self):
+        """Test _normalize_tags helper function."""
+        from yanex.cli.commands.run import _normalize_tags
+
+        # Test string input
+        assert _normalize_tags("single-tag") == ["single-tag"]
+
+        # Test list input
+        assert _normalize_tags(["tag1", "tag2"]) == ["tag1", "tag2"]
+
+        # Test empty input
+        assert _normalize_tags([]) == []
+        assert _normalize_tags(None) == []
+
+        # Test mixed types in list
+        assert _normalize_tags([1, "tag", True]) == ["1", "tag", "True"]

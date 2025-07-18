@@ -12,7 +12,7 @@ from ..core.config import has_sweep_parameters, resolve_config
 
 def load_and_merge_config(
     config_path: Path | None, param_overrides: list[str], verbose: bool = False
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Load and merge configuration from various sources.
 
@@ -22,11 +22,13 @@ def load_and_merge_config(
         verbose: Whether to enable verbose output
 
     Returns:
-        Merged configuration dictionary
+        Tuple of (experiment_config, cli_defaults)
+        - experiment_config: Configuration for experiment parameters
+        - cli_defaults: CLI parameter defaults from 'yanex' section
     """
     try:
         # Use existing resolve_config function from core.config
-        merged_config = resolve_config(
+        experiment_config, cli_defaults = resolve_config(
             config_path=config_path,
             param_overrides=param_overrides,
         )
@@ -36,13 +38,16 @@ def load_and_merge_config(
                 click.echo(f"Loaded config from: {config_path}")
             else:
                 # Check if default config was loaded
-                default_config = Path.cwd() / "yanex.yaml"
+                default_config = Path.cwd() / "config.yaml"
                 if default_config.exists():
                     click.echo(f"Loaded default config: {default_config}")
                 else:
                     click.echo("No configuration file found, using defaults")
 
-        return merged_config
+            if cli_defaults:
+                click.echo(f"Loaded CLI defaults: {cli_defaults}")
+
+        return experiment_config, cli_defaults
 
     except Exception as e:
         raise click.ClickException(f"Failed to load configuration: {e}") from e
