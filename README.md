@@ -186,6 +186,7 @@ training:
 - [CLI Commands](docs/cli-commands.md) - All yanex commands with examples
 - [Python API](docs/python-api.md) - Complete Python API reference  
 - [Configuration](docs/configuration.md) - Parameter management and config files
+- [Experiment Structure](docs/experiment-structure.md) - Directory layout and file organization
 - [Comparison Tool](docs/compare.md) - Interactive experiment comparison
 - [Best Practices](docs/best-practices.md) - Tips for effective experiment tracking
 

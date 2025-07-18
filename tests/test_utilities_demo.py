@@ -226,7 +226,7 @@ yanex.log_metrics(results)
         config_file = exp_dir / "config.json"
         config_file.write_text(json.dumps(config, indent=2))
 
-        results_file = exp_dir / "results.json"
+        results_file = exp_dir / "metrics.json"
         results_file.write_text(json.dumps(results, indent=2))
 
         # Manual validations
@@ -261,7 +261,7 @@ yanex.log_metrics(results)
         config_file = exp_dir / "config.json"
         config_file.write_text(json.dumps(config, indent=2))
 
-        results_file = exp_dir / "results.json"
+        results_file = exp_dir / "metrics.json"
         results_file.write_text(json.dumps(results, indent=2))
 
         # Utility validations

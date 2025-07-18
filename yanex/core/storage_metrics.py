@@ -1,4 +1,4 @@
-"""Results storage for experiments."""
+"""Metrics storage for experiments."""
 
 import json
 from datetime import datetime
@@ -8,11 +8,11 @@ from ..utils.exceptions import StorageError
 from .storage_interfaces import ExperimentDirectoryManager, ResultsStorage
 
 
-class FileSystemResultsStorage(ResultsStorage):
-    """File system-based experiment results storage."""
+class FileSystemMetricsStorage(ResultsStorage):
+    """File system-based experiment metrics storage."""
 
     def __init__(self, directory_manager: ExperimentDirectoryManager):
-        """Initialize results storage.
+        """Initialize metrics storage.
 
         Args:
             directory_manager: Directory manager for experiment paths
@@ -20,53 +20,91 @@ class FileSystemResultsStorage(ResultsStorage):
         self.directory_manager = directory_manager
 
     def save_results(self, experiment_id: str, results: list[dict[str, Any]]) -> None:
-        """Save experiment results.
+        """Save experiment metrics.
 
         Args:
             experiment_id: Experiment identifier
-            results: List of result dictionaries
+            results: List of metrics dictionaries
 
         Raises:
-            StorageError: If results cannot be saved
+            StorageError: If metrics cannot be saved
         """
         exp_dir = self.directory_manager.get_experiment_directory(experiment_id)
-        results_path = exp_dir / "results.json"
+        results_path = exp_dir / "metrics.json"
 
         try:
             with results_path.open("w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2)
         except Exception as e:
-            raise StorageError(f"Failed to save results: {e}") from e
+            raise StorageError(f"Failed to save metrics: {e}") from e
 
     def load_results(
         self, experiment_id: str, include_archived: bool = False
     ) -> list[dict[str, Any]]:
-        """Load experiment results.
+        """Load experiment metrics.
 
         Args:
             experiment_id: Experiment identifier
             include_archived: Whether to search archived experiments too
 
         Returns:
-            List of result dictionaries
+            List of metrics dictionaries
 
         Raises:
-            StorageError: If results cannot be loaded
+            StorageError: If metrics cannot be loaded
         """
         exp_dir = self.directory_manager.get_experiment_directory(
             experiment_id, include_archived
         )
-        results_path = exp_dir / "results.json"
+        metrics_path = exp_dir / "metrics.json"
+        legacy_path = exp_dir / "results.json"
 
-        if not results_path.exists():
-            return []
+        # Check for legacy results.json file and migrate it
+        if not metrics_path.exists() and legacy_path.exists():
+            try:
+                # Migrate legacy results.json to metrics.json
+                with legacy_path.open("r", encoding="utf-8") as f:
+                    legacy_data = json.load(f)
 
-        try:
-            with results_path.open("r", encoding="utf-8") as f:
-                results = json.load(f)
-                return results if isinstance(results, list) else []
-        except Exception as e:
-            raise StorageError(f"Failed to load results: {e}") from e
+                # Save as metrics.json
+                with metrics_path.open("w", encoding="utf-8") as f:
+                    json.dump(legacy_data, f, indent=2)
+
+                # Keep legacy file for backward compatibility
+                print(
+                    f"Info: Migrated results.json to metrics.json for experiment {experiment_id}"
+                )
+            except Exception as e:
+                print(f"Warning: Failed to migrate legacy results.json: {e}")
+                # Continue with legacy file
+                try:
+                    with legacy_path.open("r", encoding="utf-8") as f:
+                        results = json.load(f)
+                        return results if isinstance(results, list) else []
+                except Exception as legacy_e:
+                    raise StorageError(
+                        f"Failed to load legacy metrics: {legacy_e}"
+                    ) from legacy_e
+
+        # Use metrics.json if it exists
+        if metrics_path.exists():
+            try:
+                with metrics_path.open("r", encoding="utf-8") as f:
+                    results = json.load(f)
+                    return results if isinstance(results, list) else []
+            except Exception as e:
+                raise StorageError(f"Failed to load metrics: {e}") from e
+
+        # Fall back to legacy results.json if no metrics.json
+        if legacy_path.exists():
+            try:
+                with legacy_path.open("r", encoding="utf-8") as f:
+                    results = json.load(f)
+                    return results if isinstance(results, list) else []
+            except Exception as e:
+                raise StorageError(f"Failed to load legacy metrics: {e}") from e
+
+        return []
 
     def add_result_step(
         self,
@@ -74,18 +112,18 @@ class FileSystemResultsStorage(ResultsStorage):
         result_data: dict[str, Any],
         step: int | None = None,
     ) -> int:
-        """Add a result step to experiment results.
+        """Add a metrics step to experiment results.
 
         Args:
             experiment_id: Experiment identifier
-            result_data: Result data for this step
+            result_data: Metrics data for this step
             step: Step number, auto-incremented if None
 
         Returns:
             Step number that was used
 
         Raises:
-            StorageError: If result cannot be added
+            StorageError: If metrics cannot be added
         """
         results = self.load_results(experiment_id)
 

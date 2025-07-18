@@ -15,7 +15,6 @@ import pytest
 
 import yanex
 from tests.test_utils import TestDataFactory, create_isolated_manager
-from yanex.utils.exceptions import ExperimentContextError
 
 
 class TestThreadLocalState:
@@ -761,7 +760,7 @@ class TestExecuteBashScript:
 
         # Should work without raising an error
         result = yanex.execute_bash_script("echo 'test'")
-        
+
         # Verify basic functionality
         assert result["exit_code"] == 0
         assert "test" in result["stdout"]
@@ -784,11 +783,11 @@ class TestExecuteBashScript:
         assert result["command"] == "echo 'Hello World'"
         assert "working_directory" in result
 
-        # Check that results were logged
-        logged_results = self.manager.storage.load_results(self.experiment_id)
-        assert len(logged_results) == 1
-        assert logged_results[0]["command"] == "echo 'Hello World'"
-        assert logged_results[0]["exit_code"] == 0
+        # Check that execution was logged
+        logged_executions = self.manager.storage.load_script_runs(self.experiment_id)
+        assert len(logged_executions) == 1
+        assert logged_executions[0]["command"] == "echo 'Hello World'"
+        assert logged_executions[0]["exit_code"] == 0
 
         # Check that stdout artifact was created
         artifacts_dir = (
@@ -812,9 +811,9 @@ class TestExecuteBashScript:
         assert result["stderr"] == ""
 
         # Check that failure was logged
-        logged_results = self.manager.storage.load_results(self.experiment_id)
-        assert len(logged_results) == 1
-        assert logged_results[0]["exit_code"] == 1
+        logged_executions = self.manager.storage.load_script_runs(self.experiment_id)
+        assert len(logged_executions) == 1
+        assert logged_executions[0]["exit_code"] == 1
 
     @patch("yanex.api._get_experiment_manager")
     def test_execute_bash_script_failure_with_raise_on_error(self, mock_get_manager):
@@ -860,10 +859,10 @@ class TestExecuteBashScript:
             yanex.execute_bash_script("sleep 10", timeout=0.1, stream_output=False)
 
         # Check that timeout was logged
-        logged_results = self.manager.storage.load_results(self.experiment_id)
-        assert len(logged_results) == 1
-        assert logged_results[0]["exit_code"] == -1
-        assert "timed out" in logged_results[0]["error"]
+        logged_executions = self.manager.storage.load_script_runs(self.experiment_id)
+        assert len(logged_executions) == 1
+        assert logged_executions[0]["exit_code"] == -1
+        assert "timed out" in logged_executions[0]["error"]
 
     @patch("yanex.api._get_experiment_manager")
     def test_execute_bash_script_working_directory(self, mock_get_manager):
@@ -932,10 +931,10 @@ class TestExecuteBashScript:
         assert result2["exit_code"] == 0
 
         # Check that both executions were logged
-        logged_results = self.manager.storage.load_results(self.experiment_id)
-        assert len(logged_results) == 2
+        logged_executions = self.manager.storage.load_script_runs(self.experiment_id)
+        assert len(logged_executions) == 2
 
-        commands = [r["command"] for r in logged_results]
+        commands = [r["command"] for r in logged_executions]
         assert "echo 'first'" in commands
         assert "echo 'second'" in commands
 

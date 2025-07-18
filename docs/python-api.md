@@ -207,6 +207,8 @@ yanex.log_metrics({
 - `data` (dict): Metrics data to log
 - `step` (int, optional): Step number (auto-incremented if None)
 
+**Storage:** Metrics are stored in `metrics.json` within the experiment directory. See [Experiment Structure](experiment-structure.md) for details.
+
 #### `yanex.log_results(data, step=None)` ⚠️ Deprecated
 
 > **Deprecated:** This function is deprecated. Use `log_metrics()` instead.
@@ -369,7 +371,7 @@ print(f"Output: {result['stdout']}")
 - **Experiment context** - Script receives `YANEX_EXPERIMENT_ID` environment variable
 - **Output capture** - stdout/stderr automatically saved as artifacts
 - **Working directory** - Defaults to experiment directory
-- **Comprehensive logging** - Execution details logged as experiment results
+- **Comprehensive logging** - Execution details logged to `script_runs.json`
 
 **Parameters:**
 - `command` (str): Shell command or script to execute
@@ -386,6 +388,8 @@ print(f"Output: {result['stdout']}")
   - `execution_time` (float): Execution time in seconds
   - `command` (str): The executed command
   - `working_directory` (str): Working directory used
+
+**Storage:** Execution details are logged to `script_runs.json` and stdout/stderr are saved as artifacts. See [Experiment Structure](experiment-structure.md) for details.
 
 **Raises:**
 - `ExperimentContextError`: If no active experiment context

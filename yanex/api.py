@@ -462,9 +462,10 @@ def execute_bash_script(
             "timestamp": start_timestamp,
         }
 
-        # Log execution details as a result step (only in experiment mode)
+        # Log execution details to executions file (only in experiment mode)
         if not standalone_mode:
-            log_metrics(result_data)
+            manager = _get_experiment_manager()
+            manager.storage.add_script_run(experiment_id, result_data)
 
             # Save stdout and stderr as artifacts if non-empty
             if stdout_lines:
@@ -508,7 +509,8 @@ def execute_bash_script(
                 "timestamp": start_timestamp,
                 "error": f"Command timed out after {timeout} seconds",
             }
-            log_metrics(timeout_result)
+            manager = _get_experiment_manager()
+            manager.storage.add_script_run(experiment_id, timeout_result)
 
         # Re-raise the timeout exception
         raise
@@ -528,7 +530,8 @@ def execute_bash_script(
                 "timestamp": start_timestamp,
                 "error": str(e),
             }
-            log_metrics(error_result)
+            manager = _get_experiment_manager()
+            manager.storage.add_script_run(experiment_id, error_result)
 
         # Re-raise the exception
         raise

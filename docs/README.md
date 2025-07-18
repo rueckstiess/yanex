@@ -6,6 +6,7 @@ Complete documentation for Yanex - Yet Another Experiment Tracker
 
 - [**Installation & Quick Start**](../README.md#quick-start) - Get up and running in minutes
 - [**Configuration**](configuration.md) - Parameter management and config files
+- [**Experiment Structure**](experiment-structure.md) - Directory layout and file organization
 
 ## CLI Commands
 

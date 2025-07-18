@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - In standalone mode: no metrics logging, no artifact saving, working directory defaults to current directory
   - In experiment mode: full functionality with metrics logging, artifact saving, and experiment directory
   - Maintains full backward compatibility for existing experiment-mode usage
+- **Metrics Storage Separation**: Separated user metrics from system execution logs for better organization
+  - Renamed `results.json` to `metrics.json` for user-logged metrics via `yanex.log_metrics()`
+  - Created new `script_runs.json` file for bash script execution logs from `yanex.execute_bash_script()`
+  - Automatic migration from legacy `results.json` to `metrics.json` with full backward compatibility
+  - Script execution metadata (command, exit code, timing, etc.) now stored separately from user metrics
+  - Cleaner separation between user-defined experiment metrics and system-generated script execution data
 
 ### Deprecated
 - **`log_results()` Method**: Use `log_metrics()` instead for logging experiment metrics
