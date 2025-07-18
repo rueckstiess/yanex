@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Full backwards compatibility maintained - `log_results()` still works but shows deprecation warning
   - Future-proof: `log_results()` will be removed in a future major version
 
+### Fixed
+- **Real-time Output Display**: Fixed `yanex run` buffering issue where print statements appeared all at once at the end instead of in real-time
+  - Added `-u` (unbuffered) flag to Python subprocess execution to force immediate output display
+  - Long-running experiments now show progress incrementally as expected
+  - Maintains full backward compatibility and artifact capture functionality
+  - Enables better user experience with ability to monitor progress and abort if needed
+
 ### Deprecated
 - **`log_results()` Method**: Use `log_metrics()` instead for logging experiment metrics
   - Shows deprecation warning when used, encouraging migration to new API

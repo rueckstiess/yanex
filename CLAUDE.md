@@ -145,3 +145,11 @@ The codebase has undergone significant refactoring to:
 - Git state is automatically tracked for reproducibility
 - Two usage patterns: CLI-first (recommended) and explicit experiment creation
 - Configuration supports YAML files with CLI parameter overrides
+
+## Ruff Linting Memories
+
+- Don't add whitespace to empty lines to pass ruff's rule W293. 
+
+## Documentation Guidelines
+
+- After implementing user-facing changes, check if the documentation needs updating and make the necessary changes.
