@@ -275,18 +275,52 @@ class TestExperimentAPI:
 
     @patch("yanex.api._get_experiment_manager")
     @patch("builtins.print")
-    def test_log_metrics_replacement_warning(self, mock_print, mock_get_manager):
-        """Test warning when replacing existing step."""
+    def test_log_metrics_merge_info(self, mock_print, mock_get_manager):
+        """Test info message when merging with existing step."""
         mock_get_manager.return_value = self.manager
 
         # Log first result
         yanex.log_metrics({"accuracy": 0.90}, step=1)
 
-        # Log second result with same step
-        yanex.log_metrics({"accuracy": 0.95}, step=1)
+        # Log second result with same step (should merge)
+        yanex.log_metrics({"loss": 0.05}, step=1)
 
-        # Should have printed warning
-        mock_print.assert_called_with("Warning: Replacing existing results for step 1")
+        # Should have printed info message
+        mock_print.assert_called_with("Info: Merging metrics with existing step 1")
+
+        # Verify both metrics are present
+        saved_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(saved_results) == 1
+        assert saved_results[0]["accuracy"] == 0.90
+        assert saved_results[0]["loss"] == 0.05
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_log_metrics_merge_behavior(self, mock_get_manager):
+        """Test comprehensive metrics merging behavior."""
+        mock_get_manager.return_value = self.manager
+
+        # Log initial metrics for step 3
+        yanex.log_metrics({"foo": 1}, step=3)
+
+        # Log additional metrics for same step (should merge)
+        yanex.log_metrics({"bar": 2}, step=3)
+
+        # Log updated value for existing metric (should overwrite)
+        yanex.log_metrics({"foo": 10}, step=3)
+
+        # Add one more metric
+        yanex.log_metrics({"baz": 3}, step=3)
+
+        # Verify all metrics are present with correct values
+        saved_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(saved_results) == 1
+        result = saved_results[0]
+        assert result["step"] == 3
+        assert result["foo"] == 10  # Updated value
+        assert result["bar"] == 2  # Original value preserved
+        assert result["baz"] == 3  # New metric added
+        assert "timestamp" in result  # Original timestamp preserved
+        assert "last_updated" in result  # Last updated timestamp added
 
     @patch("yanex.api._get_experiment_manager")
     def test_log_results_deprecation_warning(self, mock_get_manager):

@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Includes comprehensive test coverage and documentation
 - **New `log_metrics()` API Method**: Renamed `log_results()` to `log_metrics()` for clearer semantics
   - `yanex.log_metrics(data, step=None)` is the new preferred method for logging experiment metrics
+  - **Metrics Merging**: Multiple calls to the same step now merge metrics instead of replacing them
+  - Conflicting metric keys overwrite previous values while preserving other metrics
+  - Original timestamp preserved with `last_updated` field tracking latest modifications
   - All internal usage, examples, and documentation updated to use the new method
   - Full backwards compatibility maintained - `log_results()` still works but shows deprecation warning
   - Future-proof: `log_results()` will be removed in a future major version

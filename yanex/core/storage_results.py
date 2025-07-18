@@ -110,10 +110,16 @@ class FileSystemResultsStorage(ResultsStorage):
         result_entry["step"] = step
         result_entry["timestamp"] = datetime.utcnow().isoformat()
 
-        # Add or replace result
+        # Add or merge result
         if existing_index is not None:
-            # Replace existing step (with warning - handled by caller)
-            results[existing_index] = result_entry
+            # Merge with existing step data
+            existing_result = results[existing_index]
+            # Keep existing timestamp and step, merge data
+            merged_entry = existing_result.copy()
+            merged_entry.update(result_data)  # New data overwrites existing fields
+            merged_entry["step"] = step  # Ensure step stays the same
+            merged_entry["last_updated"] = datetime.utcnow().isoformat()
+            results[existing_index] = merged_entry
         else:
             # Add new result
             results.append(result_entry)

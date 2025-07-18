@@ -184,6 +184,11 @@ yanex.log_metrics({"accuracy": 0.95, "loss": 0.05})
 # Log with explicit step number
 yanex.log_metrics({"epoch_loss": 0.3}, step=10)
 
+# Multiple calls to same step merge metrics
+yanex.log_metrics({"accuracy": 0.90}, step=5)
+yanex.log_metrics({"loss": 0.15}, step=5)    # Merges with step 5
+yanex.log_metrics({"accuracy": 0.95}, step=5) # Updates accuracy, keeps loss
+
 # Log complex data structures
 yanex.log_metrics({
     "model_config": {"layers": 12, "dropout": 0.1},
@@ -192,11 +197,17 @@ yanex.log_metrics({
 })
 ```
 
+**Step Behavior:**
+- If `step` is None: Auto-increments to next available step
+- If `step` already exists: **Merges** new metrics with existing ones
+- Conflicting metric keys: New values overwrite existing ones
+- Original timestamp preserved; `last_updated` field tracks latest modification
+
 **Parameters:**
 - `data` (dict): Metrics data to log
 - `step` (int, optional): Step number (auto-incremented if None)
 
-#### `yanex.log_metrics(data, step=None)` ⚠️ Deprecated
+#### `yanex.log_results(data, step=None)` ⚠️ Deprecated
 
 > **Deprecated:** This function is deprecated. Use `log_metrics()` instead.
 

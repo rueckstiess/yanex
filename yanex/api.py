@@ -211,11 +211,11 @@ def log_metrics(data: dict[str, Any], step: int | None = None) -> None:
 
     manager = _get_experiment_manager()
 
-    # Warn if replacing existing step
+    # Info if merging with existing step
     if step is not None:
         existing_results = manager.storage.load_results(experiment_id)
         if any(r.get("step") == step for r in existing_results):
-            print(f"Warning: Replacing existing results for step {step}")
+            print(f"Info: Merging metrics with existing step {step}")
 
     manager.storage.add_result_step(experiment_id, data, step)
 

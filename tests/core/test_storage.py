@@ -304,8 +304,8 @@ class TestAddResultStep:
         next_step = storage.add_result_step(experiment_id, {"accuracy": 0.91})
         assert next_step == 6
 
-    def test_add_result_step_replace_existing(self, temp_dir):
-        """Test replacing existing result step."""
+    def test_add_result_step_merge_existing(self, temp_dir):
+        """Test merging metrics with existing result step."""
         storage = ExperimentStorage(temp_dir)
         experiment_id = "abc12345"
 
@@ -314,14 +314,24 @@ class TestAddResultStep:
         # Add initial result
         storage.add_result_step(experiment_id, {"accuracy": 0.85}, step=0)
 
-        # Replace with new result
-        storage.add_result_step(experiment_id, {"accuracy": 0.90}, step=0)
+        # Add more metrics to same step (should merge)
+        storage.add_result_step(experiment_id, {"loss": 0.15}, step=0)
 
-        # Check that result was replaced
+        # Check that results were merged
         results = storage.load_results(experiment_id)
         assert len(results) == 1
         assert results[0]["step"] == 0
-        assert results[0]["accuracy"] == 0.90
+        assert results[0]["accuracy"] == 0.85  # Original metric preserved
+        assert results[0]["loss"] == 0.15  # New metric added
+        assert "timestamp" in results[0]  # Original timestamp preserved
+        assert "last_updated" in results[0]  # New last_updated field added
+
+        # Test overwriting existing metric
+        storage.add_result_step(experiment_id, {"accuracy": 0.90}, step=0)
+        results = storage.load_results(experiment_id)
+        assert len(results) == 1
+        assert results[0]["accuracy"] == 0.90  # Metric updated
+        assert results[0]["loss"] == 0.15  # Other metric preserved
 
     def test_add_result_step_sorting(self, temp_dir):
         """Test that results are sorted by step."""
