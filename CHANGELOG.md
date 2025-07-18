@@ -14,6 +14,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Example: `yanex: {name: "my-experiment", tag: [dev, testing], ignore_dirty: true}`
   - Fully backwards compatible - existing configs without `yanex` section work unchanged
   - Includes comprehensive test coverage and documentation
+- **New `log_metrics()` API Method**: Renamed `log_results()` to `log_metrics()` for clearer semantics
+  - `yanex.log_metrics(data, step=None)` is the new preferred method for logging experiment metrics
+  - **Metrics Merging**: Multiple calls to the same step now merge metrics instead of replacing them
+  - Conflicting metric keys overwrite previous values while preserving other metrics
+  - Original timestamp preserved with `last_updated` field tracking latest modifications
+  - All internal usage, examples, and documentation updated to use the new method
+  - Full backwards compatibility maintained - `log_results()` still works but shows deprecation warning
+  - Future-proof: `log_results()` will be removed in a future major version
+
+### Fixed
+- **Real-time Output Display**: Fixed `yanex run` buffering issue where print statements appeared all at once at the end instead of in real-time
+  - Added `-u` (unbuffered) flag to Python subprocess execution to force immediate output display
+  - Long-running experiments now show progress incrementally as expected
+  - Maintains full backward compatibility and artifact capture functionality
+  - Enables better user experience with ability to monitor progress and abort if needed
+- **Standalone Mode for execute_bash_script()**: Fixed `yanex.execute_bash_script()` to work in both experiment and standalone modes
+  - Previously threw `ExperimentContextError` when called outside experiment context (e.g., in `python script.py`)
+  - Now works seamlessly in both `yanex run script.py` (with experiment tracking) and `python script.py` (standalone mode)
+  - In standalone mode: no metrics logging, no artifact saving, working directory defaults to current directory
+  - In experiment mode: full functionality with metrics logging, artifact saving, and experiment directory
+  - Maintains full backward compatibility for existing experiment-mode usage
+- **Metrics Storage Separation**: Separated user metrics from system execution logs for better organization
+  - Renamed `results.json` to `metrics.json` for user-logged metrics via `yanex.log_metrics()`
+  - Created new `script_runs.json` file for bash script execution logs from `yanex.execute_bash_script()`
+  - Automatic migration from legacy `results.json` to `metrics.json` with full backward compatibility
+  - Script execution metadata (command, exit code, timing, etc.) now stored separately from user metrics
+  - Cleaner separation between user-defined experiment metrics and system-generated script execution data
+
+### Deprecated
+- **`log_results()` Method**: Use `log_metrics()` instead for logging experiment metrics
+  - Shows deprecation warning when used, encouraging migration to new API
+  - Functionally identical to `log_metrics()` - simply calls the new method internally
+  - Will be removed in a future major version to clean up the API
 
 ## [0.3.0] - 2025-07-17
 

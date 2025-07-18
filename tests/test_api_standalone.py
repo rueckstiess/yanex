@@ -94,12 +94,14 @@ class TestStandaloneMode:
     @pytest.mark.parametrize(
         "log_function,log_args",
         [
+            ("log_metrics", ({"accuracy": 0.95, "loss": 0.05},)),
+            ("log_metrics", ({"accuracy": 0.97}, {"step": 1})),
             ("log_results", ({"accuracy": 0.95, "loss": 0.05},)),
             ("log_results", ({"accuracy": 0.97}, {"step": 1})),
         ],
     )
-    def test_log_results_standalone(self, log_function, log_args):
-        """Test log_results is no-op in standalone mode."""
+    def test_log_metrics_standalone(self, log_function, log_args):
+        """Test log_metrics and log_results are no-op in standalone mode."""
         # Should not raise any exceptions
         if len(log_args) == 2:
             getattr(yanex, log_function)(log_args[0], **log_args[1])

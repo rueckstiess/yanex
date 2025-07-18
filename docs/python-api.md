@@ -15,7 +15,7 @@ lr = params.get('learning_rate', 0.001)
 accuracy = train_model(lr=lr)
 
 # Logging works in both standalone and yanex contexts
-yanex.log_results({"accuracy": accuracy})
+yanex.log_metrics({"accuracy": accuracy})
 ```
 
 ```bash
@@ -29,7 +29,7 @@ with yanex.create_experiment(
     script_path=Path(__file__),
     name="my-experiment"
 ):
-    yanex.log_results({"accuracy": 0.95})
+    yanex.log_metrics({"accuracy": 0.95})
 ```
 
 ---
@@ -55,10 +55,10 @@ epochs = params.get('epochs', 10)
 for epoch in range(epochs):
     loss = train_epoch(lr)
     # Logs to yanex when run via CLI, no-op when standalone
-    yanex.log_results({"epoch": epoch, "loss": loss})
+    yanex.log_metrics({"epoch": epoch, "loss": loss})
 
 final_accuracy = evaluate_model()
-yanex.log_results({"final_accuracy": final_accuracy})
+yanex.log_metrics({"final_accuracy": final_accuracy})
 ```
 
 ```bash
@@ -90,7 +90,7 @@ with yanex.create_experiment(
     accuracy = train_model()
     
     # Log results using context manager methods
-    yanex.log_results({"accuracy": accuracy})
+    yanex.log_metrics({"accuracy": accuracy})
     yanex.log_artifact("model.pth", "path/to/model.pth")
 ```
 
@@ -165,7 +165,7 @@ Check if there is an active experiment context.
 ```python
 if yanex.has_context():
     # We're tracking this experiment
-    yanex.log_results({"setup_complete": True})
+    yanex.log_metrics({"setup_complete": True})
 ```
 
 **Returns:**
@@ -173,24 +173,47 @@ if yanex.has_context():
 
 ### Result Logging
 
-#### `yanex.log_results(data, step=None)`
+#### `yanex.log_metrics(data, step=None)`
 
-Log experiment results. No-op in standalone mode.
+Log experiment metrics. No-op in standalone mode.
 
 ```python
 # Log simple metrics
-yanex.log_results({"accuracy": 0.95, "loss": 0.05})
+yanex.log_metrics({"accuracy": 0.95, "loss": 0.05})
 
 # Log with explicit step number
-yanex.log_results({"epoch_loss": 0.3}, step=10)
+yanex.log_metrics({"epoch_loss": 0.3}, step=10)
+
+# Multiple calls to same step merge metrics
+yanex.log_metrics({"accuracy": 0.90}, step=5)
+yanex.log_metrics({"loss": 0.15}, step=5)    # Merges with step 5
+yanex.log_metrics({"accuracy": 0.95}, step=5) # Updates accuracy, keeps loss
 
 # Log complex data structures
-yanex.log_results({
+yanex.log_metrics({
     "model_config": {"layers": 12, "dropout": 0.1},
     "training_time": 3600,
     "gpu_memory_used": "8GB"
 })
 ```
+
+**Step Behavior:**
+- If `step` is None: Auto-increments to next available step
+- If `step` already exists: **Merges** new metrics with existing ones
+- Conflicting metric keys: New values overwrite existing ones
+- Original timestamp preserved; `last_updated` field tracks latest modification
+
+**Parameters:**
+- `data` (dict): Metrics data to log
+- `step` (int, optional): Step number (auto-incremented if None)
+
+**Storage:** Metrics are stored in `metrics.json` within the experiment directory. See [Experiment Structure](experiment-structure.md) for details.
+
+#### `yanex.log_results(data, step=None)` ⚠️ Deprecated
+
+> **Deprecated:** This function is deprecated. Use `log_metrics()` instead.
+
+Log experiment results. No-op in standalone mode. This function now shows a deprecation warning and will be removed in a future version.
 
 **Parameters:**
 - `data` (dict): Results data to log
@@ -348,7 +371,7 @@ print(f"Output: {result['stdout']}")
 - **Experiment context** - Script receives `YANEX_EXPERIMENT_ID` environment variable
 - **Output capture** - stdout/stderr automatically saved as artifacts
 - **Working directory** - Defaults to experiment directory
-- **Comprehensive logging** - Execution details logged as experiment results
+- **Comprehensive logging** - Execution details logged to `script_runs.json`
 
 **Parameters:**
 - `command` (str): Shell command or script to execute
@@ -365,6 +388,8 @@ print(f"Output: {result['stdout']}")
   - `execution_time` (float): Execution time in seconds
   - `command` (str): The executed command
   - `working_directory` (str): Working directory used
+
+**Storage:** Execution details are logged to `script_runs.json` and stdout/stderr are saved as artifacts. See [Experiment Structure](experiment-structure.md) for details.
 
 **Raises:**
 - `ExperimentContextError`: If no active experiment context

@@ -246,7 +246,7 @@ Prefixed with 📊, derived from `config.yaml`:
 ### Metric Columns  
 
 Prefixed with 📈, derived from logged results:
-- Automatically discovered from `experiment.log_results()` calls
+- Automatically discovered from `experiment.log_metrics()` calls
 - For list-based results, shows the latest/last value
 - Numeric values formatted with appropriate precision
 

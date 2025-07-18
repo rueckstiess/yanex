@@ -15,7 +15,6 @@ import pytest
 
 import yanex
 from tests.test_utils import TestDataFactory, create_isolated_manager
-from yanex.utils.exceptions import ExperimentContextError
 
 
 class TestThreadLocalState:
@@ -248,12 +247,12 @@ class TestExperimentAPI:
         assert metadata["name"] == "test-experiment"
 
     @patch("yanex.api._get_experiment_manager")
-    def test_log_results_basic(self, mock_get_manager):
-        """Test basic result logging."""
+    def test_log_metrics_basic(self, mock_get_manager):
+        """Test basic metrics logging."""
         mock_get_manager.return_value = self.manager
 
         results = {"accuracy": 0.95, "loss": 0.05}
-        yanex.log_results(results)
+        yanex.log_metrics(results)
 
         # Verify results were saved
         saved_results = self.manager.storage.load_results(self.experiment_id)
@@ -263,30 +262,79 @@ class TestExperimentAPI:
         assert "step" in saved_results[0]
 
     @patch("yanex.api._get_experiment_manager")
-    def test_log_results_with_step(self, mock_get_manager):
-        """Test result logging with specific step."""
+    def test_log_metrics_with_step(self, mock_get_manager):
+        """Test metrics logging with specific step."""
         mock_get_manager.return_value = self.manager
 
         results = {"accuracy": 0.90}
-        yanex.log_results(results, step=5)
+        yanex.log_metrics(results, step=5)
 
         saved_results = self.manager.storage.load_results(self.experiment_id)
         assert saved_results[0]["step"] == 5
 
     @patch("yanex.api._get_experiment_manager")
     @patch("builtins.print")
-    def test_log_results_replacement_warning(self, mock_print, mock_get_manager):
-        """Test warning when replacing existing step."""
+    def test_log_metrics_merge_info(self, mock_print, mock_get_manager):
+        """Test info message when merging with existing step."""
         mock_get_manager.return_value = self.manager
 
         # Log first result
-        yanex.log_results({"accuracy": 0.90}, step=1)
+        yanex.log_metrics({"accuracy": 0.90}, step=1)
 
-        # Log second result with same step
-        yanex.log_results({"accuracy": 0.95}, step=1)
+        # Log second result with same step (should merge)
+        yanex.log_metrics({"loss": 0.05}, step=1)
 
-        # Should have printed warning
-        mock_print.assert_called_with("Warning: Replacing existing results for step 1")
+        # Should have printed info message
+        mock_print.assert_called_with("Info: Merging metrics with existing step 1")
+
+        # Verify both metrics are present
+        saved_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(saved_results) == 1
+        assert saved_results[0]["accuracy"] == 0.90
+        assert saved_results[0]["loss"] == 0.05
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_log_metrics_merge_behavior(self, mock_get_manager):
+        """Test comprehensive metrics merging behavior."""
+        mock_get_manager.return_value = self.manager
+
+        # Log initial metrics for step 3
+        yanex.log_metrics({"foo": 1}, step=3)
+
+        # Log additional metrics for same step (should merge)
+        yanex.log_metrics({"bar": 2}, step=3)
+
+        # Log updated value for existing metric (should overwrite)
+        yanex.log_metrics({"foo": 10}, step=3)
+
+        # Add one more metric
+        yanex.log_metrics({"baz": 3}, step=3)
+
+        # Verify all metrics are present with correct values
+        saved_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(saved_results) == 1
+        result = saved_results[0]
+        assert result["step"] == 3
+        assert result["foo"] == 10  # Updated value
+        assert result["bar"] == 2  # Original value preserved
+        assert result["baz"] == 3  # New metric added
+        assert "timestamp" in result  # Original timestamp preserved
+        assert "last_updated" in result  # Last updated timestamp added
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_log_results_deprecation_warning(self, mock_get_manager):
+        """Test that log_results shows deprecation warning."""
+        mock_get_manager.return_value = self.manager
+
+        results = {"accuracy": 0.95, "loss": 0.05}
+
+        with pytest.warns(DeprecationWarning, match="log_results\\(\\) is deprecated"):
+            yanex.log_results(results)
+
+        # Verify results were still saved (through log_metrics)
+        saved_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(saved_results) == 1
+        assert saved_results[0]["accuracy"] == 0.95
 
     @patch("yanex.api._get_experiment_manager")
     def test_log_artifact(self, mock_get_manager):
@@ -706,14 +754,18 @@ class TestExecuteBashScript:
         """Clean up after test."""
         yanex._clear_current_experiment_id()
 
-    def test_execute_bash_script_standalone_mode_raises_error(self):
-        """Test that execute_bash_script raises error in standalone mode."""
+    def test_execute_bash_script_standalone_mode_works(self):
+        """Test that execute_bash_script works in standalone mode."""
         yanex._clear_current_experiment_id()  # Ensure standalone mode
 
-        with pytest.raises(
-            ExperimentContextError, match="No active experiment context"
-        ):
-            yanex.execute_bash_script("echo 'test'")
+        # Should work without raising an error
+        result = yanex.execute_bash_script("echo 'test'")
+
+        # Verify basic functionality
+        assert result["exit_code"] == 0
+        assert "test" in result["stdout"]
+        assert result["stderr"] == ""
+        assert "working_directory" in result
 
     @patch("yanex.api._get_experiment_manager")
     def test_execute_bash_script_success(self, mock_get_manager):
@@ -731,11 +783,11 @@ class TestExecuteBashScript:
         assert result["command"] == "echo 'Hello World'"
         assert "working_directory" in result
 
-        # Check that results were logged
-        logged_results = self.manager.storage.load_results(self.experiment_id)
-        assert len(logged_results) == 1
-        assert logged_results[0]["command"] == "echo 'Hello World'"
-        assert logged_results[0]["exit_code"] == 0
+        # Check that execution was logged
+        logged_executions = self.manager.storage.load_script_runs(self.experiment_id)
+        assert len(logged_executions) == 1
+        assert logged_executions[0]["command"] == "echo 'Hello World'"
+        assert logged_executions[0]["exit_code"] == 0
 
         # Check that stdout artifact was created
         artifacts_dir = (
@@ -759,9 +811,9 @@ class TestExecuteBashScript:
         assert result["stderr"] == ""
 
         # Check that failure was logged
-        logged_results = self.manager.storage.load_results(self.experiment_id)
-        assert len(logged_results) == 1
-        assert logged_results[0]["exit_code"] == 1
+        logged_executions = self.manager.storage.load_script_runs(self.experiment_id)
+        assert len(logged_executions) == 1
+        assert logged_executions[0]["exit_code"] == 1
 
     @patch("yanex.api._get_experiment_manager")
     def test_execute_bash_script_failure_with_raise_on_error(self, mock_get_manager):
@@ -807,10 +859,10 @@ class TestExecuteBashScript:
             yanex.execute_bash_script("sleep 10", timeout=0.1, stream_output=False)
 
         # Check that timeout was logged
-        logged_results = self.manager.storage.load_results(self.experiment_id)
-        assert len(logged_results) == 1
-        assert logged_results[0]["exit_code"] == -1
-        assert "timed out" in logged_results[0]["error"]
+        logged_executions = self.manager.storage.load_script_runs(self.experiment_id)
+        assert len(logged_executions) == 1
+        assert logged_executions[0]["exit_code"] == -1
+        assert "timed out" in logged_executions[0]["error"]
 
     @patch("yanex.api._get_experiment_manager")
     def test_execute_bash_script_working_directory(self, mock_get_manager):
@@ -879,10 +931,10 @@ class TestExecuteBashScript:
         assert result2["exit_code"] == 0
 
         # Check that both executions were logged
-        logged_results = self.manager.storage.load_results(self.experiment_id)
-        assert len(logged_results) == 2
+        logged_executions = self.manager.storage.load_script_runs(self.experiment_id)
+        assert len(logged_executions) == 2
 
-        commands = [r["command"] for r in logged_results]
+        commands = [r["command"] for r in logged_executions]
         assert "echo 'first'" in commands
         assert "echo 'second'" in commands
 

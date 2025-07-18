@@ -4,7 +4,7 @@ Basic CLI example using yanex for query benchmarking.
 
 This script demonstrates:
 - Getting experiment parameters with get_params()
-- Logging benchmark results with log_results()
+- Logging benchmark results with log_metrics()
 
 Run with yanex:
     yanex run basic_benchmark.py --param query_count=20 --param query_type=SELECT
@@ -44,7 +44,7 @@ def run_benchmark():
 
     # Log final results
     avg_time = sum(execution_times) / len(execution_times)
-    yanex.log_results(
+    yanex.log_metrics(
         {
             "total_queries": query_count,
             "query_type": query_type,

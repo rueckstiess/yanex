@@ -120,7 +120,7 @@ class ScriptExecutor:
         stderr_capture: list[str] = []
 
         process = subprocess.Popen(
-            [sys.executable, str(script_path.resolve())],
+            [sys.executable, "-u", str(script_path.resolve())],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

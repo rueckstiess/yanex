@@ -287,7 +287,7 @@ class TestAssertions:
             experiment_dir: Path to experiment directory
             check_metadata: Whether to check for metadata.json
             check_config: Whether to check for config.json
-            check_results: Whether to check for results.json
+            check_results: Whether to check for metrics.json
         """
         TestAssertions.assert_experiment_directory_structure(experiment_dir)
 
@@ -300,8 +300,8 @@ class TestAssertions:
             assert config_file.exists(), f"Config file missing: {config_file}"
 
         if check_results:
-            results_file = experiment_dir / "results.json"
-            assert results_file.exists(), f"Results file missing: {results_file}"
+            results_file = experiment_dir / "metrics.json"
+            assert results_file.exists(), f"Metrics file missing: {results_file}"
 
     @staticmethod
     def assert_metadata_fields(
@@ -355,7 +355,7 @@ print(f"Running with params: {{params}}")
 
 # Log some results
 results = {{"test_metric": 42, "status": "success"}}
-yanex.log_results(results)
+yanex.log_metrics(results)
 """,
             "yanex_ml": """
 import yanex
@@ -369,7 +369,7 @@ epochs = params.get("epochs", 10)
 for epoch in range(epochs):
     accuracy = 0.7 + (epoch * 0.03)  # Fake improvement
     loss = 1.0 - accuracy
-    yanex.log_results({{
+    yanex.log_metrics({{
         "epoch": epoch,
         "accuracy": accuracy,
         "loss": loss,
@@ -493,9 +493,9 @@ raise ValueError("Test failure")
                 with (experiment_dir / "config.json").open("w") as f:
                     json.dump(config, f, indent=2)
 
-        # Save results.json if provided
+        # Save metrics.json if provided
         if results is not None:
-            with (experiment_dir / "results.json").open("w") as f:
+            with (experiment_dir / "metrics.json").open("w") as f:
                 json.dump(results, f, indent=2)
 
     @staticmethod

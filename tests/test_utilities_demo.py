@@ -103,7 +103,7 @@ class TestUtilityDemonstration:
 import yanex
 params = yanex.get_params()
 results = {"accuracy": 0.95, "loss": 0.05}
-yanex.log_results(results)
+yanex.log_metrics(results)
 """
         script_path.write_text(script_content)
 
@@ -226,7 +226,7 @@ yanex.log_results(results)
         config_file = exp_dir / "config.json"
         config_file.write_text(json.dumps(config, indent=2))
 
-        results_file = exp_dir / "results.json"
+        results_file = exp_dir / "metrics.json"
         results_file.write_text(json.dumps(results, indent=2))
 
         # Manual validations
@@ -261,7 +261,7 @@ yanex.log_results(results)
         config_file = exp_dir / "config.json"
         config_file.write_text(json.dumps(config, indent=2))
 
-        results_file = exp_dir / "results.json"
+        results_file = exp_dir / "metrics.json"
         results_file.write_text(json.dumps(results, indent=2))
 
         # Utility validations

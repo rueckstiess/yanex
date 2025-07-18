@@ -195,11 +195,11 @@ def get_metadata() -> dict[str, Any]:
     return manager.get_experiment_metadata(experiment_id)
 
 
-def log_results(data: dict[str, Any], step: int | None = None) -> None:
-    """Log experiment results for current step.
+def log_metrics(data: dict[str, Any], step: int | None = None) -> None:
+    """Log experiment metrics for current step.
 
     Args:
-        data: Results data to log
+        data: Metrics data to log
         step: Optional step number (auto-incremented if None)
 
     Note:
@@ -211,13 +211,38 @@ def log_results(data: dict[str, Any], step: int | None = None) -> None:
 
     manager = _get_experiment_manager()
 
-    # Warn if replacing existing step
+    # Info if merging with existing step
     if step is not None:
         existing_results = manager.storage.load_results(experiment_id)
         if any(r.get("step") == step for r in existing_results):
-            print(f"Warning: Replacing existing results for step {step}")
+            print(f"Info: Merging metrics with existing step {step}")
 
     manager.storage.add_result_step(experiment_id, data, step)
+
+
+def log_results(data: dict[str, Any], step: int | None = None) -> None:
+    """Log experiment results for current step.
+
+    Args:
+        data: Results data to log
+        step: Optional step number (auto-incremented if None)
+
+    Note:
+        Does nothing in standalone mode (no active experiment context)
+
+    Deprecated:
+        This function is deprecated. Use log_metrics() instead.
+    """
+    import warnings
+
+    warnings.warn(
+        "log_results() is deprecated and will be removed in a future version. "
+        "Use log_metrics() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    log_metrics(data, step)
 
 
 def log_artifact(name: str, file_path: Path) -> None:
@@ -310,56 +335,62 @@ def execute_bash_script(
     working_dir: Path | None = None,
     artifact_prefix: str = "script",
 ) -> dict[str, Any]:
-    """Execute bash script/command within experiment context.
+    """Execute bash script/command within experiment context or standalone mode.
 
     Args:
         command: Shell command to execute
         timeout: Optional timeout in seconds
         raise_on_error: Raise exception on non-zero exit code
         stream_output: Print output in real-time
-        working_dir: Working directory (defaults to experiment directory)
+        working_dir: Working directory (defaults to experiment directory in experiment mode, current directory in standalone mode)
+        artifact_prefix: Prefix for artifact filenames (only used in experiment mode)
 
     Returns:
         Execution result dictionary with exit_code, stdout, stderr, etc.
 
     Raises:
-        ExperimentContextError: If no active experiment context
         subprocess.TimeoutExpired: If command times out
         subprocess.CalledProcessError: If raise_on_error=True and command fails
 
     Note:
-        Does nothing in standalone mode (no active experiment context)
+        In standalone mode (no active experiment context):
+        - No metrics logging or artifact saving
+        - No experiment-specific environment variables
+        - Working directory defaults to current directory
+        - All other functionality works normally
     """
     experiment_id = _get_current_experiment_id()
-    if experiment_id is None:
-        raise ExperimentContextError(
-            "No active experiment context. Cannot execute bash script in standalone mode."
-        )
+    standalone_mode = experiment_id is None
 
-    manager = _get_experiment_manager()
-
-    # Set working directory to experiment directory if not specified
+    # Set working directory
     if working_dir is None:
-        working_dir = manager.storage.get_experiment_directory(experiment_id)
+        if standalone_mode:
+            working_dir = Path.cwd()
+        else:
+            manager = _get_experiment_manager()
+            working_dir = manager.storage.get_experiment_directory(experiment_id)
 
-    # Prepare environment with experiment context
+    # Prepare environment
     env = os.environ.copy()
-    env["YANEX_EXPERIMENT_ID"] = experiment_id
 
-    # Add experiment parameters as environment variables
-    try:
-        params = get_params()
-        for key, value in params.items():
-            # Convert nested parameters to JSON for complex types
-            if isinstance(value, dict | list):
-                import json
+    if not standalone_mode:
+        # Add experiment context environment variables
+        env["YANEX_EXPERIMENT_ID"] = experiment_id
 
-                env[f"YANEX_PARAM_{key}"] = json.dumps(value)
-            else:
-                env[f"YANEX_PARAM_{key}"] = str(value)
-    except Exception:
-        # If we can't get params, continue without them
-        pass
+        # Add experiment parameters as environment variables
+        try:
+            params = get_params()
+            for key, value in params.items():
+                # Convert nested parameters to JSON for complex types
+                if isinstance(value, dict | list):
+                    import json
+
+                    env[f"YANEX_PARAM_{key}"] = json.dumps(value)
+                else:
+                    env[f"YANEX_PARAM_{key}"] = str(value)
+        except Exception:
+            # If we can't get params, continue without them
+            pass
 
     # Record start time
     start_time = time.time()
@@ -431,17 +462,19 @@ def execute_bash_script(
             "timestamp": start_timestamp,
         }
 
-        # Log execution details as a result step
-        log_results(result_data)
+        # Log execution details to executions file (only in experiment mode)
+        if not standalone_mode:
+            manager = _get_experiment_manager()
+            manager.storage.add_script_run(experiment_id, result_data)
 
-        # Save stdout and stderr as artifacts if non-empty
-        if stdout_lines:
-            stdout_content = "\n".join(stdout_lines)
-            log_text(stdout_content, f"{artifact_prefix}_stdout.txt")
+            # Save stdout and stderr as artifacts if non-empty
+            if stdout_lines:
+                stdout_content = "\n".join(stdout_lines)
+                log_text(stdout_content, f"{artifact_prefix}_stdout.txt")
 
-        if stderr_lines:
-            stderr_content = "\n".join(stderr_lines)
-            log_text(stderr_content, f"{artifact_prefix}_stderr.txt")
+            if stderr_lines:
+                stderr_content = "\n".join(stderr_lines)
+                log_text(stderr_content, f"{artifact_prefix}_stderr.txt")
 
         # Prepare return value
         execution_result = {
@@ -464,18 +497,20 @@ def execute_bash_script(
     except subprocess.TimeoutExpired:
         execution_time = time.time() - start_time
 
-        # Log timeout as failed execution
-        timeout_result = {
-            "command": command,
-            "exit_code": -1,
-            "execution_time": execution_time,
-            "stdout_lines": len(stdout_lines),
-            "stderr_lines": len(stderr_lines),
-            "working_directory": str(working_dir),
-            "timestamp": start_timestamp,
-            "error": f"Command timed out after {timeout} seconds",
-        }
-        log_results(timeout_result)
+        # Log timeout as failed execution (only in experiment mode)
+        if not standalone_mode:
+            timeout_result = {
+                "command": command,
+                "exit_code": -1,
+                "execution_time": execution_time,
+                "stdout_lines": len(stdout_lines),
+                "stderr_lines": len(stderr_lines),
+                "working_directory": str(working_dir),
+                "timestamp": start_timestamp,
+                "error": f"Command timed out after {timeout} seconds",
+            }
+            manager = _get_experiment_manager()
+            manager.storage.add_script_run(experiment_id, timeout_result)
 
         # Re-raise the timeout exception
         raise
@@ -483,18 +518,20 @@ def execute_bash_script(
     except Exception as e:
         execution_time = time.time() - start_time
 
-        # Log execution error
-        error_result = {
-            "command": command,
-            "exit_code": -1,
-            "execution_time": execution_time,
-            "stdout_lines": len(stdout_lines),
-            "stderr_lines": len(stderr_lines),
-            "working_directory": str(working_dir),
-            "timestamp": start_timestamp,
-            "error": str(e),
-        }
-        log_results(error_result)
+        # Log execution error (only in experiment mode)
+        if not standalone_mode:
+            error_result = {
+                "command": command,
+                "exit_code": -1,
+                "execution_time": execution_time,
+                "stdout_lines": len(stdout_lines),
+                "stderr_lines": len(stderr_lines),
+                "working_directory": str(working_dir),
+                "timestamp": start_timestamp,
+                "error": str(e),
+            }
+            manager = _get_experiment_manager()
+            manager.storage.add_script_run(experiment_id, error_result)
 
         # Re-raise the exception
         raise

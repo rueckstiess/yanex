@@ -123,16 +123,24 @@ class ExperimentComparisonData:
             Results dictionary
         """
         exp_dir = self.storage.get_experiment_directory(experiment_id, include_archived)
-        results_path = exp_dir / "results.json"
+        metrics_path = exp_dir / "metrics.json"
+        legacy_path = exp_dir / "results.json"
 
-        if not results_path.exists():
-            return {}
+        # Try metrics.json first, then fall back to results.json for backward compatibility
+        if metrics_path.exists():
+            try:
+                with metrics_path.open("r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                raise StorageError(f"Failed to load metrics: {e}") from e
+        elif legacy_path.exists():
+            try:
+                with legacy_path.open("r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                raise StorageError(f"Failed to load legacy results: {e}") from e
 
-        try:
-            with results_path.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            raise StorageError(f"Failed to load results: {e}") from e
+        return {}
 
     def discover_columns(
         self,

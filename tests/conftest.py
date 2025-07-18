@@ -75,7 +75,7 @@ result = {
     "loss": 0.05,
     "docs_processed": params.get("n_docs", 1000)
 }
-yanex.log_results(result)
+yanex.log_metrics(result)
 """
     script_path.write_text(script_content)
     return script_path

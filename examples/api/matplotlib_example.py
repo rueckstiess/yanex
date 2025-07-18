@@ -116,7 +116,7 @@ def main():
 
         # Log metrics for each epoch
         for i, epoch in enumerate(epoch_list):
-            yanex.log_results(
+            yanex.log_metrics(
                 {
                     "epoch": epoch,
                     "train_accuracy": round(train_acc[i], 4),
@@ -179,7 +179,7 @@ def main():
             "best_val_accuracy_epoch": val_acc.index(max(val_acc)) + 1,
         }
 
-        yanex.log_results(final_results)
+        yanex.log_metrics(final_results)
 
         # Create training log
         log_content = f"""Training Completed Successfully

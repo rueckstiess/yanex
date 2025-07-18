@@ -7,9 +7,10 @@ from .storage_archive import FileSystemArchiveStorage
 from .storage_artifacts import FileSystemArtifactStorage
 from .storage_config import FileSystemConfigurationStorage
 from .storage_directory import FileSystemDirectoryManager
+from .storage_executions import FileSystemScriptRunStorage
 from .storage_interfaces import ExperimentStorageInterface
 from .storage_metadata import FileSystemMetadataStorage
-from .storage_results import FileSystemResultsStorage
+from .storage_metrics import FileSystemMetricsStorage
 
 
 class CompositeExperimentStorage(ExperimentStorageInterface):
@@ -27,7 +28,8 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         # Initialize specialized storage components
         self.metadata_storage = FileSystemMetadataStorage(self.directory_manager)
         self.config_storage = FileSystemConfigurationStorage(self.directory_manager)
-        self.results_storage = FileSystemResultsStorage(self.directory_manager)
+        self.metrics_storage = FileSystemMetricsStorage(self.directory_manager)
+        self.script_run_storage = FileSystemScriptRunStorage(self.directory_manager)
         self.artifact_storage = FileSystemArtifactStorage(self.directory_manager)
         self.archive_storage = FileSystemArchiveStorage(self.directory_manager)
 
@@ -92,16 +94,16 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         """Load experiment configuration."""
         return self.config_storage.load_config(experiment_id, include_archived)
 
-    # Results methods
+    # Metrics methods
     def save_results(self, experiment_id: str, results: list[dict[str, Any]]) -> None:
-        """Save experiment results."""
-        self.results_storage.save_results(experiment_id, results)
+        """Save experiment metrics."""
+        self.metrics_storage.save_results(experiment_id, results)
 
     def load_results(
         self, experiment_id: str, include_archived: bool = False
     ) -> list[dict[str, Any]]:
-        """Load experiment results."""
-        return self.results_storage.load_results(experiment_id, include_archived)
+        """Load experiment metrics."""
+        return self.metrics_storage.load_results(experiment_id, include_archived)
 
     def add_result_step(
         self,
@@ -109,8 +111,23 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         result_data: dict[str, Any],
         step: int | None = None,
     ) -> int:
-        """Add a result step to experiment results."""
-        return self.results_storage.add_result_step(experiment_id, result_data, step)
+        """Add a metrics step to experiment results."""
+        return self.metrics_storage.add_result_step(experiment_id, result_data, step)
+
+    # Script run methods
+    def add_script_run(
+        self,
+        experiment_id: str,
+        script_run_data: dict[str, Any],
+    ) -> None:
+        """Add a script run record."""
+        self.script_run_storage.add_script_run(experiment_id, script_run_data)
+
+    def load_script_runs(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> list[dict[str, Any]]:
+        """Load experiment script runs."""
+        return self.script_run_storage.load_script_runs(experiment_id, include_archived)
 
     # Artifact methods
     def save_artifact(

@@ -4,7 +4,7 @@ Advanced CLI example using yanex for comprehensive benchmarking with artifacts.
 
 This script demonstrates:
 - Getting experiment parameters with get_params()
-- Logging benchmark results with log_results()
+- Logging benchmark results with log_metrics()
 - Creating and logging artifacts with log_text()
 
 Run with yanex:
@@ -77,7 +77,7 @@ def run_advanced_benchmark():
         if query_count % 10 == 0:
             elapsed = time.time() - start_time
             current_qps = query_count / elapsed
-            yanex.log_results(
+            yanex.log_metrics(
                 {
                     "queries_completed": query_count,
                     "current_qps": round(current_qps, 1),
@@ -95,7 +95,7 @@ def run_advanced_benchmark():
     avg_time = sum(all_times) / len(all_times)
 
     # Log final results
-    yanex.log_results(
+    yanex.log_metrics(
         {
             "total_queries": query_count,
             "duration": round(total_time, 2),

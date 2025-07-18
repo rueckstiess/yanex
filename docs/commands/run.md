@@ -24,7 +24,7 @@ The `yanex run` command is the core of Yanex - it executes your Python scripts w
 
 - **Parameters**: From config files and CLI overrides
 - **Git State**: Current commit, branch, and working directory status
-- **Results**: Via `experiment.log_results()` calls in your script
+- **Results**: Via `experiment.log_metrics()` calls in your script
 - **Artifacts**: Files saved during execution (e.g. model checkpoints, logs)
 - **Metadata**: Experiment name, description, tags, timing
 
