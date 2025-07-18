@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Long-running experiments now show progress incrementally as expected
   - Maintains full backward compatibility and artifact capture functionality
   - Enables better user experience with ability to monitor progress and abort if needed
+- **Standalone Mode for execute_bash_script()**: Fixed `yanex.execute_bash_script()` to work in both experiment and standalone modes
+  - Previously threw `ExperimentContextError` when called outside experiment context (e.g., in `python script.py`)
+  - Now works seamlessly in both `yanex run script.py` (with experiment tracking) and `python script.py` (standalone mode)
+  - In standalone mode: no metrics logging, no artifact saving, working directory defaults to current directory
+  - In experiment mode: full functionality with metrics logging, artifact saving, and experiment directory
+  - Maintains full backward compatibility for existing experiment-mode usage
 
 ### Deprecated
 - **`log_results()` Method**: Use `log_metrics()` instead for logging experiment metrics

@@ -755,14 +755,18 @@ class TestExecuteBashScript:
         """Clean up after test."""
         yanex._clear_current_experiment_id()
 
-    def test_execute_bash_script_standalone_mode_raises_error(self):
-        """Test that execute_bash_script raises error in standalone mode."""
+    def test_execute_bash_script_standalone_mode_works(self):
+        """Test that execute_bash_script works in standalone mode."""
         yanex._clear_current_experiment_id()  # Ensure standalone mode
 
-        with pytest.raises(
-            ExperimentContextError, match="No active experiment context"
-        ):
-            yanex.execute_bash_script("echo 'test'")
+        # Should work without raising an error
+        result = yanex.execute_bash_script("echo 'test'")
+        
+        # Verify basic functionality
+        assert result["exit_code"] == 0
+        assert "test" in result["stdout"]
+        assert result["stderr"] == ""
+        assert "working_directory" in result
 
     @patch("yanex.api._get_experiment_manager")
     def test_execute_bash_script_success(self, mock_get_manager):
