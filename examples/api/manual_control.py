@@ -56,7 +56,7 @@ def main():
 
                 if result is None:
                     # Timeout case
-                    yanex.log_results(
+                    yanex.log_metrics(
                         {
                             "attempt": attempt,
                             "outcome": "timeout",
@@ -76,7 +76,7 @@ def main():
 
                 else:
                     # Success case
-                    yanex.log_results(
+                    yanex.log_metrics(
                         {
                             "attempt": attempt,
                             "outcome": "success",
@@ -97,7 +97,7 @@ def main():
 
             except ValueError as e:
                 # Error case
-                yanex.log_results(
+                yanex.log_metrics(
                     {"attempt": attempt, "outcome": "error", "error_message": str(e)}
                 )
 
@@ -137,11 +137,11 @@ def cancellation_example():
         try:
             for i in range(countdown, 0, -1):
                 print(f"Countdown: {i} seconds remaining...")
-                yanex.log_results({"countdown": i, "status": "running"})
+                yanex.log_metrics({"countdown": i, "status": "running"})
                 time.sleep(1)
 
             print("Countdown completed!")
-            yanex.log_results({"countdown": 0, "status": "completed"})
+            yanex.log_metrics({"countdown": 0, "status": "completed"})
 
         except KeyboardInterrupt:
             print("\nReceived interrupt signal, cancelling experiment...")

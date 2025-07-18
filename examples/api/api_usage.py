@@ -72,7 +72,7 @@ def main():
 
         # Log results for each epoch
         for result in results:
-            yanex.log_results(
+            yanex.log_metrics(
                 {"accuracy": result["accuracy"], "loss": result["loss"]},
                 step=result["epoch"],
             )
@@ -80,7 +80,7 @@ def main():
         # Log summary results
         final_accuracy = results[-1]["accuracy"]
         final_loss = results[-1]["loss"]
-        yanex.log_results(
+        yanex.log_metrics(
             {
                 "final_accuracy": final_accuracy,
                 "final_loss": final_loss,

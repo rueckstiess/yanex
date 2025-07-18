@@ -15,7 +15,7 @@ lr = params.get('learning_rate', 0.001)
 accuracy = train_model(lr=lr)
 
 # Logging works in both standalone and yanex contexts
-yanex.log_results({"accuracy": accuracy})
+yanex.log_metrics({"accuracy": accuracy})
 ```
 
 ```bash
@@ -29,7 +29,7 @@ with yanex.create_experiment(
     script_path=Path(__file__),
     name="my-experiment"
 ):
-    yanex.log_results({"accuracy": 0.95})
+    yanex.log_metrics({"accuracy": 0.95})
 ```
 
 ---
@@ -55,10 +55,10 @@ epochs = params.get('epochs', 10)
 for epoch in range(epochs):
     loss = train_epoch(lr)
     # Logs to yanex when run via CLI, no-op when standalone
-    yanex.log_results({"epoch": epoch, "loss": loss})
+    yanex.log_metrics({"epoch": epoch, "loss": loss})
 
 final_accuracy = evaluate_model()
-yanex.log_results({"final_accuracy": final_accuracy})
+yanex.log_metrics({"final_accuracy": final_accuracy})
 ```
 
 ```bash
@@ -90,7 +90,7 @@ with yanex.create_experiment(
     accuracy = train_model()
     
     # Log results using context manager methods
-    yanex.log_results({"accuracy": accuracy})
+    yanex.log_metrics({"accuracy": accuracy})
     yanex.log_artifact("model.pth", "path/to/model.pth")
 ```
 
@@ -165,7 +165,7 @@ Check if there is an active experiment context.
 ```python
 if yanex.has_context():
     # We're tracking this experiment
-    yanex.log_results({"setup_complete": True})
+    yanex.log_metrics({"setup_complete": True})
 ```
 
 **Returns:**
@@ -173,24 +173,34 @@ if yanex.has_context():
 
 ### Result Logging
 
-#### `yanex.log_results(data, step=None)`
+#### `yanex.log_metrics(data, step=None)`
 
-Log experiment results. No-op in standalone mode.
+Log experiment metrics. No-op in standalone mode.
 
 ```python
 # Log simple metrics
-yanex.log_results({"accuracy": 0.95, "loss": 0.05})
+yanex.log_metrics({"accuracy": 0.95, "loss": 0.05})
 
 # Log with explicit step number
-yanex.log_results({"epoch_loss": 0.3}, step=10)
+yanex.log_metrics({"epoch_loss": 0.3}, step=10)
 
 # Log complex data structures
-yanex.log_results({
+yanex.log_metrics({
     "model_config": {"layers": 12, "dropout": 0.1},
     "training_time": 3600,
     "gpu_memory_used": "8GB"
 })
 ```
+
+**Parameters:**
+- `data` (dict): Metrics data to log
+- `step` (int, optional): Step number (auto-incremented if None)
+
+#### `yanex.log_metrics(data, step=None)` ⚠️ Deprecated
+
+> **Deprecated:** This function is deprecated. Use `log_metrics()` instead.
+
+Log experiment results. No-op in standalone mode. This function now shows a deprecation warning and will be removed in a future version.
 
 **Parameters:**
 - `data` (dict): Results data to log

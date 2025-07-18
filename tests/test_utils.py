@@ -355,7 +355,7 @@ print(f"Running with params: {{params}}")
 
 # Log some results
 results = {{"test_metric": 42, "status": "success"}}
-yanex.log_results(results)
+yanex.log_metrics(results)
 """,
             "yanex_ml": """
 import yanex
@@ -369,7 +369,7 @@ epochs = params.get("epochs", 10)
 for epoch in range(epochs):
     accuracy = 0.7 + (epoch * 0.03)  # Fake improvement
     loss = 1.0 - accuracy
-    yanex.log_results({{
+    yanex.log_metrics({{
         "epoch": epoch,
         "accuracy": accuracy,
         "loss": loss,

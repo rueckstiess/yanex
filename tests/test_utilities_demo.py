@@ -103,7 +103,7 @@ class TestUtilityDemonstration:
 import yanex
 params = yanex.get_params()
 results = {"accuracy": 0.95, "loss": 0.05}
-yanex.log_results(results)
+yanex.log_metrics(results)
 """
         script_path.write_text(script_content)
 

@@ -195,11 +195,11 @@ def get_metadata() -> dict[str, Any]:
     return manager.get_experiment_metadata(experiment_id)
 
 
-def log_results(data: dict[str, Any], step: int | None = None) -> None:
-    """Log experiment results for current step.
+def log_metrics(data: dict[str, Any], step: int | None = None) -> None:
+    """Log experiment metrics for current step.
 
     Args:
-        data: Results data to log
+        data: Metrics data to log
         step: Optional step number (auto-incremented if None)
 
     Note:
@@ -218,6 +218,31 @@ def log_results(data: dict[str, Any], step: int | None = None) -> None:
             print(f"Warning: Replacing existing results for step {step}")
 
     manager.storage.add_result_step(experiment_id, data, step)
+
+
+def log_results(data: dict[str, Any], step: int | None = None) -> None:
+    """Log experiment results for current step.
+
+    Args:
+        data: Results data to log
+        step: Optional step number (auto-incremented if None)
+
+    Note:
+        Does nothing in standalone mode (no active experiment context)
+
+    Deprecated:
+        This function is deprecated. Use log_metrics() instead.
+    """
+    import warnings
+
+    warnings.warn(
+        "log_results() is deprecated and will be removed in a future version. "
+        "Use log_metrics() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    log_metrics(data, step)
 
 
 def log_artifact(name: str, file_path: Path) -> None:
@@ -432,7 +457,7 @@ def execute_bash_script(
         }
 
         # Log execution details as a result step
-        log_results(result_data)
+        log_metrics(result_data)
 
         # Save stdout and stderr as artifacts if non-empty
         if stdout_lines:
@@ -475,7 +500,7 @@ def execute_bash_script(
             "timestamp": start_timestamp,
             "error": f"Command timed out after {timeout} seconds",
         }
-        log_results(timeout_result)
+        log_metrics(timeout_result)
 
         # Re-raise the timeout exception
         raise
@@ -494,7 +519,7 @@ def execute_bash_script(
             "timestamp": start_timestamp,
             "error": str(e),
         }
-        log_results(error_result)
+        log_metrics(error_result)
 
         # Re-raise the exception
         raise

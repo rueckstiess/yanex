@@ -17,7 +17,7 @@ epochs = yanex.get_param('epochs', default=10)
 # ...
 
 # log results, artifacts and figures
-yanex.log_results({"step": epoch, "loss", loss, "accuracy": accuracy})
+yanex.log_metrics({"step": epoch, "loss", loss, "accuracy": accuracy})
 yanex.log_artifact("model.pth", model_path)
 yanex.log_matplotlib_figure(fig, "loss_curve.png")
 ```
@@ -59,7 +59,7 @@ print(f"Learning rate: {params.get('learning_rate', 0.001)}")
 # Simulate training
 accuracy = 0.85 + (params.get('learning_rate', 0.001) * 10)
 
-yanex.log_results({
+yanex.log_metrics({
     "accuracy": accuracy,
     "loss": 1 - accuracy
 })
@@ -126,7 +126,7 @@ lr = params.get('learning_rate', 0.001)
 accuracy = train_model(lr=lr)
 
 # Logging works in both contexts
-yanex.log_results({"accuracy": accuracy})
+yanex.log_metrics({"accuracy": accuracy})
 ```
 
 ```bash
@@ -151,7 +151,7 @@ with experiment:
     # Your code here
     # ...
 
-    yanex.log_results({"accuracy": 0.95})
+    yanex.log_metrics({"accuracy": 0.95})
 ```
 
 > **Note:** Don't mix both patterns! Use CLI-first for most cases, explicit creation for advanced scenarios.

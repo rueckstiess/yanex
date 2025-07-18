@@ -14,6 +14,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Example: `yanex: {name: "my-experiment", tag: [dev, testing], ignore_dirty: true}`
   - Fully backwards compatible - existing configs without `yanex` section work unchanged
   - Includes comprehensive test coverage and documentation
+- **New `log_metrics()` API Method**: Renamed `log_results()` to `log_metrics()` for clearer semantics
+  - `yanex.log_metrics(data, step=None)` is the new preferred method for logging experiment metrics
+  - All internal usage, examples, and documentation updated to use the new method
+  - Full backwards compatibility maintained - `log_results()` still works but shows deprecation warning
+  - Future-proof: `log_results()` will be removed in a future major version
+
+### Deprecated
+- **`log_results()` Method**: Use `log_metrics()` instead for logging experiment metrics
+  - Shows deprecation warning when used, encouraging migration to new API
+  - Functionally identical to `log_metrics()` - simply calls the new method internally
+  - Will be removed in a future major version to clean up the API
 
 ## [0.3.0] - 2025-07-17
 

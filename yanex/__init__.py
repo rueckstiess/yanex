@@ -36,6 +36,7 @@ from .api import (
     log_artifact,
     log_matplotlib_figure,
     # Result logging
+    log_metrics,
     log_results,
     log_text,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "is_standalone",
     "has_context",
     # Result logging
+    "log_metrics",
     "log_results",
     "log_artifact",
     "log_text",
