@@ -670,7 +670,7 @@ class TestExperimentCreation:
             script_path=script_path,
             name="test-experiment",
             config={"learning_rate": 0.01},
-            tags=["ml", "test"],
+            tags=["ml", "test", "unit-tests"],
             description="Test experiment",
         )
 

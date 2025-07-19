@@ -25,6 +25,28 @@ from yanex.utils.exceptions import (
 class TestExperimentManager:
     """Test ExperimentManager class - basic functionality."""
 
+    def teardown_method(self, method):
+        """Clean up experiments after each test method."""
+        try:
+            from yanex.core.filtering import UnifiedExperimentFilter
+            from yanex.core.manager import ExperimentManager
+
+            manager = ExperimentManager()
+            filter_obj = UnifiedExperimentFilter(manager=manager)
+            test_experiments = filter_obj.filter_experiments(
+                tags=["unit-tests"], limit=100
+            )
+
+            for exp in test_experiments:
+                try:
+                    if exp.get("status") == "running":
+                        manager.cancel_experiment(exp["id"], "Test cleanup")
+                    manager.delete_experiment(exp["id"])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def test_init_default_directory(self):
         """Test manager initialization with default directory."""
         manager = ExperimentManager()
@@ -262,7 +284,9 @@ class TestExperimentCreation:
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
         script_path = Path(__file__)  # Use this test file as script
-        experiment_id = isolated_manager.create_experiment(script_path)
+        experiment_id = isolated_manager.create_experiment(
+            script_path, tags=["unit-tests"]
+        )
 
         # Verify experiment was created
         assert len(experiment_id) == 8
@@ -275,7 +299,7 @@ class TestExperimentCreation:
         assert metadata["script_path"] == str(script_path.resolve())
         assert metadata["status"] == "created"
         assert metadata["name"] is None
-        assert metadata["tags"] == []
+        assert metadata["tags"] == ["unit-tests"]
         assert metadata["description"] is None
         assert "created_at" in metadata
         assert "git" in metadata
@@ -303,14 +327,14 @@ class TestExperimentCreation:
             script_path,
             name=name,
             config=config,
-            tags=tags,
+            tags=tags + ["unit-tests"] if tags else ["unit-tests"],
             description=description,
         )
 
         # Verify metadata
         metadata = isolated_manager.storage.load_metadata(experiment_id)
         assert metadata["name"] == name
-        assert metadata["tags"] == tags
+        assert metadata["tags"] == tags + ["unit-tests"]
         assert metadata["description"] == description
 
         # Verify config was saved
@@ -323,7 +347,7 @@ class TestExperimentCreation:
         mock_validate_git.side_effect = DirtyWorkingDirectoryError(["modified.py"])
 
         with pytest.raises(DirtyWorkingDirectoryError):
-            isolated_manager.create_experiment(Path(__file__))
+            isolated_manager.create_experiment(Path(__file__), tags=["unit-tests"])
 
     @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
@@ -339,7 +363,7 @@ class TestExperimentCreation:
         # Invalid name should raise ValidationError
         with pytest.raises(ValidationError):
             isolated_manager.create_experiment(
-                Path(__file__), name="invalid@name#with$symbols"
+                Path(__file__), name="invalid@name#with$symbols", tags=["unit-tests"]
             )
 
     @patch("yanex.core.manager.validate_clean_working_directory")
@@ -355,10 +379,14 @@ class TestExperimentCreation:
 
         # Create first experiment
         name = "duplicate-name"
-        exp1_id = isolated_manager.create_experiment(Path(__file__), name=name)
+        exp1_id = isolated_manager.create_experiment(
+            Path(__file__), name=name, tags=["unit-tests"]
+        )
 
         # Second experiment with same name should succeed (allows grouping)
-        exp2_id = isolated_manager.create_experiment(Path(__file__), name=name)
+        exp2_id = isolated_manager.create_experiment(
+            Path(__file__), name=name, tags=["unit-tests"]
+        )
 
         # Verify both experiments exist with same name but different IDs
         assert exp1_id != exp2_id
@@ -381,7 +409,7 @@ class TestExperimentCreation:
         # Invalid tags should raise ValidationError
         with pytest.raises(ValidationError):
             isolated_manager.create_experiment(
-                Path(__file__), tags=["invalid tag with spaces"]
+                Path(__file__), tags=["invalid tag with spaces", "unit-tests"]
             )
 
 
@@ -792,7 +820,9 @@ class TestStagingFunctionality:
         """Test creating experiment with stage_only=True creates staged status."""
         script_path = Path(__file__)
 
-        experiment_id = isolated_manager.create_experiment(script_path, stage_only=True)
+        experiment_id = isolated_manager.create_experiment(
+            script_path, stage_only=True, tags=["unit-tests"]
+        )
 
         # Verify experiment was created with staged status using assertions
         metadata = isolated_manager.storage.load_metadata(experiment_id)
@@ -809,12 +839,14 @@ class TestStagingFunctionality:
         script_path = Path(__file__)
 
         # Create running experiment first
-        running_id = isolated_manager.create_experiment(script_path, name="running")
+        running_id = isolated_manager.create_experiment(
+            script_path, name="running", tags=["unit-tests"]
+        )
         isolated_manager.start_experiment(running_id)
 
         # Should still be able to create staged experiment (no concurrency check)
         staged_id = isolated_manager.create_experiment(
-            script_path, name="staged", stage_only=True
+            script_path, name="staged", stage_only=True, tags=["unit-tests"]
         )
 
         # Verify both exist
@@ -830,7 +862,9 @@ class TestStagingFunctionality:
         script_path = Path(__file__)
 
         # Create staged experiment
-        experiment_id = isolated_manager.create_experiment(script_path, stage_only=True)
+        experiment_id = isolated_manager.create_experiment(
+            script_path, stage_only=True, tags=["unit-tests"]
+        )
         assert isolated_manager.get_experiment_status(experiment_id) == "staged"
 
         # Execute staged experiment
@@ -857,7 +891,9 @@ class TestStagingFunctionality:
         script_path = Path(__file__)
 
         # Create regular experiment (created status)
-        experiment_id = isolated_manager.create_experiment(script_path)
+        experiment_id = isolated_manager.create_experiment(
+            script_path, tags=["unit-tests"]
+        )
         assert isolated_manager.get_experiment_status(experiment_id) == "created"
 
         # Try to execute as staged experiment
@@ -880,11 +916,13 @@ class TestStagingFunctionality:
 
         # Create different types of experiments
         staged1_id = isolated_manager.create_experiment(
-            script_path, name="staged1", stage_only=True
+            script_path, name="staged1", stage_only=True, tags=["unit-tests"]
         )
-        regular_id = isolated_manager.create_experiment(script_path, name="regular")
+        regular_id = isolated_manager.create_experiment(
+            script_path, name="regular", tags=["unit-tests"]
+        )
         staged2_id = isolated_manager.create_experiment(
-            script_path, name="staged2", stage_only=True
+            script_path, name="staged2", stage_only=True, tags=["unit-tests"]
         )
 
         # Complete the regular experiment
@@ -907,7 +945,9 @@ class TestStagingFunctionality:
         script_path = Path(__file__)
 
         # Create valid staged experiment
-        staged_id = isolated_manager.create_experiment(script_path, stage_only=True)
+        staged_id = isolated_manager.create_experiment(
+            script_path, stage_only=True, tags=["unit-tests"]
+        )
 
         # Create corrupted experiment directory
         corrupted_id = "corrupt1"
@@ -930,7 +970,7 @@ class TestStagingFunctionality:
             script_path,
             name="workflow-test",
             config={"param1": "value1"},
-            tags=["test"],
+            tags=["test", "unit-tests"],
             stage_only=True,
         )
 
@@ -938,7 +978,7 @@ class TestStagingFunctionality:
         metadata = isolated_manager.storage.load_metadata(experiment_id)
         assert metadata["status"] == "staged"
         assert metadata["name"] == "workflow-test"
-        assert metadata["tags"] == ["test"]
+        assert metadata["tags"] == ["test", "unit-tests"]
         assert metadata["started_at"] is None
 
         # Verify config was saved
@@ -973,7 +1013,7 @@ class TestStagingFunctionality:
             script_path=script_path,
             name="full-test",
             config={"lr": 0.01, "epochs": 100},
-            tags=["staging", "test"],
+            tags=["staging", "test", "unit-tests"],
             description="Test staged experiment with all options",
             allow_dirty=True,
             stage_only=True,
@@ -985,7 +1025,7 @@ class TestStagingFunctionality:
         assert metadata["status"] == "staged"
         assert metadata["name"] == "full-test"
         assert metadata["description"] == "Test staged experiment with all options"
-        assert metadata["tags"] == ["staging", "test"]
+        assert metadata["tags"] == ["staging", "test", "unit-tests"]
 
         # Verify config
         config = isolated_manager.storage.load_config(experiment_id)
