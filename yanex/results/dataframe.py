@@ -124,7 +124,10 @@ def format_dataframe_for_analysis(df: pd.DataFrame) -> pd.DataFrame:
     for col in df.columns:
         if col[0] in ["param", "metric"]:  # Only process parameter and metric columns
             # Try to convert to numeric, keeping non-numeric as object
-            df[col] = pd.to_numeric(df[col], errors="ignore")
+            try:
+                df[col] = pd.to_numeric(df[col])
+            except (ValueError, TypeError):
+                pass  # Keep original dtype if conversion fails
 
     # Convert datetime columns
     datetime_columns = [
@@ -136,15 +139,18 @@ def format_dataframe_for_analysis(df: pd.DataFrame) -> pd.DataFrame:
 
     for col in datetime_columns:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="ignore")
+            try:
+                df[col] = pd.to_datetime(df[col])
+            except (ValueError, TypeError):
+                pass  # Keep original dtype if conversion fails
 
     # Convert duration to timedelta if it's in HH:MM:SS format
     if ("meta", "duration") in df.columns:
         duration_col = df[("meta", "duration")]
         try:
             # Try to convert HH:MM:SS format to timedelta
-            df[("meta", "duration")] = pd.to_timedelta(duration_col, errors="ignore")
-        except Exception:
+            df[("meta", "duration")] = pd.to_timedelta(duration_col)
+        except (ValueError, TypeError):
             pass  # Keep original format if conversion fails
 
     # Convert categorical columns

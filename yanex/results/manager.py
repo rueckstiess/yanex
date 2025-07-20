@@ -96,7 +96,9 @@ class ResultsManager:
             >>> manager = ResultsManager()
             >>> experiments = manager.get_experiments(status="completed")
             >>> for exp in experiments:
-            ...     print(f"{exp.name}: {exp.get_metric('accuracy')}")
+            ...     metrics = exp.get_metrics()
+            ...     accuracy = metrics[-1].get('accuracy') if metrics else None
+            ...     print(f"{exp.name}: {accuracy}")
         """
         metadata_list = self.find(**filters)
         experiments = []
@@ -216,7 +218,9 @@ class ResultsManager:
             >>> manager = ResultsManager()
             >>> best = manager.get_best("accuracy", maximize=True, status="completed")
             >>> if best:
-            ...     print(f"Best accuracy: {best.get_metric('accuracy')}")
+            ...     metrics = best.get_metrics()
+            ...     if metrics:
+            ...         print(f"Best accuracy: {metrics[-1].get('accuracy')}")
         """
         experiments = self.get_experiments(**filters)
 
@@ -227,7 +231,20 @@ class ResultsManager:
         best_value = None
 
         for exp in experiments:
-            value = exp.get_metric(metric)
+            # Get the latest metric value from the list of metrics
+            metrics = exp.get_metrics()
+            value = None
+
+            if isinstance(metrics, list):
+                # Find the metric in the most recent entries (search backwards)
+                for entry in reversed(metrics):
+                    if isinstance(entry, dict) and metric in entry:
+                        value = entry[metric]
+                        break
+            elif isinstance(metrics, dict):
+                # Handle the case where metrics is a single dict (shouldn't happen with new API)
+                value = metrics.get(metric)
+
             if value is not None:
                 try:
                     numeric_value = float(value)

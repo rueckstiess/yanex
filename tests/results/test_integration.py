@@ -170,7 +170,14 @@ class TestResultsAPIIntegration:
             # Test get_best()
             best_accuracy = yr.get_best("accuracy", maximize=True)
             assert best_accuracy is not None
-            assert best_accuracy.get_metric("accuracy") is not None
+            metrics = best_accuracy.get_metrics()
+            accuracy_value = None
+            if metrics:
+                for entry in reversed(metrics):
+                    if "accuracy" in entry:
+                        accuracy_value = entry["accuracy"]
+                        break
+            assert accuracy_value is not None
 
             # Test list_experiments()
             recent = yr.list_experiments(limit=3)
@@ -218,7 +225,14 @@ class TestResultsAPIIntegration:
 
             for exp in training_objects:
                 lr = exp.get_param("learning_rate")
-                acc = exp.get_metric("accuracy")
+                # Get accuracy from the latest metrics entry
+                metrics = exp.get_metrics()
+                acc = None
+                if metrics:
+                    for entry in reversed(metrics):
+                        if "accuracy" in entry:
+                            acc = entry["accuracy"]
+                            break
                 if lr is not None and acc is not None:
                     learning_rates.append(lr)
                     accuracies.append(acc)
@@ -323,7 +337,7 @@ class TestResultsAPIIntegration:
             complex_filter = yr.find(
                 tags=["training"],
                 status=["completed", "running"],
-                name_pattern="training_*",
+                name="training_*",
             )
             assert len(complex_filter) >= 2  # Should find training experiments
 

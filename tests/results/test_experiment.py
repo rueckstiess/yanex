@@ -120,6 +120,13 @@ class TestExperiment:
         )  # Check filename, path may be absolute
         assert exp.archived is False
 
+        # Directory property
+        from pathlib import Path
+
+        assert isinstance(exp.experiment_dir, Path)
+        assert exp.experiment_dir.exists()
+        assert sample_experiment in str(exp.experiment_dir)
+
     def test_get_params(self, manager, sample_experiment):
         """Test parameter access."""
         exp = Experiment(sample_experiment, manager)
@@ -152,32 +159,28 @@ class TestExperiment:
         """Test metrics access."""
         exp = Experiment(sample_experiment, manager)
 
+        # Should return a list by default
         metrics = exp.get_metrics()
+        assert isinstance(metrics, list)
+        assert len(metrics) > 0
 
-        # The method can return either a list (for metrics.json) or dict (for backward compatibility)
-        if isinstance(metrics, list):
-            # Should have at least one entry from the sample_experiment setup
-            assert len(metrics) > 0
-            # The last entry should contain our test data
-            latest_metrics = metrics[-1]
-            assert latest_metrics["accuracy"] == 0.95
-            assert latest_metrics["loss"] == 0.05
-            assert latest_metrics["step"] == 0  # add_result_step starts from 0
-        else:
-            # Backward compatibility case - single dict
-            assert isinstance(metrics, dict)
-            assert metrics["accuracy"] == 0.95
-            assert metrics["loss"] == 0.05
-            assert metrics["step"] == 0  # add_result_step starts from 0
+        # The last entry should contain our test data
+        latest_metrics = metrics[-1]
+        assert latest_metrics["accuracy"] == 0.95
+        assert latest_metrics["loss"] == 0.05
+        assert latest_metrics["step"] == 0  # add_result_step starts from 0
 
-    def test_get_metric(self, manager, sample_experiment):
-        """Test individual metric access."""
-        exp = Experiment(sample_experiment, manager)
+        # Test specific step access
+        step_0_metrics = exp.get_metrics(step=0)
+        assert isinstance(step_0_metrics, dict)
+        assert step_0_metrics["accuracy"] == 0.95
+        assert step_0_metrics["loss"] == 0.05
+        assert step_0_metrics["step"] == 0
 
-        assert exp.get_metric("accuracy") == 0.95
-        assert exp.get_metric("loss") == 0.05
-        assert exp.get_metric("nonexistent") is None
-        assert exp.get_metric("nonexistent", 0.0) == 0.0
+        # Test nonexistent step
+        nonexistent_metrics = exp.get_metrics(step=999)
+        assert isinstance(nonexistent_metrics, dict)
+        assert nonexistent_metrics == {}
 
     @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
@@ -233,6 +236,18 @@ class TestExperiment:
         for entry in metrics:
             assert "timestamp" in entry
             assert "step" in entry
+
+        # Test step-specific access
+        step_1_metrics = exp.get_metrics(step=1)
+        assert isinstance(step_1_metrics, dict)
+        assert step_1_metrics["accuracy"] == 0.85
+        assert step_1_metrics["epoch"] == 2
+        assert step_1_metrics["step"] == 1
+
+        # Test nonexistent step
+        empty_metrics = exp.get_metrics(step=999)
+        assert isinstance(empty_metrics, dict)
+        assert empty_metrics == {}
 
     def test_set_name(self, manager, sample_experiment):
         """Test setting experiment name."""
@@ -371,10 +386,9 @@ class TestExperiment:
 
         exp = Experiment(exp_id, manager)
 
-        # Should return empty dict, not fail
-        assert exp.get_metrics() == {}
-        assert exp.get_metric("anything") is None
-        assert exp.get_metric("anything", "default") == "default"
+        # Should return empty list, not fail
+        assert exp.get_metrics() == []
+        assert exp.get_metrics(step=0) == {}
 
     def test_artifacts_access(self, manager, sample_experiment):
         """Test accessing experiment artifacts."""

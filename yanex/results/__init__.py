@@ -81,7 +81,7 @@ def get_latest(**filters) -> Experiment | None:
 
     Examples:
         >>> latest = get_latest(tags=["training"])
-        >>> latest = get_latest(status="completed", name_pattern="model_*")
+        >>> latest = get_latest(status="completed", name="model_*")
     """
     return _get_manager().get_latest(**filters)
 
@@ -114,7 +114,7 @@ def find(**filters) -> list[dict[str, Any]]:
         **filters: Unified filter arguments supporting:
             - ids: list[str] - Match any of these IDs (OR logic)
             - status: str | list[str] - Match any of these statuses (OR logic)
-            - name_pattern: str - Glob pattern matching
+            - name: str - Glob pattern matching
             - tags: list[str] - Must have ALL these tags (AND logic)
             - started_after: str | datetime - Started >= this time
             - started_before: str | datetime - Started <= this time

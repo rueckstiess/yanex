@@ -39,7 +39,7 @@ class UnifiedExperimentFilter:
         self,
         ids: list[str] | None = None,
         status: str | list[str] | None = None,
-        name_pattern: str | None = None,
+        name: str | None = None,
         tags: list[str] | None = None,
         started_after: str | datetime | None = None,
         started_before: str | datetime | None = None,
@@ -57,7 +57,7 @@ class UnifiedExperimentFilter:
         Args:
             ids: List of experiment IDs to match (OR logic within list)
             status: Single status or list of statuses to match (OR logic within list)
-            name_pattern: Glob pattern for name matching
+            name: Glob pattern for name matching
             tags: List of tags - experiments must have ALL specified tags (AND logic)
             started_after: Filter experiments started after this time
             started_before: Filter experiments started before this time
@@ -79,7 +79,7 @@ class UnifiedExperimentFilter:
         normalized_filters = self._normalize_filter_inputs(
             ids=ids,
             status=status,
-            name_pattern=name_pattern,
+            name_pattern=name,
             tags=tags,
             started_after=started_after,
             started_before=started_before,

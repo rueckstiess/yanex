@@ -43,7 +43,9 @@ class Experiment:
         try:
             self._load_metadata()
         except Exception as e:
-            raise ExperimentNotFoundError(f"Experiment '{experiment_id}' not found") from e
+            raise ExperimentNotFoundError(
+                f"Experiment '{experiment_id}' not found"
+            ) from e
 
     @property
     def id(self) -> str:
@@ -120,15 +122,28 @@ class Experiment:
         """Check if experiment is archived."""
         try:
             # Try loading from regular location first
-            self._manager.storage.load_metadata(self._experiment_id, include_archived=False)
+            self._manager.storage.load_metadata(
+                self._experiment_id, include_archived=False
+            )
             return False
         except Exception:
             # If not found in regular location, check archived
             try:
-                self._manager.storage.load_metadata(self._experiment_id, include_archived=True)
+                self._manager.storage.load_metadata(
+                    self._experiment_id, include_archived=True
+                )
                 return True
             except Exception:
-                raise ExperimentNotFoundError(f"Experiment '{self._experiment_id}' not found")
+                raise ExperimentNotFoundError(
+                    f"Experiment '{self._experiment_id}' not found"
+                )
+
+    @property
+    def experiment_dir(self) -> Path:
+        """Get experiment directory path."""
+        return self._manager.storage.get_experiment_directory(
+            self._experiment_id, include_archived=self.archived
+        )
 
     def get_params(self) -> dict[str, Any]:
         """
@@ -174,75 +189,53 @@ class Experiment:
         else:
             return params.get(key, default)
 
-    def get_metrics(self) -> dict[str, Any]:
+    def get_metrics(
+        self, step: int | None = None
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         """
-        Get all experiment metrics.
+        Get experiment metrics.
+
+        Args:
+            step: Optional step number. If provided, returns the metrics dict for that step.
+                  If None, returns the entire list of metrics.
 
         Returns:
-            Dictionary of experiment metrics
+            List of metric dictionaries if step is None,
+            or a single dictionary for the specified step
         """
         if self._cached_metrics is None:
             try:
-                # Try loading from metrics.json first, then results.json for backward compatibility
                 exp_dir = self._manager.storage.get_experiment_directory(
                     self._experiment_id, include_archived=self.archived
                 )
-
                 metrics_path = exp_dir / "metrics.json"
-                results_path = exp_dir / "results.json"
 
                 if metrics_path.exists():
                     import json
 
                     with metrics_path.open("r", encoding="utf-8") as f:
                         self._cached_metrics = json.load(f)
-                elif results_path.exists():
-                    import json
-
-                    with results_path.open("r", encoding="utf-8") as f:
-                        self._cached_metrics = json.load(f)
                 else:
-                    self._cached_metrics = {}
+                    self._cached_metrics = []
 
             except Exception:
-                self._cached_metrics = {}
+                self._cached_metrics = []
 
-        # Ensure we return a dict even if the cached data is a list
-        cached = self._cached_metrics
-        if isinstance(cached, dict):
-            return cached.copy()
-        elif isinstance(cached, list):
-            # For list of metrics, return the latest entry or empty dict
-            if cached and isinstance(cached[-1], dict):
-                return cached[-1].copy()
-            else:
-                return {}
-        else:
+        # Ensure we have a list
+        cached = self._cached_metrics if isinstance(self._cached_metrics, list) else []
+
+        if step is not None:
+            # Return metrics for specific step
+            for entry in cached:
+                if isinstance(entry, dict) and entry.get("step") == step:
+                    return entry.copy()
+            # Step not found, return empty dict
             return {}
-
-    def get_metric(self, key: str, default: Any = None) -> Any:
-        """
-        Get a specific metric value.
-
-        Args:
-            key: Metric key
-            default: Default value if key not found
-
-        Returns:
-            Metric value or default
-        """
-        metrics = self.get_metrics()
-
-        # Handle list of metrics (get latest value)
-        if isinstance(metrics, list):
-            for entry in reversed(metrics):  # Start from most recent
-                if isinstance(entry, dict) and key in entry:
-                    return entry[key]
-            return default
-        elif isinstance(metrics, dict):
-            return metrics.get(key, default)
         else:
-            return default
+            # Return entire list
+            return [
+                entry.copy() if isinstance(entry, dict) else entry for entry in cached
+            ]
 
     def get_artifacts(self) -> list[Path]:
         """
@@ -278,7 +271,9 @@ class Experiment:
             List of execution records
         """
         try:
-            return self._manager.storage.load_executions(self._experiment_id, include_archived=self.archived)
+            return self._manager.storage.load_executions(
+                self._experiment_id, include_archived=self.archived
+            )
         except Exception:
             return []
 
@@ -382,7 +377,9 @@ class Experiment:
         if not isinstance(status, str):
             raise ValueError("Status must be a string")
         if status not in EXPERIMENT_STATUSES_SET:
-            raise ValueError(f"Invalid status '{status}'. Valid options: {', '.join(sorted(EXPERIMENT_STATUSES_SET))}")
+            raise ValueError(
+                f"Invalid status '{status}'. Valid options: {', '.join(sorted(EXPERIMENT_STATUSES_SET))}"
+            )
 
         metadata = self._load_metadata()
         metadata["status"] = status
@@ -403,8 +400,12 @@ class Experiment:
             "status": self.status,
             "tags": self.tags,
             "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
-            "duration_seconds": self.duration.total_seconds() if self.duration else None,
+            "completed_at": self.completed_at.isoformat()
+            if self.completed_at
+            else None,
+            "duration_seconds": self.duration.total_seconds()
+            if self.duration
+            else None,
             "script_path": str(self.script_path) if self.script_path else None,
             "archived": self.archived,
             "params": self.get_params(),
@@ -424,12 +425,16 @@ class Experiment:
     def _load_metadata(self) -> dict[str, Any]:
         """Load experiment metadata with caching."""
         if self._cached_metadata is None:
-            self._cached_metadata = self._manager.storage.load_metadata(self._experiment_id, include_archived=True)
+            self._cached_metadata = self._manager.storage.load_metadata(
+                self._experiment_id, include_archived=True
+            )
         return self._cached_metadata
 
     def _save_metadata(self, metadata: dict[str, Any]) -> None:
         """Save experiment metadata."""
-        self._manager.storage.save_metadata(self._experiment_id, metadata, include_archived=self.archived)
+        self._manager.storage.save_metadata(
+            self._experiment_id, metadata, include_archived=self.archived
+        )
 
     def __repr__(self) -> str:
         """String representation of experiment."""

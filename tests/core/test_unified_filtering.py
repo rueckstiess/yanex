@@ -182,20 +182,20 @@ class TestUnifiedExperimentFilter:
         """Test filtering by name pattern."""
 
         # Test exact match
-        result = filter_obj.filter_experiments(name_pattern="training_run_1")
+        result = filter_obj.filter_experiments(name="training_run_1")
         assert len(result) == 1
         assert result[0]["name"] == "training_run_1"
 
         # Test glob pattern
-        result = filter_obj.filter_experiments(name_pattern="training_*")
+        result = filter_obj.filter_experiments(name="training_*")
         assert len(result) == 2  # training_run_1 and training_run_2
 
         # Test wildcard in middle
-        result = filter_obj.filter_experiments(name_pattern="*_1")
+        result = filter_obj.filter_experiments(name="*_1")
         assert len(result) == 3  # training_run_1, hyperparam_search_1, evaluation_1
 
         # Test empty pattern (should match unnamed experiments)
-        result = filter_obj.filter_experiments(name_pattern="")
+        result = filter_obj.filter_experiments(name="")
         assert len(result) == 1  # exp5 (unnamed)
 
     def test_combined_filters_and_logic(self, filter_obj, sample_experiments):
@@ -220,7 +220,7 @@ class TestUnifiedExperimentFilter:
 
         # Combine multiple filters
         result = filter_obj.filter_experiments(
-            status="completed", tags=["training"], name_pattern="training_*"
+            status="completed", tags=["training"], name="training_*"
         )
         assert len(result) == 1  # only exp1
         assert result[0]["id"] == exp1
@@ -357,8 +357,8 @@ class TestUnifiedExperimentFilter:
         """Test case sensitivity in various filters."""
 
         # Name pattern should be case insensitive
-        result1 = filter_obj.filter_experiments(name_pattern="TRAINING_*")
-        result2 = filter_obj.filter_experiments(name_pattern="training_*")
+        result1 = filter_obj.filter_experiments(name="TRAINING_*")
+        result2 = filter_obj.filter_experiments(name="training_*")
         assert len(result1) == len(result2) == 2
 
         # Status validation is case-sensitive and should raise error for invalid case
