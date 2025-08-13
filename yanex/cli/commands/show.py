@@ -26,8 +26,9 @@ def show_experiment(
     """
     Show detailed information about an experiment.
 
-    EXPERIMENT_IDENTIFIER can be either:
+    EXPERIMENT_IDENTIFIER can be:
     - An experiment ID (8-character string)
+    - A prefix of an experiment ID
     - An experiment name
 
     If multiple experiments have the same name, a list will be shown
@@ -84,7 +85,7 @@ def find_experiment(
     filter_obj: ExperimentFilter, identifier: str, include_archived: bool = False
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     """
-    Find experiment by ID or name.
+    Find experiment by ID, ID prefix, or name.
 
     Args:
         filter_obj: ExperimentFilter instance
@@ -100,11 +101,18 @@ def find_experiment(
     try:
         all_experiments = filter_obj._load_all_experiments(include_archived)
 
-        # Try ID match first (exact 8-character match)
-        if len(identifier) == 8:
+        # Try ID prefix match
+        id_prefix_matches: list[dict[str, Any]] = []
+        if identifier:
             for exp in all_experiments:
-                if exp.get("id") == identifier:
-                    return exp
+                exp_id = exp.get("id", "")
+                if isinstance(exp_id, str) and exp_id.startswith(identifier):
+                    id_prefix_matches.append(exp)
+
+        if len(id_prefix_matches) == 1:
+            return id_prefix_matches[0]
+        elif len(id_prefix_matches) > 1:
+            return id_prefix_matches
 
         # Try name match
         name_matches = []
@@ -117,7 +125,7 @@ def find_experiment(
         if len(name_matches) == 1:
             return name_matches[0]
         elif len(name_matches) > 1:
-            return name_matches  # Multiple matches - let caller handle
+            return name_matches
 
         # No matches found
         return None

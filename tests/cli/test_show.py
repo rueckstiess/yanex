@@ -53,6 +53,18 @@ class TestFindExperiment:
                 status="completed",
                 created_at="2025-06-28T13:00:00",
             ),
+            TestDataFactory.create_experiment_metadata(
+                experiment_id="7775550b",
+                name="amb-1",
+                status="completed",
+                created_at="2025-06-28T14:10:00",
+            ),
+            TestDataFactory.create_experiment_metadata(
+                experiment_id="777999aa",
+                name="amb-2",
+                status="running",
+                created_at="2025-06-28T14:20:00",
+            ),
         ]
 
     @pytest.mark.parametrize(
@@ -81,7 +93,7 @@ class TestFindExperiment:
         [
             "notfound",
             "nonexistent-experiment",
-            "abcd",  # Non-8-character treated as name
+            "abcd2",  # Non-8-character treated as name
         ],
     )
     def test_find_experiment_not_found(self, identifier):
@@ -126,6 +138,39 @@ class TestFindExperiment:
             assert isinstance(result, dict)  # Single result, not list
             assert result["id"] == "testexpr"
             assert result["name"] == "special-experiment"
+
+    def test_find_experiment_by_unique_id_prefix(self):
+        """Test finding experiment by a unique ID prefix returns the single match."""
+        with patch.object(
+            self.filter, "_load_all_experiments", return_value=self.sample_experiments
+        ):
+            # 'abc' uniquely matches id 'abcd1234'
+            result = find_experiment(self.filter, "abc")
+
+            assert result is not None
+            assert isinstance(result, dict)
+            assert result["id"] == "abcd1234"
+
+    def test_find_experiment_by_ambiguous_id_prefix_returns_list(self):
+        """Test finding experiment by an ambiguous ID prefix returns a list of matches."""
+        with patch.object(
+            self.filter, "_load_all_experiments", return_value=self.sample_experiments
+        ):
+            result = find_experiment(self.filter, "777")
+
+            assert result is not None
+            assert isinstance(result, list)
+            # Should include both 777* experiments
+            ids = sorted(exp["id"] for exp in result)
+            assert ids == ["7775550b", "777999aa"]
+
+    def test_find_experiment_by_id_prefix_no_match(self):
+        """Test that a non-matching ID prefix returns None (falls through name match too)."""
+        with patch.object(
+            self.filter, "_load_all_experiments", return_value=self.sample_experiments
+        ):
+            result = find_experiment(self.filter, "zzz")
+            assert result is None
 
 
 class TestFormatterHelperMethods:
