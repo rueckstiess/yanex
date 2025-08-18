@@ -12,7 +12,7 @@ exp = yr.get_experiment("abc12345")
 print(f"{exp.name}: {exp.status}")
 
 # Find and compare experiments
-experiments = yr.find(status="completed", tags=["training"])
+experiments = yr.get_experiments(status="completed", tags=["training"])
 df = yr.compare(params=["learning_rate"], metrics=["accuracy"])
 
 # Get best experiment
@@ -86,16 +86,16 @@ best = yr.get_best("loss", maximize=False, tags=["training"])
 
 ### Multiple Experiment Access
 
-#### `yanex.results.find(**filters)`
+#### `yanex.results.get_experiments(**filters)`
 
 Find experiments matching filter criteria.
 
 ```python
 # Find by status and tags
-experiments = yr.find(status="completed", tags=["training"])
+experiments = yr.get_experiments(status="completed", tags=["training"])
 
 # Complex filtering with time range
-experiments = yr.find(
+experiments = yr.get_experiments(
     status=["completed", "failed"],
     tags=["training", "cnn"],
     started_after="2024-01-01",
@@ -103,7 +103,7 @@ experiments = yr.find(
 )
 
 # Find by IDs
-experiments = yr.find(ids=["abc123", "def456"])
+experiments = yr.get_experiments(ids=["abc123", "def456"])
 ```
 
 **Supported Filters:**
@@ -119,26 +119,8 @@ experiments = yr.find(ids=["abc123", "def456"])
 - `limit`: int - Maximum number of results
 
 **Returns:**
-- `list[dict]`: List of experiment metadata dictionaries
-
-#### `yanex.results.get_experiments(**filters)`
-
-Get multiple experiments as Experiment objects.
-
-```python
-# Get completed experiments as objects
-experiments = yr.get_experiments(status="completed")
-for exp in experiments:
-    metrics = exp.get_metrics()
-    if metrics:
-        print(f"{exp.name}: {metrics}")
-```
-
-**Parameters:**
-- `**filters`: Same filter arguments as `find()`
-
-**Returns:**
 - `list[Experiment]`: List of Experiment instances
+
 
 ### Comparison and DataFrames
 
