@@ -263,15 +263,15 @@ class Experiment:
         except Exception:
             return []
 
-    def get_executions(self) -> list[dict[str, Any]]:
+    def get_script_runs(self) -> list[dict[str, Any]]:
         """
-        Get experiment execution history.
+        Get experiment script run history.
 
         Returns:
-            List of execution records
+            List of script run records
         """
         try:
-            return self._manager.storage.load_executions(
+            return self._manager.storage.load_script_runs(
                 self._experiment_id, include_archived=self.archived
             )
         except Exception:
@@ -411,7 +411,7 @@ class Experiment:
             "params": self.get_params(),
             "metrics": self.get_metrics(),
             "artifacts": [str(p) for p in self.get_artifacts()],
-            "executions": self.get_executions(),
+            "script_runs": self.get_script_runs(),
         }
 
     def refresh(self) -> None:

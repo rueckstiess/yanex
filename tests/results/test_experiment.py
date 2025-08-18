@@ -329,7 +329,7 @@ class TestExperiment:
         assert "params" in data
         assert "metrics" in data
         assert "artifacts" in data
-        assert "executions" in data
+        assert "script_runs" in data
 
     def test_refresh(self, manager, sample_experiment):
         """Test refreshing cached data."""
@@ -399,12 +399,12 @@ class TestExperiment:
         assert isinstance(artifacts, list)
         assert len(artifacts) == 0
 
-    def test_executions_access(self, manager, sample_experiment):
-        """Test accessing experiment executions."""
+    def test_script_runs_access(self, manager, sample_experiment):
+        """Test accessing experiment script runs."""
         exp = Experiment(sample_experiment, manager)
 
-        executions = exp.get_executions()
-        assert isinstance(executions, list)
+        script_runs = exp.get_script_runs()
+        assert isinstance(script_runs, list)
 
     def test_experiment_with_default_manager(self, sample_experiment):
         """Test creating experiment with default manager."""
