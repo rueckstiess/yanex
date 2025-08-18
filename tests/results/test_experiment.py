@@ -19,11 +19,11 @@ class TestExperiment:
     def teardown_method(self, method):
         """Clean up experiments after each test method."""
         try:
-            from yanex.core.filtering import UnifiedExperimentFilter
+            from yanex.core.filtering import ExperimentFilter
             from yanex.core.manager import ExperimentManager
 
             manager = ExperimentManager()
-            filter_obj = UnifiedExperimentFilter(manager=manager)
+            filter_obj = ExperimentFilter(manager=manager)
             test_experiments = filter_obj.filter_experiments(
                 tags=["unit-tests"], limit=100
             )

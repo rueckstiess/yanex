@@ -132,7 +132,7 @@ def validate_filter_arguments(
         **kwargs: Additional arguments to pass through
 
     Returns:
-        Dictionary of normalized filter arguments for UnifiedExperimentFilter
+        Dictionary of normalized filter arguments for ExperimentFilter
 
     Raises:
         click.BadParameter: If validation fails

@@ -15,7 +15,7 @@ from .constants import EXPERIMENT_STATUSES_SET
 from .manager import ExperimentManager
 
 
-class UnifiedExperimentFilter:
+class ExperimentFilter:
     """
     Unified experiment filtering system supporting flexible filter combinations.
 

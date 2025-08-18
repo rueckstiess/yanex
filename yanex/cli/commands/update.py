@@ -166,20 +166,20 @@ def update_experiments(
     if experiment_identifiers:
         # Update specific experiments by ID/name
         experiments = find_experiments_by_identifiers(
-            filter_obj, list(experiment_identifiers), include_archived=archived
+            filter_obj, list(experiment_identifiers), archived=archived
         )
     else:
         # Update experiments by filter criteria
         experiments = find_experiments_by_filters(
             filter_obj,
             status=filter_status,
-            name_pattern=filter_name_pattern,
+            name=filter_name_pattern,
             tags=list(filter_tags) if filter_tags else None,
             started_after=started_after_dt,
             started_before=started_before_dt,
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
-            include_archived=archived,
+            archived=archived,
         )
 
     # Filter based on archived flag
@@ -242,7 +242,7 @@ def update_experiments(
 
         try:
             filter_obj.manager.storage.update_experiment_metadata(
-                experiment_id, updates, include_archived=archived
+                experiment_id, updates, archived=archived
             )
             reporter.report_success(experiment_id, exp_name)
         except Exception as e:

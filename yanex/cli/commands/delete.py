@@ -106,20 +106,20 @@ def delete_experiments(
     if experiment_identifiers:
         # Delete specific experiments by ID/name
         experiments = find_experiments_by_identifiers(
-            filter_obj, list(experiment_identifiers), include_archived=archived
+            filter_obj, list(experiment_identifiers), archived=archived
         )
     else:
         # Delete experiments by filter criteria
         experiments = find_experiments_by_filters(
             filter_obj,
             status=status,
-            name_pattern=name_pattern,
+            name=name_pattern,
             tags=list(tags) if tags else None,
             started_after=started_after_dt,
             started_before=started_before_dt,
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
-            include_archived=archived,
+            archived=archived,
         )
 
     # Filter experiments based on archived flag

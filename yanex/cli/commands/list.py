@@ -135,7 +135,7 @@ def list_experiments(
 
         experiments = experiment_filter.filter_experiments(
             status=status,
-            name_pattern=name_pattern,
+            name=name_pattern,
             tags=list(tags) if tags else None,
             started_after=started_after_dt,
             started_before=started_before_dt,
@@ -143,7 +143,7 @@ def list_experiments(
             ended_before=ended_before_dt,
             limit=None if force_all else limit,
             include_all=force_all,
-            include_archived=archived,
+            archived=archived,
         )
 
         # Filter experiments based on archived flag
@@ -196,7 +196,7 @@ def list_experiments(
         ) or (not show_all and limit != len(experiments)):
             # Get total count for summary
             total_experiments = experiment_filter.filter_experiments(
-                include_all=True, include_archived=archived
+                include_all=True, archived=archived
             )
 
             # Filter total based on archived flag too

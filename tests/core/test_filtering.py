@@ -8,18 +8,18 @@ from unittest.mock import patch
 
 import pytest
 
-from yanex.core.filtering import UnifiedExperimentFilter
+from yanex.core.filtering import ExperimentFilter
 from yanex.core.manager import ExperimentManager
 
 
-class TestUnifiedExperimentFilter:
-    """Test the UnifiedExperimentFilter class."""
+class TestExperimentFilter:
+    """Test the ExperimentFilter class."""
 
     @pytest.fixture
     def filter_obj(self, isolated_experiments_dir, clean_git_repo):
         """Create a filter object with test manager."""
         manager = ExperimentManager(experiments_dir=isolated_experiments_dir)
-        return UnifiedExperimentFilter(manager=manager)
+        return ExperimentFilter(manager=manager)
 
     def teardown_method(self, method):
         """Clean up experiments after each test method."""
@@ -30,9 +30,9 @@ class TestUnifiedExperimentFilter:
             manager = ExperimentManager()
 
             # Find all test experiments
-            from yanex.core.filtering import UnifiedExperimentFilter
+            from yanex.core.filtering import ExperimentFilter
 
-            filter_obj = UnifiedExperimentFilter(manager=manager)
+            filter_obj = ExperimentFilter(manager=manager)
             test_experiments = filter_obj.filter_experiments(
                 tags=["unit-tests"], limit=100
             )

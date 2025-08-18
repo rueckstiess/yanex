@@ -16,7 +16,7 @@ else:
         DataFrame = "pd.DataFrame"
 
 
-from ..core.filtering import UnifiedExperimentFilter
+from ..core.filtering import ExperimentFilter
 from ..core.manager import ExperimentManager
 from ..utils.exceptions import ExperimentNotFoundError
 from .experiment import Experiment
@@ -43,7 +43,7 @@ class ResultsManager:
         else:
             self._manager = ExperimentManager()
 
-        self._filter = UnifiedExperimentFilter(manager=self._manager)
+        self._filter = ExperimentFilter(manager=self._manager)
 
     def find(self, **filters) -> list[dict[str, Any]]:
         """

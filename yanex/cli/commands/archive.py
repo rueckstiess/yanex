@@ -100,20 +100,20 @@ def archive_experiments(
         experiments = find_experiments_by_identifiers(
             filter_obj,
             list(experiment_identifiers),
-            include_archived=False,  # Can't archive already archived experiments
+            archived=False,  # Can't archive already archived experiments
         )
     else:
         # Archive experiments by filter criteria
         experiments = find_experiments_by_filters(
             filter_obj,
             status=status,
-            name_pattern=name_pattern,
+            name=name_pattern,
             tags=list(tags) if tags else None,
             started_after=started_after_dt,
             started_before=started_before_dt,
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
-            include_archived=False,  # Can't archive already archived experiments
+            archived=False,  # Can't archive already archived experiments
         )
 
     # Filter out already archived experiments (extra safety)

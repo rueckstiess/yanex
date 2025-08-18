@@ -225,3 +225,4 @@ Parameter sweeps can now execute immediately without staging:
 ## Documentation Guidelines
 
 - After implementing user-facing changes, check if the documentation needs updating and make the necessary changes.
+- At the end of a larger code change, always run all unit tests to confirm we didn't break anything else.

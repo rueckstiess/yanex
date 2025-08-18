@@ -117,8 +117,7 @@ def find_experiment(
 def find_experiments_by_identifiers(
     filter_obj: ExperimentFilter,
     identifiers: list[str],
-    include_archived: bool = False,
-    archived_only: bool = False,
+    archived: bool | None = False,
 ) -> list[dict[str, Any]]:
     """
     Find experiments by list of identifiers (IDs or names).
@@ -126,8 +125,7 @@ def find_experiments_by_identifiers(
     Args:
         filter_obj: ExperimentFilter instance
         identifiers: List of experiment IDs or names
-        include_archived: Whether to search archived experiments
-        archived_only: If True, search ONLY archived experiments (for unarchive command)
+        archived: True for archived only, False for non-archived only, None for both
 
     Returns:
         List of found experiments
@@ -138,72 +136,77 @@ def find_experiments_by_identifiers(
     all_experiments = []
 
     for identifier in identifiers:
-        if archived_only:
-            # For unarchive: search all experiments but only consider archived ones
-            result = find_experiment(filter_obj, identifier, include_archived=True)
-
-            if result is None:
-                raise click.ClickException(
-                    f"No archived experiment found with ID or name '{identifier}'"
+        # Try to find by ID first (8-character hex)
+        if len(identifier) == 8:
+            try:
+                # Try exact ID match using the unified filter
+                results = filter_obj.filter_experiments(
+                    ids=[identifier], archived=archived, include_all=True
                 )
+                if results:
+                    all_experiments.append(results[0])
+                    continue
+            except Exception:
+                pass
 
-            if isinstance(result, list):
-                # Filter to only archived experiments
-                archived_results = [exp for exp in result if exp.get("archived", False)]
-
-                if not archived_results:
-                    raise click.ClickException(
-                        f"No archived experiment found with name '{identifier}'"
-                    )
-                elif len(archived_results) == 1:
-                    result = archived_results[0]
-                else:
-                    # Multiple archived experiments with same name
-                    click.echo(
-                        f"Multiple archived experiments found with name '{identifier}':"
-                    )
-                    click.echo()
-
-                    formatter = ExperimentTableFormatter()
-                    formatter.print_experiments_table(archived_results)
-                    click.echo()
-                    click.echo(
-                        "Please use specific experiment IDs instead of names for bulk operations."
-                    )
-                    raise click.ClickException(
-                        f"Ambiguous archived experiment name: '{identifier}'"
-                    )
-            else:
-                # Single result - check if it's archived
-                if not result.get("archived", False):
-                    raise click.ClickException(
-                        f"Experiment '{identifier}' is not archived"
-                    )
-        else:
-            # Normal mode: search as specified
-            result = find_experiment(filter_obj, identifier, include_archived)
-
-            if result is None:
-                location = "archived" if include_archived else "regular"
-                raise click.ClickException(
-                    f"No {location} experiment found with ID or name '{identifier}'"
+        # Try ID prefix match (if shorter than 8 characters)
+        if len(identifier) < 8:
+            try:
+                # Get all experiments and filter by ID prefix
+                all_exps = filter_obj.filter_experiments(
+                    archived=archived, include_all=True
                 )
+                prefix_matches = [
+                    exp for exp in all_exps if exp.get("id", "").startswith(identifier)
+                ]
 
-            if isinstance(result, list):
+                if len(prefix_matches) == 1:
+                    all_experiments.append(prefix_matches[0])
+                    continue
+                elif len(prefix_matches) > 1:
+                    raise click.ClickException(
+                        f"Ambiguous experiment ID prefix '{identifier}' matches multiple experiments"
+                    )
+            except Exception:
+                pass
+
+        # Try name match
+        try:
+            results = filter_obj.filter_experiments(
+                name=identifier, archived=archived, include_all=True
+            )
+
+            if len(results) == 1:
+                all_experiments.append(results[0])
+                continue
+            elif len(results) > 1:
                 # Multiple experiments with same name
                 click.echo(f"Multiple experiments found with name '{identifier}':")
                 click.echo()
 
+                from ..formatters.console import ExperimentTableFormatter
+
                 formatter = ExperimentTableFormatter()
-                formatter.print_experiments_table(result)
+                formatter.print_experiments_table(results)
                 click.echo()
                 click.echo(
                     "Please use specific experiment IDs instead of names for bulk operations."
                 )
                 raise click.ClickException(f"Ambiguous experiment name: '{identifier}'")
+        except Exception:
+            pass
 
-        # Single experiment found
-        all_experiments.append(result)
+        # If we get here, nothing was found
+        if archived is True:
+            location = "archived"
+        elif archived is False:
+            location = "regular"
+        else:
+            location = ""
+
+        raise click.ClickException(
+            f"No {location} experiment found with ID or name '{identifier}'"
+        )
 
     return all_experiments
 
@@ -211,13 +214,13 @@ def find_experiments_by_identifiers(
 def find_experiments_by_filters(
     filter_obj: ExperimentFilter,
     status: str = None,
-    name_pattern: str = None,
+    name: str = None,
     tags: list[str] = None,
     started_after=None,
     started_before=None,
     ended_after=None,
     ended_before=None,
-    include_archived: bool = False,
+    archived: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Find experiments using filter criteria.
@@ -225,25 +228,25 @@ def find_experiments_by_filters(
     Args:
         filter_obj: ExperimentFilter instance
         status: Filter by status
-        name_pattern: Filter by name pattern
+        name: Filter by name pattern
         tags: Filter by tags
         started_after: Filter by start time
         started_before: Filter by start time
         ended_after: Filter by end time
         ended_before: Filter by end time
-        include_archived: Whether to search archived experiments
+        archived: Whether to search archived experiments
 
     Returns:
         List of found experiments
     """
     return filter_obj.filter_experiments(
         status=status,
-        name_pattern=name_pattern,
+        name=name,
         tags=tags,
         started_after=started_after,
         started_before=started_before,
         ended_after=ended_after,
         ended_before=ended_before,
         include_all=True,  # Get all matching experiments for bulk operations
-        include_archived=include_archived,
+        archived=archived,
     )
