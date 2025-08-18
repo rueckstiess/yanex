@@ -255,6 +255,22 @@ class TestResultsManager:
         assert manager.experiment_exists(exp2, include_archived=True) is True
         assert manager.experiment_exists(exp2, include_archived=False) is False
 
+    def test_delete_experiments(self, manager, sample_experiments):
+        """Test deleting experiments."""
+        exp1, exp2, exp3 = sample_experiments
+
+        # Delete failed experiments
+        deleted_count = manager.delete_experiments(status="failed")
+        assert deleted_count == 1
+
+        # Verify experiment is completely gone
+        assert manager.experiment_exists(exp2, include_archived=True) is False
+        assert manager.experiment_exists(exp2, include_archived=False) is False
+
+        # Remaining experiments should still exist
+        assert manager.experiment_exists(exp1, include_archived=False) is True
+        assert manager.experiment_exists(exp3, include_archived=False) is True
+
     def test_export_experiments_json(self, manager, sample_experiments, tmp_path):
         """Test exporting experiments to JSON."""
         output_path = tmp_path / "export.json"

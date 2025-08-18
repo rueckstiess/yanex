@@ -151,7 +151,9 @@ class ResultsManager:
         try:
             import pandas as pd
         except ImportError:
-            raise ImportError("pandas is required for compare_experiments. Install it with: pip install pandas")
+            raise ImportError(
+                "pandas is required for compare_experiments. Install it with: pip install pandas"
+            )
 
         # Find experiments matching filters
         experiments_metadata = self.find(**filters)
@@ -195,12 +197,16 @@ class ResultsManager:
             >>> if latest:
             ...     print(f"Latest training run: {latest.name}")
         """
-        experiments = self.find(limit=1, sort_by="created_at", sort_desc=True, **filters)
+        experiments = self.find(
+            limit=1, sort_by="created_at", sort_desc=True, **filters
+        )
         if experiments:
             return self.get_experiment(experiments[0]["id"])
         return None
 
-    def get_best(self, metric: str, maximize: bool = True, **filters) -> Experiment | None:
+    def get_best(
+        self, metric: str, maximize: bool = True, **filters
+    ) -> Experiment | None:
         """
         Get the experiment with the best value for a specific metric.
 
@@ -249,7 +255,9 @@ class ResultsManager:
                     if best_value is None:
                         best_exp = exp
                         best_value = numeric_value
-                    elif (maximize and numeric_value > best_value) or (not maximize and numeric_value < best_value):
+                    elif (maximize and numeric_value > best_value) or (
+                        not maximize and numeric_value < best_value
+                    ):
                         best_exp = exp
                         best_value = numeric_value
                 except (ValueError, TypeError):
@@ -286,6 +294,35 @@ class ResultsManager:
                 continue
 
         return archived_count
+
+    def delete_experiments(self, **filters) -> int:
+        """
+        Permanently delete experiments matching filters.
+
+        Args:
+            **filters: Filter arguments to select experiments
+
+        Returns:
+            Number of experiments successfully deleted
+
+        Examples:
+            >>> manager = ResultsManager()
+            >>> count = manager.delete_experiments(status="failed", ended_before="1 month ago")
+            >>> print(f"Deleted {count} failed experiments")
+        """
+        # Find experiments to delete (include both archived and unarchived)
+        experiments = self.find(include_all=True, **filters)
+
+        deleted_count = 0
+        for exp_metadata in experiments:
+            try:
+                self._manager.storage.delete_experiment(exp_metadata["id"])
+                deleted_count += 1
+            except Exception:
+                # Continue with other experiments if one fails
+                continue
+
+        return deleted_count
 
     def export_experiments(self, path: str, format: str = "json", **filters) -> None:
         """
@@ -331,10 +368,14 @@ class ResultsManager:
                 with output_path.open("w", encoding="utf-8") as f:
                     yaml.dump(export_data, f, default_flow_style=False)
             except ImportError:
-                raise ImportError("PyYAML is required for YAML export. Install it with: pip install pyyaml")
+                raise ImportError(
+                    "PyYAML is required for YAML export. Install it with: pip install pyyaml"
+                )
 
         else:
-            raise ValueError(f"Unsupported export format: {format}. Supported formats: json, csv, yaml")
+            raise ValueError(
+                f"Unsupported export format: {format}. Supported formats: json, csv, yaml"
+            )
 
     def get_experiment_count(self, **filters) -> int:
         """
@@ -353,7 +394,9 @@ class ResultsManager:
         """
         return self._filter.get_experiment_count(**filters)
 
-    def experiment_exists(self, experiment_id: str, include_archived: bool = True) -> bool:
+    def experiment_exists(
+        self, experiment_id: str, include_archived: bool = True
+    ) -> bool:
         """
         Check if an experiment exists.
 

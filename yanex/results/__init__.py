@@ -264,6 +264,30 @@ def archive_experiments(**filters) -> int:
     return _get_manager().archive_experiments(**filters)
 
 
+def delete_experiments(**filters) -> int:
+    """
+    Permanently delete experiments matching filters.
+
+    Args:
+        **filters: Filter arguments to select experiments
+
+    Returns:
+        Number of experiments successfully deleted
+
+    Examples:
+        >>> # Delete failed experiments older than 1 month
+        >>> count = delete_experiments(
+        ...     status="failed",
+        ...     ended_before="1 month ago"
+        ... )
+        >>> print(f"Deleted {count} experiments")
+
+        >>> # Delete specific experiments
+        >>> count = delete_experiments(ids=["abc123", "def456"])
+    """
+    return _get_manager().delete_experiments(**filters)
+
+
 def export_experiments(path: str, format: str = "json", **filters) -> None:
     """
     Export experiments matching filters to a file.
@@ -377,6 +401,7 @@ __all__ = [
     "compare",
     # Bulk operations
     "archive_experiments",
+    "delete_experiments",
     "export_experiments",
     # Utilities
     "get_experiment_count",
