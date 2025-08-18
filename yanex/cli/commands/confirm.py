@@ -61,6 +61,59 @@ def confirm_experiment_operation(
     return click.confirm(message, default=default_yes)
 
 
+def find_experiment(
+    filter_obj: ExperimentFilter, identifier: str, include_archived: bool = False
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    """
+    Find experiment by ID, ID prefix, or name.
+
+    Args:
+        filter_obj: ExperimentFilter instance
+        identifier: Experiment ID or name
+        include_archived: Whether to search archived experiments
+
+    Returns:
+        - Single experiment dict if found by ID or unique name
+        - List of experiments if multiple names match
+        - None if not found
+    """
+    # First, try to find by exact ID match
+    try:
+        all_experiments = filter_obj._load_all_experiments(include_archived)
+
+        # Try ID prefix match
+        id_prefix_matches: list[dict[str, Any]] = []
+        if identifier:
+            for exp in all_experiments:
+                exp_id = exp.get("id", "")
+                if isinstance(exp_id, str) and exp_id.startswith(identifier):
+                    id_prefix_matches.append(exp)
+
+        if len(id_prefix_matches) == 1:
+            return id_prefix_matches[0]
+        elif len(id_prefix_matches) > 1:
+            return id_prefix_matches
+
+        # Try name match
+        name_matches = []
+        for exp in all_experiments:
+            exp_name = exp.get("name")
+            if exp_name and exp_name == identifier:
+                name_matches.append(exp)
+
+        # Return based on name matches
+        if len(name_matches) == 1:
+            return name_matches[0]
+        elif len(name_matches) > 1:
+            return name_matches
+
+        # No matches found
+        return None
+
+    except Exception:
+        return None
+
+
 def find_experiments_by_identifiers(
     filter_obj: ExperimentFilter,
     identifiers: list[str],
@@ -82,8 +135,6 @@ def find_experiments_by_identifiers(
     Raises:
         click.ClickException: If any identifier is not found or ambiguous
     """
-    from .show import find_experiment  # Import here to avoid circular import
-
     all_experiments = []
 
     for identifier in identifiers:

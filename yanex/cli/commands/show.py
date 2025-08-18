@@ -10,6 +10,8 @@ from yanex.cli.filters import ExperimentFilter
 from yanex.cli.formatters.console import ExperimentTableFormatter
 from yanex.core.manager import ExperimentManager
 
+from .confirm import find_experiment
+
 
 @click.command("show")
 @click.argument("experiment_identifier", required=True)
@@ -26,8 +28,9 @@ def show_experiment(
     """
     Show detailed information about an experiment.
 
-    EXPERIMENT_IDENTIFIER can be either:
+    EXPERIMENT_IDENTIFIER can be:
     - An experiment ID (8-character string)
+    - A prefix of an experiment ID
     - An experiment name
 
     If multiple experiments have the same name, a list will be shown
@@ -78,52 +81,6 @@ def show_experiment(
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         ctx.exit(1)
-
-
-def find_experiment(
-    filter_obj: ExperimentFilter, identifier: str, include_archived: bool = False
-) -> dict[str, Any] | list[dict[str, Any]] | None:
-    """
-    Find experiment by ID or name.
-
-    Args:
-        filter_obj: ExperimentFilter instance
-        identifier: Experiment ID or name
-        include_archived: Whether to search archived experiments
-
-    Returns:
-        - Single experiment dict if found by ID or unique name
-        - List of experiments if multiple names match
-        - None if not found
-    """
-    # First, try to find by exact ID match
-    try:
-        all_experiments = filter_obj._load_all_experiments(include_archived)
-
-        # Try ID match first (exact 8-character match)
-        if len(identifier) == 8:
-            for exp in all_experiments:
-                if exp.get("id") == identifier:
-                    return exp
-
-        # Try name match
-        name_matches = []
-        for exp in all_experiments:
-            exp_name = exp.get("name")
-            if exp_name and exp_name == identifier:
-                name_matches.append(exp)
-
-        # Return based on name matches
-        if len(name_matches) == 1:
-            return name_matches[0]
-        elif len(name_matches) > 1:
-            return name_matches  # Multiple matches - let caller handle
-
-        # No matches found
-        return None
-
-    except Exception:
-        return None
 
 
 def display_experiment_details(
