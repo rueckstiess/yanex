@@ -248,6 +248,19 @@ all_metrics = exp.get_metrics()  # List of dicts with step info
 step_5_metrics = exp.get_metrics(step=5)  # Dict of metrics for step 5
 ```
 
+#### `get_metric(name)`
+
+Get a specific metric by name.
+
+```python
+# Get specific metric - single value if one step, list if multiple steps
+accuracy = exp.get_metric("accuracy")  # 0.95 or [0.8, 0.85, 0.9]
+loss = exp.get_metric("loss")          # 0.05 or [0.2, 0.15, 0.1]
+
+# Returns None if metric doesn't exist
+precision = exp.get_metric("precision")  # None if not logged
+```
+
 #### `get_artifacts()`
 
 Get list of artifact paths.
