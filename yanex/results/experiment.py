@@ -237,6 +237,36 @@ class Experiment:
                 entry.copy() if isinstance(entry, dict) else entry for entry in cached
             ]
 
+    def get_metric(self, name: str) -> Any | None:
+        """
+        Get a specific metric by name.
+
+        Args:
+            name: Name of the metric to retrieve
+
+        Returns:
+            Single value if there's only one step, list of values if multiple steps,
+            or None if metric not found
+        """
+        metrics = self.get_metrics()
+        if not metrics:
+            return None
+
+        # Collect all values for the specified metric across all steps
+        values = []
+        for entry in metrics:
+            if isinstance(entry, dict) and name in entry:
+                # Skip the 'step' key when extracting metric values
+                if name != "step":
+                    values.append(entry[name])
+
+        if not values:
+            return None
+        elif len(values) == 1:
+            return values[0]
+        else:
+            return values
+
     def get_artifacts(self) -> list[Path]:
         """
         Get list of artifact paths.

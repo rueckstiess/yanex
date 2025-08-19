@@ -390,6 +390,116 @@ class TestExperiment:
         assert exp.get_metrics() == []
         assert exp.get_metrics(step=0) == {}
 
+    def test_get_metric(self, manager, sample_experiment):
+        """Test getting a specific metric."""
+        exp = Experiment(sample_experiment, manager)
+
+        # Test getting existing metrics
+        assert exp.get_metric("accuracy") == 0.95
+        assert exp.get_metric("loss") == 0.05
+
+        # Test getting non-existent metric
+        assert exp.get_metric("nonexistent") is None
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metric_multiple_steps(
+        self, mock_capture_env, mock_git_info, mock_validate_git, manager
+    ):
+        """Test get_metric with multiple steps."""
+        # Setup mocks
+        mock_validate_git.return_value = None
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiment
+        exp_id = manager.create_experiment(
+            script_path=Path("train.py"),
+            name="multi_step_metric_test",
+            tags=["unit-tests"],
+        )
+
+        # Add multiple metric steps
+        manager.storage.add_result_step(
+            exp_id, {"accuracy": 0.8, "loss": 0.2, "epoch": 1}
+        )
+        manager.storage.add_result_step(
+            exp_id, {"accuracy": 0.85, "loss": 0.15, "epoch": 2}
+        )
+        manager.storage.add_result_step(
+            exp_id, {"accuracy": 0.9, "loss": 0.1, "epoch": 3}
+        )
+
+        exp = Experiment(exp_id, manager)
+
+        # Test getting metric with multiple values - should return list
+        accuracy_values = exp.get_metric("accuracy")
+        assert accuracy_values == [0.8, 0.85, 0.9]
+
+        loss_values = exp.get_metric("loss")
+        assert loss_values == [0.2, 0.15, 0.1]
+
+        epoch_values = exp.get_metric("epoch")
+        assert epoch_values == [1, 2, 3]
+
+        # Test non-existent metric
+        assert exp.get_metric("nonexistent") is None
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metric_single_step(
+        self, mock_capture_env, mock_git_info, mock_validate_git, manager
+    ):
+        """Test get_metric with single step."""
+        # Setup mocks
+        mock_validate_git.return_value = None
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiment
+        exp_id = manager.create_experiment(
+            script_path=Path("train.py"),
+            name="single_step_metric_test",
+            tags=["unit-tests"],
+        )
+
+        # Add single metric step
+        manager.storage.add_result_step(exp_id, {"accuracy": 0.92, "loss": 0.08})
+
+        exp = Experiment(exp_id, manager)
+
+        # Test getting metric with single value - should return value directly
+        assert exp.get_metric("accuracy") == 0.92
+        assert exp.get_metric("loss") == 0.08
+
+        # Test non-existent metric
+        assert exp.get_metric("nonexistent") is None
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metric_no_metrics(
+        self, mock_capture_env, mock_git_info, mock_validate_git, manager
+    ):
+        """Test get_metric with no metrics."""
+        # Setup mocks
+        mock_validate_git.return_value = None
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiment without metrics
+        exp_id = manager.create_experiment(
+            script_path=Path("test.py"), name="no_metrics_test", tags=["unit-tests"]
+        )
+
+        exp = Experiment(exp_id, manager)
+
+        # Should return None for any metric when no metrics exist
+        assert exp.get_metric("accuracy") is None
+        assert exp.get_metric("loss") is None
+
     def test_artifacts_access(self, manager, sample_experiment):
         """Test accessing experiment artifacts."""
         exp = Experiment(sample_experiment, manager)
