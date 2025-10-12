@@ -199,3 +199,32 @@ async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/experiments/{experiment_id}/artifacts/{artifact_name}")
+async def download_artifact(
+    experiment_id: str, artifact_name: str, archived: bool = False
+):
+    """Download an artifact file."""
+    try:
+        exp_dir = manager.storage.get_experiment_dir(
+            experiment_id, include_archived=archived
+        )
+        artifact_path = exp_dir / "artifacts" / artifact_name
+
+        if not artifact_path.exists():
+            raise HTTPException(status_code=404, detail="Artifact not found")
+
+        from fastapi.responses import FileResponse
+
+        return FileResponse(
+            path=str(artifact_path),
+            filename=artifact_name,
+            media_type="application/octet-stream",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
