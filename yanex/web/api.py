@@ -228,3 +228,33 @@ async def download_artifact(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/status")
+async def get_status() -> dict[str, Any]:
+    """Get system status and statistics."""
+    try:
+        # Get basic statistics
+        all_experiments = experiment_filter.filter_experiments(
+            include_all=True, include_archived=False
+        )
+        archived_experiments = experiment_filter.filter_experiments(
+            include_all=True, include_archived=True
+        )
+        archived_experiments = [
+            exp for exp in archived_experiments if exp.get("archived", False)
+        ]
+
+        # Count by status
+        status_counts = {}
+        for exp in all_experiments:
+            status = exp.get("status", "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+        return {
+            "total_experiments": len(all_experiments),
+            "archived_experiments": len(archived_experiments),
+            "status_counts": status_counts,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
