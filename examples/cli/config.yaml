@@ -6,11 +6,11 @@
 
 # Database benchmark parameters (for advanced_benchmark.py)
 duration: 15          # seconds to run benchmark
-workload: "mixed"     # read_heavy, write_heavy, or mixed
+workload: list(read-heavy,write-heavy,mixed)     # read_heavy, write_heavy, or mixed
 target_qps: 25        # target queries per second
 
 # LinkBench parameters (for bash_script_example.py)
-num_threads: 6        # number of concurrent threads
+num_threads: range(3,6,1)        # number of concurrent threads
 read_ratio: 0.85      # ratio of read operations (0.0-1.0)
 database_size: 2000000 # number of links in database
 
@@ -22,3 +22,4 @@ tags:
   - "performance" 
   - "database"
   - "linkbench"
+
