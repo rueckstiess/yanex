@@ -117,3 +117,85 @@ async def list_experiments(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/experiments/{experiment_id}")
+async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str, Any]:
+    """Get detailed information about a specific experiment."""
+    try:
+        # Find the experiment
+        experiments = experiment_filter.filter_experiments(
+            include_all=True,
+            include_archived=archived,
+        )
+
+        # Filter by archived status
+        if archived:
+            experiments = [exp for exp in experiments if exp.get("archived", False)]
+        else:
+            experiments = [exp for exp in experiments if not exp.get("archived", False)]
+
+        # Find matching experiment
+        experiment = None
+        for exp in experiments:
+            if exp["id"] == experiment_id or exp["id"].startswith(experiment_id):
+                experiment = exp
+                break
+
+        if not experiment:
+            raise HTTPException(status_code=404, detail="Experiment not found")
+
+        # Get additional details
+        try:
+            config = manager.storage.load_config(
+                experiment_id, include_archived=archived
+            )
+        except Exception:
+            config = {}
+
+        try:
+            results = manager.storage.load_results(
+                experiment_id, include_archived=archived
+            )
+        except Exception:
+            results = []
+
+        try:
+            metadata = manager.storage.load_metadata(
+                experiment_id, include_archived=archived
+            )
+        except Exception:
+            metadata = {}
+
+        # Get artifacts
+        try:
+            exp_dir = manager.storage.get_experiment_dir(
+                experiment_id, include_archived=archived
+            )
+            artifacts_dir = exp_dir / "artifacts"
+            artifacts = []
+            if artifacts_dir.exists():
+                for artifact_path in artifacts_dir.iterdir():
+                    if artifact_path.is_file():
+                        artifacts.append(
+                            {
+                                "name": artifact_path.name,
+                                "size": artifact_path.stat().st_size,
+                                "modified": artifact_path.stat().st_mtime,
+                            }
+                        )
+        except Exception:
+            artifacts = []
+
+        return {
+            "experiment": experiment,
+            "config": config,
+            "results": results,
+            "metadata": metadata,
+            "artifacts": artifacts,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
