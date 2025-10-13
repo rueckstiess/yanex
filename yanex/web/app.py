@@ -41,6 +41,11 @@ async def serve_spa(full_path: str):
     1. Check if a specific HTML file exists for this route
     2. Otherwise fall back to index.html for client-side routing
     """
+    # Check if it's a direct file request
+    file_path = out_dir / full_path
+    if file_path.is_file():
+        return FileResponse(file_path)
+
     # Try to find a matching HTML file for this path
     # Next.js static export creates path/index.html for each route
     if full_path and not full_path.endswith(".html"):
@@ -54,10 +59,12 @@ async def serve_spa(full_path: str):
         if potential_file.is_file():
             return FileResponse(potential_file)
 
-    # Check if it's a direct file request
-    file_path = out_dir / full_path
-    if file_path.is_file():
-        return FileResponse(file_path)
+    # Handle dynamic routes
+    # For /experiment/[id] routes, serve the experiment template
+    if full_path.startswith("experiment/") and "/" in full_path[10:]:
+        experiment_template = out_dir / "experiment" / "[id]" / "index.html"
+        if experiment_template.is_file():
+            return FileResponse(experiment_template)
 
     # Default to root index.html for client-side routing
     index_html_path = out_dir / "index.html"
