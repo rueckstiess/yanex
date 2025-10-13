@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -19,61 +18,56 @@ app = FastAPI(
     version="0.4.0",
 )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include API routes
+# Include API routes first (highest priority)
 app.include_router(api_router, prefix="/api")
 
 # Get web directory from environment or use default
 web_dir = Path(os.environ.get("YANEX_WEB_BUILD_PATH", Path(__file__).parent))
-next_build_dir = web_dir / ".next"
-next_static_dir = next_build_dir / "static"
-next_server_dir = next_build_dir / "server"
-next_public_dir = web_dir / "public"
+out_dir = web_dir / "out"
 
-# Serve static assets from .next/static
-if next_static_dir.is_dir():
-    app.mount(
-        "/_next/static", StaticFiles(directory=next_static_dir), name="next_static"
-    )
-
-# Serve public assets
-if next_public_dir.is_dir():
-    app.mount("/public", StaticFiles(directory=next_public_dir), name="public_static")
+# Serve static assets from out/_next (Next.js static export)
+next_dir = out_dir / "_next"
+if next_dir.is_dir():
+    app.mount("/_next", StaticFiles(directory=next_dir), name="next_assets")
 
 
-# Serve the Next.js app for all non-API routes
-@app.get("/{path:path}")
-async def serve_react_app(path: str):
-    """Serve the React app for all non-API routes."""
-    # Check if we have a built Next.js app
-    if next_build_dir.exists():
-        # Try to serve the built Next.js files
-        index_html_path = next_server_dir / "app" / "index.html"  # For app router
-        if not index_html_path.is_file():
-            index_html_path = (
-                next_build_dir / "server" / "pages" / "index.html"
-            )  # For pages router
+# Serve the Next.js SPA for all non-API, non-static routes
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """
+    Serve the Next.js SPA.
 
-        if index_html_path.is_file():
-            return FileResponse(index_html_path)
+    For the static export, we need to:
+    1. Check if a specific HTML file exists for this route
+    2. Otherwise fall back to index.html for client-side routing
+    """
+    # Try to find a matching HTML file for this path
+    # Next.js static export creates path/index.html for each route
+    if full_path and not full_path.endswith(".html"):
+        # Try with trailing slash
+        potential_file = out_dir / full_path / "index.html"
+        if potential_file.is_file():
+            return FileResponse(potential_file)
 
-        # Fallback for client-side routing in development or if index.html is not found
-        fallback_path = web_dir / "index.html"
-        if fallback_path.is_file():
-            return FileResponse(fallback_path)
-        else:
-            return {
-                "message": "Next.js app not built. Run 'yanex ui' to build and start the server."
-            }
+        # Try exact .html file
+        potential_file = out_dir / f"{full_path}.html"
+        if potential_file.is_file():
+            return FileResponse(potential_file)
+
+    # Check if it's a direct file request
+    file_path = out_dir / full_path
+    if file_path.is_file():
+        return FileResponse(file_path)
+
+    # Default to root index.html for client-side routing
+    index_html_path = out_dir / "index.html"
+    if index_html_path.is_file():
+        return FileResponse(index_html_path)
     else:
         return {
-            "message": "Next.js app not built. Run 'yanex ui' to build and start the server."
+            "error": "Web UI not built",
+            "message": (
+                "The web UI has not been built. "
+                "Build it with: cd yanex/web && npm run build"
+            ),
         }

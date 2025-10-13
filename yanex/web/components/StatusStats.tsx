@@ -10,7 +10,7 @@ export function StatusStats() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/status')
+        const response = await fetch('/api/status')
         if (response.ok) {
           const data = await response.json()
           setStats(data)

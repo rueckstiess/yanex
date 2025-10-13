@@ -1,29 +1,31 @@
-'use client'
-
 import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { useRouter } from 'next/router'
+import Head from 'next/head'
 import { ExperimentDetails } from '@/components/ExperimentDetails'
 import { Experiment } from '@/types/experiment'
 
 export default function ExperimentPage() {
-  const params = useParams()
-  const experimentId = params.id as string
-  
+  const router = useRouter()
+  const { id } = router.query
+  const experimentId = id as string
+
   const [experiment, setExperiment] = useState<Experiment | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!experimentId) return
+
     const fetchExperiment = async () => {
       try {
         setLoading(true)
         setError(null)
-        
-        const response = await fetch(`http://localhost:8000/api/experiments/${experimentId}`)
+
+        const response = await fetch(`/api/experiments/${experimentId}`)
         if (!response.ok) {
           throw new Error('Failed to fetch experiment')
         }
-        
+
         const data = await response.json()
         setExperiment(data.experiment)
       } catch (err) {
@@ -33,9 +35,7 @@ export default function ExperimentPage() {
       }
     }
 
-    if (experimentId) {
-      fetchExperiment()
-    }
+    fetchExperiment()
   }, [experimentId])
 
   if (loading) {
@@ -51,7 +51,7 @@ export default function ExperimentPage() {
       <div className="text-center py-12">
         <p className="text-red-600 mb-4">{error}</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => router.reload()}
           className="btn btn-primary"
         >
           Retry
@@ -69,20 +69,26 @@ export default function ExperimentPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center space-x-4">
-        <button
-          onClick={() => window.history.back()}
-          className="btn btn-secondary"
-        >
-          ← Back
-        </button>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {experiment.name || '[Unnamed]'}
-        </h1>
-      </div>
+    <>
+      <Head>
+        <title>{experiment.name || '[Unnamed]'} - Yanex</title>
+      </Head>
 
-      <ExperimentDetails experimentId={experimentId} />
-    </div>
+      <div className="space-y-6">
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => router.back()}
+            className="btn btn-secondary"
+          >
+            ← Back
+          </button>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {experiment.name || '[Unnamed]'}
+          </h1>
+        </div>
+
+        <ExperimentDetails experimentId={experimentId} />
+      </div>
+    </>
   )
 }

@@ -37,7 +37,7 @@ export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
         setLoading(true)
         setError(null)
         
-        const response = await fetch(`http://localhost:8000/api/experiments/${experimentId}`)
+        const response = await fetch(`/api/experiments/${experimentId}`)
         if (!response.ok) {
           throw new Error('Failed to fetch experiment details')
         }
@@ -198,7 +198,7 @@ export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <a
-                        href={`http://localhost:8000/api/experiments/${experimentId}/artifacts/${artifact.name}`}
+                        href={`/api/experiments/${experimentId}/artifacts/${artifact.name}`}
                         download
                         className="text-primary-600 hover:text-primary-900"
                       >

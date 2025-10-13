@@ -1,4 +1,4 @@
-.PHONY: install test lint format clean build
+.PHONY: install test lint format clean build build-web clean-web
 
 # Development setup
 install:
@@ -21,6 +21,15 @@ format:
 format-check:
 	ruff format --check yanex tests
 
+# Web UI
+build-web:
+	./build_web_ui.sh
+
+clean-web:
+	rm -rf yanex/web/out
+	rm -rf yanex/web/.next
+	rm -rf yanex/web/node_modules
+
 # Cleanup
 clean:
 	rm -rf build/
@@ -31,8 +40,8 @@ clean:
 	find . -type d -name __pycache__ -delete
 	find . -type f -name "*.pyc" -delete
 
-# Build
-build: clean
+# Build (includes web UI)
+build: clean build-web
 	python -m build
 
 # All checks

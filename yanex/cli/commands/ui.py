@@ -2,9 +2,8 @@
 UI command implementation for yanex CLI.
 """
 
-import os
-import subprocess
-import sys
+import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -20,170 +19,94 @@ from ..error_handling import CLIErrorHandler
     help="Host to bind the server to (default: 127.0.0.1)",
 )
 @click.option(
-    "--api-port",
+    "--port",
     default=8000,
-    help="Port to bind the API server to (default: 8000)",
-)
-@click.option(
-    "--frontend-port",
-    default=3000,
-    help="Port to bind the frontend server to (default: 3000)",
+    help="Port to bind the server to (default: 8000)",
 )
 @click.option(
     "--reload",
     is_flag=True,
-    help="Enable auto-reload for development",
+    help="Enable auto-reload for development (requires source files)",
 )
 @click.option(
-    "--skip-build",
+    "--no-browser",
     is_flag=True,
-    help="Skip building the frontend (use existing build)",
+    help="Don't automatically open browser",
 )
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
 def ui(
     ctx: click.Context,
     host: str,
-    api_port: int,
-    frontend_port: int,
+    port: int,
     reload: bool,
-    skip_build: bool,
+    no_browser: bool,
 ) -> None:
     """
-    Start the yanex web UI with both frontend and backend servers.
+    Start the yanex web UI server.
 
-    This command starts:
-    - FastAPI backend server on port 8000 (API)
-    - Next.js frontend server on port 3000 (UI)
+    This command starts a FastAPI server that serves both the web UI
+    and the API endpoints on a single port.
 
-    The frontend will automatically connect to the backend API.
+    The web UI must be built before running this command. If you're
+    developing the UI, see yanex/web/README.md for development setup.
 
     Examples:
 
-      # Start both servers with default ports
+      # Start server with default settings
       yanex ui
 
-      # Start with custom ports
-      yanex ui --api-port 8001 --frontend-port 3001
+      # Start with custom port
+      yanex ui --port 8080
 
-      # Start with auto-reload for development
+      # Start without opening browser
+      yanex ui --no-browser
+
+      # Development mode with auto-reload (requires source files)
       yanex ui --reload
-
-      # Skip building frontend (use existing build)
-      yanex ui --skip-build
     """
     verbose = ctx.obj.get("verbose", False)
 
-    if verbose:
-        click.echo("Starting yanex web UI...")
-        click.echo(f"  API Server: http://{host}:{api_port}")
-        click.echo(f"  Frontend: http://{host}:{frontend_port}")
-        click.echo(f"  Auto-reload: {reload}")
-        click.echo(f"  Skip build: {skip_build}")
-
-    # Get the web directory path
+    # Check if build exists
     web_dir = Path(__file__).parent.parent.parent / "web"
+    out_dir = web_dir / "out"
 
-    # Build the frontend if needed
-    if not skip_build:
-        click.echo("Building frontend...")
-        try:
-            # Check if Node.js is available
-            try:
-                subprocess.run(["node", "--version"], check=True, capture_output=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                click.echo("Error: Node.js is not installed or not in PATH", err=True)
-                click.echo("Please install Node.js from https://nodejs.org/", err=True)
-                raise click.Abort()
-
-            # Check if npm is available
-            try:
-                subprocess.run(["npm", "--version"], check=True, capture_output=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                click.echo("Error: npm is not installed or not in PATH", err=True)
-                click.echo("Please install npm (comes with Node.js)", err=True)
-                raise click.Abort()
-
-            # Change to web directory and install dependencies
-            os.chdir(web_dir)
-
-            # Install dependencies if needed
-            if not (web_dir / "node_modules").exists():
-                click.echo("Installing frontend dependencies...")
-                result = subprocess.run(
-                    ["npm", "install"], check=True, capture_output=True, text=True
-                )
-                if verbose:
-                    click.echo(result.stdout)
-
-            # Build the frontend
-            click.echo("Building Next.js frontend...")
-            result = subprocess.run(
-                ["npm", "run", "build"], check=True, capture_output=True, text=True
-            )
-            if verbose:
-                click.echo(result.stdout)
-
-            click.echo("Frontend built successfully!")
-
-        except subprocess.CalledProcessError as e:
-            click.echo(f"Error building frontend: {e}", err=True)
-            if e.stdout:
-                click.echo(f"stdout: {e.stdout}", err=True)
-            if e.stderr:
-                click.echo(f"stderr: {e.stderr}", err=True)
-            raise click.Abort()
-        except Exception as e:
-            click.echo(f"Unexpected error: {e}", err=True)
-            raise click.Abort()
-
-    # Start both servers
-    try:
-        click.echo(f"Starting API server at http://{host}:{api_port}")
-        click.echo(f"Starting frontend server at http://{host}:{frontend_port}")
-        click.echo("Press Ctrl+C to stop both servers")
-
-        # Start FastAPI backend in a subprocess
-        api_process = subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                f"import uvicorn; from yanex.web.app import app; uvicorn.run(app, host='{host}', port={api_port}, reload={reload})",
-            ]
+    if not out_dir.exists():
+        click.echo("⚠️  Web UI build not found.", err=True)
+        click.echo(f"Expected build directory: {out_dir}", err=True)
+        click.echo(
+            "\nThe web UI needs to be built during package installation.",
+            err=True,
         )
-
-        # Start Next.js frontend in a subprocess
-        frontend_process = subprocess.Popen(
-            ["npm", "run", "dev", "--", "--port", str(frontend_port)], cwd=web_dir
+        click.echo(
+            "If you're developing, run: cd yanex/web && npm run build",
+            err=True,
         )
-
-        webbrowser.open(f"http://localhost:{frontend_port}")
-
-        # Wait for both processes
-        try:
-            api_process.wait()
-            frontend_process.wait()
-        except KeyboardInterrupt:
-            click.echo("\nStopping servers...")
-            api_process.terminate()
-            frontend_process.terminate()
-
-            # Wait a bit for graceful shutdown
-            try:
-                api_process.wait(timeout=5)
-                frontend_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                click.echo("Force killing processes...")
-                api_process.kill()
-                frontend_process.kill()
-
-            click.echo("👋 Servers stopped")
-
-    except Exception as e:
-        click.echo(f"Error: Failed to start servers: {e}", err=True)
-        # Clean up any running processes
-        if "api_process" in locals():
-            api_process.terminate()
-        if "frontend_process" in locals():
-            frontend_process.terminate()
         raise click.Abort()
+
+    if verbose:
+        click.echo("Starting yanex web UI server...")
+        click.echo(f"  URL: http://{host}:{port}")
+        click.echo(f"  Auto-reload: {reload}")
+
+    click.echo(f"🚀 Starting server at http://{host}:{port}")
+
+    if not no_browser:
+        # Open browser after short delay
+        def open_browser():
+            time.sleep(1.5)  # Wait for server to start
+            webbrowser.open(f"http://{host}:{port}")
+
+        threading.Thread(target=open_browser, daemon=True).start()
+
+    click.echo("Press Ctrl+C to stop the server")
+
+    # Start uvicorn server (blocks until stopped)
+    try:
+        import uvicorn
+
+        from yanex.web.app import app
+
+        uvicorn.run(app, host=host, port=port, reload=reload, log_level="info")
+    except KeyboardInterrupt:
+        click.echo("\n👋 Server stopped")

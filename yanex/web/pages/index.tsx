@@ -1,6 +1,5 @@
-'use client'
-
 import { useState, useEffect } from 'react'
+import Head from 'next/head'
 import { ExperimentList } from '@/components/ExperimentList'
 import { ExperimentFilters } from '@/components/ExperimentFilters'
 import { StatusStats } from '@/components/StatusStats'
@@ -26,7 +25,7 @@ export default function Home() {
     try {
       setLoading(true)
       setError(null)
-      
+
       const params = new URLSearchParams()
       if (filters.status) params.append('status', filters.status)
       if (filters.name_pattern) params.append('name_pattern', filters.name_pattern)
@@ -37,12 +36,12 @@ export default function Home() {
       if (filters.ended_before) params.append('ended_before', filters.ended_before)
       if (filters.ended_after) params.append('ended_after', filters.ended_after)
       if (filters.sort_order) params.append('sort_order', filters.sort_order)
-      
-      const response = await fetch(`http://localhost:8000/api/experiments?${params}`)
+
+      const response = await fetch(`/api/experiments?${params}`)
       if (!response.ok) {
         throw new Error('Failed to fetch experiments')
-    }
-      
+      }
+
       const data = await response.json()
       setExperiments(data.experiments)
     } catch (err) {
@@ -61,35 +60,41 @@ export default function Home() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Experiments</h1>
-        <button
-          onClick={fetchExperiments}
-          className="btn btn-secondary"
-        >
-          Refresh
-        </button>
-      </div>
+    <>
+      <Head>
+        <title>Yanex - Experiment Tracker</title>
+      </Head>
 
-      <StatusStats />
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-1">
-          <ExperimentFilters
-            filters={filters}
-            onFilterChange={handleFilterChange}
-          />
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-900">Experiments</h1>
+          <button
+            onClick={fetchExperiments}
+            className="btn btn-secondary"
+          >
+            Refresh
+          </button>
         </div>
-        
-        <div className="lg:col-span-3">
-          <ExperimentList
-            experiments={experiments}
-            loading={loading}
-            error={error}
-          />
+
+        <StatusStats />
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-1">
+            <ExperimentFilters
+              filters={filters}
+              onFilterChange={handleFilterChange}
+            />
+          </div>
+
+          <div className="lg:col-span-3">
+            <ExperimentList
+              experiments={experiments}
+              loading={loading}
+              error={error}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }
