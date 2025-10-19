@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+
 interface ExperimentFiltersProps {
   filters: {
     status: string
@@ -16,6 +18,7 @@ interface ExperimentFiltersProps {
 }
 
 export function ExperimentFilters({ filters, onFilterChange }: ExperimentFiltersProps) {
+  const [dateFilterType, setDateFilterType] = useState<'started' | 'ended'>('started')
   const statusOptions = [
     { value: '', label: 'All Statuses' },
     { value: 'staged', label: 'Staged' },
@@ -92,58 +95,109 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
       <div className="space-y-3">
         <h4 className="text-sm font-medium text-gray-700">Date Range Filters</h4>
         
-        <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Filter By
+          </label>
+          <select
+            value={dateFilterType}
+            onChange={(e) => {
+              const newType = e.target.value as 'started' | 'ended'
+              setDateFilterType(newType)
+              // Clear the opposite filters when switching
+              if (newType === 'started') {
+                onFilterChange({ ended_after: '', ended_before: '' })
+              } else {
+                onFilterChange({ started_after: '', started_before: '' })
+              }
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          >
+            <option value="started">Started</option>
+            <option value="ended">Ended</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Started After
+              After
             </label>
-            <input
-              type="datetime-local"
-              value={filters.started_after}
-              onChange={(e) => onFilterChange({ started_after: e.target.value })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="date"
+                value={dateFilterType === 'started' ? filters.started_after.split('T')[0] : filters.ended_after.split('T')[0]}
+                onChange={(e) => {
+                  const currentValue = dateFilterType === 'started' ? filters.started_after : filters.ended_after
+                  const time = currentValue.includes('T') ? currentValue.split('T')[1] : '00:00'
+                  const newValue = e.target.value ? `${e.target.value}T${time}` : ''
+                  if (dateFilterType === 'started') {
+                    onFilterChange({ started_after: newValue })
+                  } else {
+                    onFilterChange({ ended_after: newValue })
+                  }
+                }}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
+              />
+              <input
+                type="time"
+                value={dateFilterType === 'started' ? (filters.started_after.split('T')[1] || '') : (filters.ended_after.split('T')[1] || '')}
+                onChange={(e) => {
+                  const currentValue = dateFilterType === 'started' ? filters.started_after : filters.ended_after
+                  const date = currentValue.split('T')[0] || ''
+                  const newValue = date ? `${date}T${e.target.value}` : ''
+                  if (dateFilterType === 'started') {
+                    onFilterChange({ started_after: newValue })
+                  } else {
+                    onFilterChange({ ended_after: newValue })
+                  }
+                }}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
           </div>
           
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Started Before
+              Before
             </label>
-            <input
-              type="datetime-local"
-              value={filters.started_before}
-              onChange={(e) => onFilterChange({ started_before: e.target.value })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Ended After
-            </label>
-            <input
-              type="datetime-local"
-              value={filters.ended_after}
-              onChange={(e) => onFilterChange({ ended_after: e.target.value })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Ended Before
-            </label>
-            <input
-              type="datetime-local"
-              value={filters.ended_before}
-              onChange={(e) => onFilterChange({ ended_before: e.target.value })}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="date"
+                value={dateFilterType === 'started' ? filters.started_before.split('T')[0] : filters.ended_before.split('T')[0]}
+                onChange={(e) => {
+                  const currentValue = dateFilterType === 'started' ? filters.started_before : filters.ended_before
+                  const time = currentValue.includes('T') ? currentValue.split('T')[1] : '00:00'
+                  const newValue = e.target.value ? `${e.target.value}T${time}` : ''
+                  if (dateFilterType === 'started') {
+                    onFilterChange({ started_before: newValue })
+                  } else {
+                    onFilterChange({ ended_before: newValue })
+                  }
+                }}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
+              />
+              <input
+                type="time"
+                value={dateFilterType === 'started' ? (filters.started_before.split('T')[1] || '') : (filters.ended_before.split('T')[1] || '')}
+                onChange={(e) => {
+                  const currentValue = dateFilterType === 'started' ? filters.started_before : filters.ended_before
+                  const date = currentValue.split('T')[0] || ''
+                  const newValue = date ? `${date}T${e.target.value}` : ''
+                  if (dateFilterType === 'started') {
+                    onFilterChange({ started_before: newValue })
+                  } else {
+                    onFilterChange({ ended_before: newValue })
+                  }
+                }}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
+              />
+            </div>
           </div>
         </div>
         
         <p className="text-xs text-gray-500">
-          Use date/time filters to narrow down experiments by their start and end times
+          Filter experiments by their {dateFilterType} time range
         </p>
       </div>
 
