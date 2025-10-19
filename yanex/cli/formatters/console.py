@@ -237,7 +237,7 @@ class ExperimentTableFormatter:
         return Text(relative_str, style="cyan")
 
     def _format_time(self, time_str: str) -> str:
-        """Format timestamp for detailed display in local timezone."""
+        """Format timestamp for detailed display."""
         if isinstance(time_str, str):
             dt = parse_iso_timestamp(time_str)
             if dt is None:
@@ -245,9 +245,7 @@ class ExperimentTableFormatter:
         else:
             dt = time_str
 
-        # Convert UTC to local timezone for display
-        local_dt = dt.astimezone()
-        return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
 
     def _calculate_duration(self, start_time: str, end_time: str | None = None) -> str:
         """Calculate and format duration between two times."""
