@@ -40,7 +40,9 @@ async def list_experiments(
     ended_before: str | None = Query(
         None, description="Filter experiments ended before this date"
     ),
-    sort_order: str = Query("newest", description="Sort order: 'newest' or 'oldest'"),
+    sort_by: str = Query("created_at", description="Sort by field: 'name', 'status', 'created_at'"),
+    sort_order: str = Query("desc", description="Sort order: 'asc' or 'desc'"),
+    page: int = Query(1, description="Page number for pagination"),
     archived: bool = Query(False, description="Include archived experiments"),
 ) -> dict[str, Any]:
     """List experiments with filtering options."""
@@ -84,8 +86,8 @@ async def list_experiments(
                 None, None, None, ended_before
             )
 
-        # Get experiments
-        experiments = experiment_filter.filter_experiments(
+        # Get ALL experiments first (no limit applied yet)
+        all_experiments = experiment_filter.filter_experiments(
             status=status,
             name_pattern=name_pattern,
             tags=tag_list,
@@ -93,26 +95,59 @@ async def list_experiments(
             started_before=started_before_dt,
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
-            limit=limit,
-            include_all=limit is None,
+            limit=None,  # Get all experiments
+            include_all=True,
             include_archived=archived,
         )
 
         # Filter by archived status
         if archived:
-            experiments = [exp for exp in experiments if exp.get("archived", False)]
+            all_experiments = [exp for exp in all_experiments if exp.get("archived", False)]
         else:
-            experiments = [exp for exp in experiments if not exp.get("archived", False)]
+            all_experiments = [exp for exp in all_experiments if not exp.get("archived", False)]
 
-        # Apply sort order
-        if sort_order == "oldest":
-            experiments.sort(key=lambda x: x.get("created_at", ""), reverse=False)
-        else:  # newest (default)
-            experiments.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        # Apply sorting to ALL experiments
+        # Handle legacy sort_order values
+        if sort_order in ["newest", "oldest"]:
+            # Legacy format - convert to new format
+            reverse = sort_order == "newest"
+            sort_by = "created_at"
+        else:
+            # New format
+            reverse = sort_order == "desc"
+        
+        if sort_by == "name":
+            all_experiments.sort(key=lambda x: (x.get("name") or "").lower(), reverse=reverse)
+        elif sort_by == "status":
+            all_experiments.sort(key=lambda x: x.get("status", ""), reverse=reverse)
+        elif sort_by == "created_at":
+            all_experiments.sort(key=lambda x: x.get("created_at", ""), reverse=reverse)
+        else:
+            # Default to created_at desc
+            all_experiments.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        # Calculate pagination
+        total_experiments = len(all_experiments)
+        total_pages = 1
+        start_index = 0
+        end_index = total_experiments
+        
+        if limit and limit > 0:
+            total_pages = (total_experiments + limit - 1) // limit  # Ceiling division
+            start_index = (page - 1) * limit
+            end_index = min(start_index + limit, total_experiments)
+        
+        # Apply pagination
+        experiments = all_experiments[start_index:end_index]
 
         return {
             "experiments": experiments,
-            "total": len(experiments),
+            "total": total_experiments,
+            "page": page,
+            "total_pages": total_pages,
+            "limit": limit or total_experiments,  # If no limit, use total count
+            "has_next": page < total_pages,
+            "has_prev": page > 1,
         }
 
     except Exception as e:

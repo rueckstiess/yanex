@@ -34,6 +34,7 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
   ]
 
   const sortOptions = [
+    { value: 'none', label: 'None' },
     { value: 'newest', label: 'Newest First' },
     { value: 'oldest', label: 'Oldest First' },
   ]
@@ -190,7 +191,7 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
           started_after: '',
           ended_before: '',
           ended_after: '',
-          sort_order: 'newest'
+          sort_order: 'none'
         })}
         className="w-full btn btn-secondary"
       >
