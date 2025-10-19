@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { ExperimentDetails as ExperimentDetailsType } from '@/types/experiment'
-import { formatDistanceToNow } from 'date-fns'
+import { formatRelativeTime } from '@/utils/dateUtils'
 
 interface ExperimentDetailsProps {
   experimentId: string
@@ -101,7 +101,7 @@ export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
                 {experiment.status}
               </span>
               <span className="text-sm text-gray-500">
-                Created {formatDistanceToNow(new Date(experiment.created_at), { addSuffix: true })}
+                Created {formatRelativeTime(experiment.created_at)}
               </span>
             </div>
           </div>
@@ -194,7 +194,7 @@ export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
                       {formatFileSize(artifact.size)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDistanceToNow(new Date(artifact.modified * 1000), { addSuffix: true })}
+                      {formatRelativeTime(new Date(artifact.modified * 1000).toISOString())}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <a

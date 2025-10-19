@@ -126,30 +126,60 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
             <div className="grid grid-cols-2 gap-2">
               <input
                 type="date"
-                value={dateFilterType === 'started' ? filters.started_after.split('T')[0] : filters.ended_after.split('T')[0]}
+                value={(() => {
+                  const value = dateFilterType === 'started' ? filters.started_after : filters.ended_after
+                  if (!value) return ''
+                  // Convert UTC to local for display
+                  const utcDate = new Date(value + 'Z')
+                  return utcDate.toISOString().split('T')[0]
+                })()}
                 onChange={(e) => {
                   const currentValue = dateFilterType === 'started' ? filters.started_after : filters.ended_after
-                  const time = currentValue.includes('T') ? currentValue.split('T')[1] : '00:00'
-                  const newValue = e.target.value ? `${e.target.value}T${time}` : ''
+                  const currentTime = currentValue ? new Date(currentValue + 'Z').toISOString().split('T')[1].substring(0, 5) : '00:00'
+                  
+                  if (!e.target.value) {
+                    // Clear the filter
+                    if (dateFilterType === 'started') {
+                      onFilterChange({ started_after: '' })
+                    } else {
+                      onFilterChange({ ended_after: '' })
+                    }
+                    return
+                  }
+                  
+                  // Create local datetime and convert to UTC
+                  const localDateTime = new Date(`${e.target.value}T${currentTime}`)
+                  const utcString = localDateTime.toISOString().split('.')[0] // Remove milliseconds
+                  
                   if (dateFilterType === 'started') {
-                    onFilterChange({ started_after: newValue })
+                    onFilterChange({ started_after: utcString })
                   } else {
-                    onFilterChange({ ended_after: newValue })
+                    onFilterChange({ ended_after: utcString })
                   }
                 }}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
               />
               <input
                 type="time"
-                value={dateFilterType === 'started' ? (filters.started_after.split('T')[1] || '') : (filters.ended_after.split('T')[1] || '')}
+                value={(() => {
+                  const value = dateFilterType === 'started' ? filters.started_after : filters.ended_after
+                  if (!value) return ''
+                  // Convert UTC to local for display
+                  const utcDate = new Date(value + 'Z')
+                  return utcDate.toISOString().split('T')[1].substring(0, 5)
+                })()}
                 onChange={(e) => {
                   const currentValue = dateFilterType === 'started' ? filters.started_after : filters.ended_after
-                  const date = currentValue.split('T')[0] || ''
-                  const newValue = date ? `${date}T${e.target.value}` : ''
+                  const currentDate = currentValue ? new Date(currentValue + 'Z').toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+                  
+                  // Create local datetime and convert to UTC
+                  const localDateTime = new Date(`${currentDate}T${e.target.value}`)
+                  const utcString = localDateTime.toISOString().split('.')[0] // Remove milliseconds
+                  
                   if (dateFilterType === 'started') {
-                    onFilterChange({ started_after: newValue })
+                    onFilterChange({ started_after: utcString })
                   } else {
-                    onFilterChange({ ended_after: newValue })
+                    onFilterChange({ ended_after: utcString })
                   }
                 }}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
@@ -164,30 +194,60 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
             <div className="grid grid-cols-2 gap-2">
               <input
                 type="date"
-                value={dateFilterType === 'started' ? filters.started_before.split('T')[0] : filters.ended_before.split('T')[0]}
+                value={(() => {
+                  const value = dateFilterType === 'started' ? filters.started_before : filters.ended_before
+                  if (!value) return ''
+                  // Convert UTC to local for display
+                  const utcDate = new Date(value + 'Z')
+                  return utcDate.toISOString().split('T')[0]
+                })()}
                 onChange={(e) => {
                   const currentValue = dateFilterType === 'started' ? filters.started_before : filters.ended_before
-                  const time = currentValue.includes('T') ? currentValue.split('T')[1] : '00:00'
-                  const newValue = e.target.value ? `${e.target.value}T${time}` : ''
+                  const currentTime = currentValue ? new Date(currentValue + 'Z').toISOString().split('T')[1].substring(0, 5) : '00:00'
+                  
+                  if (!e.target.value) {
+                    // Clear the filter
+                    if (dateFilterType === 'started') {
+                      onFilterChange({ started_before: '' })
+                    } else {
+                      onFilterChange({ ended_before: '' })
+                    }
+                    return
+                  }
+                  
+                  // Create local datetime and convert to UTC
+                  const localDateTime = new Date(`${e.target.value}T${currentTime}`)
+                  const utcString = localDateTime.toISOString().split('.')[0] // Remove milliseconds
+                  
                   if (dateFilterType === 'started') {
-                    onFilterChange({ started_before: newValue })
+                    onFilterChange({ started_before: utcString })
                   } else {
-                    onFilterChange({ ended_before: newValue })
+                    onFilterChange({ ended_before: utcString })
                   }
                 }}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
               />
               <input
                 type="time"
-                value={dateFilterType === 'started' ? (filters.started_before.split('T')[1] || '') : (filters.ended_before.split('T')[1] || '')}
+                value={(() => {
+                  const value = dateFilterType === 'started' ? filters.started_before : filters.ended_before
+                  if (!value) return ''
+                  // Convert UTC to local for display
+                  const utcDate = new Date(value + 'Z')
+                  return utcDate.toISOString().split('T')[1].substring(0, 5)
+                })()}
                 onChange={(e) => {
                   const currentValue = dateFilterType === 'started' ? filters.started_before : filters.ended_before
-                  const date = currentValue.split('T')[0] || ''
-                  const newValue = date ? `${date}T${e.target.value}` : ''
+                  const currentDate = currentValue ? new Date(currentValue + 'Z').toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+                  
+                  // Create local datetime and convert to UTC
+                  const localDateTime = new Date(`${currentDate}T${e.target.value}`)
+                  const utcString = localDateTime.toISOString().split('.')[0] // Remove milliseconds
+                  
                   if (dateFilterType === 'started') {
-                    onFilterChange({ started_before: newValue })
+                    onFilterChange({ started_before: utcString })
                   } else {
-                    onFilterChange({ ended_before: newValue })
+                    onFilterChange({ ended_before: utcString })
                   }
                 }}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
@@ -197,7 +257,7 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
         </div>
         
         <p className="text-xs text-gray-500">
-          Filter experiments by their {dateFilterType} time range
+          Filter experiments by their {dateFilterType} time range. Times are in your local timezone.
         </p>
       </div>
 

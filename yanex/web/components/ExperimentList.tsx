@@ -1,8 +1,8 @@
 'use client'
 
 import { Experiment } from '@/types/experiment'
-import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
+import { formatRelativeTime } from '@/utils/dateUtils'
 
 interface ExperimentListProps {
   experiments: Experiment[]
@@ -150,7 +150,7 @@ export function ExperimentList({ experiments, loading, error, sortBy, sortOrder,
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatDistanceToNow(new Date(experiment.created_at), { addSuffix: true })}
+                  {formatRelativeTime(experiment.created_at)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex flex-wrap gap-1">
