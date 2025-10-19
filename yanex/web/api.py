@@ -40,7 +40,9 @@ async def list_experiments(
     ended_before: str | None = Query(
         None, description="Filter experiments ended before this date"
     ),
-    sort_by: str = Query("created_at", description="Sort by field: 'name', 'status', 'created_at'"),
+    sort_by: str = Query(
+        "created_at", description="Sort by field: 'name', 'status', 'created_at'"
+    ),
     sort_order: str = Query("desc", description="Sort order: 'asc' or 'desc'"),
     page: int = Query(1, description="Page number for pagination"),
     archived: bool = Query(False, description="Include archived experiments"),
@@ -102,9 +104,13 @@ async def list_experiments(
 
         # Filter by archived status
         if archived:
-            all_experiments = [exp for exp in all_experiments if exp.get("archived", False)]
+            all_experiments = [
+                exp for exp in all_experiments if exp.get("archived", False)
+            ]
         else:
-            all_experiments = [exp for exp in all_experiments if not exp.get("archived", False)]
+            all_experiments = [
+                exp for exp in all_experiments if not exp.get("archived", False)
+            ]
 
         # Apply sorting to ALL experiments
         # Handle legacy sort_order values
@@ -115,9 +121,11 @@ async def list_experiments(
         else:
             # New format
             reverse = sort_order == "desc"
-        
+
         if sort_by == "name":
-            all_experiments.sort(key=lambda x: (x.get("name") or "").lower(), reverse=reverse)
+            all_experiments.sort(
+                key=lambda x: (x.get("name") or "").lower(), reverse=reverse
+            )
         elif sort_by == "status":
             all_experiments.sort(key=lambda x: x.get("status", ""), reverse=reverse)
         elif sort_by == "created_at":
@@ -131,12 +139,12 @@ async def list_experiments(
         total_pages = 1
         start_index = 0
         end_index = total_experiments
-        
+
         if limit and limit > 0:
             total_pages = (total_experiments + limit - 1) // limit  # Ceiling division
             start_index = (page - 1) * limit
             end_index = min(start_index + limit, total_experiments)
-        
+
         # Apply pagination
         experiments = all_experiments[start_index:end_index]
 

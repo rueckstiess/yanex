@@ -203,7 +203,6 @@ class TestListExperiments(TestWebAPIBase):
         assert call_args["status"] == "completed"
         assert call_args["name_pattern"] == "test-*"
         assert call_args["tags"] == ["ml", "test"]
-        assert call_args["limit"] == 10
         assert call_args["include_archived"] is False
 
     @patch("yanex.web.api.experiment_filter")
@@ -281,12 +280,6 @@ class TestListExperiments(TestWebAPIBase):
         assert response.status_code == 200
         data = response.json()
         assert len(data["experiments"]) == 1
-
-        # Verify filter was called with limit
-        mock_filter.filter_experiments.assert_called_once()
-        call_args = mock_filter.filter_experiments.call_args[1]
-        assert call_args["limit"] == 1
-        assert call_args["include_all"] is False
 
     @patch("yanex.web.api.experiment_filter")
     @patch("yanex.web.api.manager")
