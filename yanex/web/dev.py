@@ -3,6 +3,7 @@
 Development server that runs both FastAPI backend and Next.js frontend.
 """
 
+import argparse
 import subprocess
 import time
 from pathlib import Path
@@ -22,6 +23,23 @@ def run_command(cmd, cwd=None):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run both FastAPI backend and Next.js frontend development servers")
+    parser.add_argument(
+        "--backend-port",
+        "-b", \ \
+        type=int,
+        default=8000,
+        help="Port for the FastAPI backend (default: 8000)",
+    )
+    parser.add_argument(
+        "--frontend-port",
+        "-f",
+        type=int,
+        default=3000,
+        help="Port for the Next.js frontend (default: 3000)",
+    )
+    args = parser.parse_args()
+
     web_dir = Path(__file__).parent
 
     print("Starting yanex web UI development server...")
@@ -30,18 +48,16 @@ def main():
     print()
 
     # Start FastAPI backend
-    print("Starting FastAPI backend on http://localhost:8000...")
-    backend_cmd = (
-        "python -m uvicorn yanex.web.app:app --host 127.0.0.1 --port 8000 --reload"
-    )
+    print(f"Starting FastAPI backend on http://localhost:{args.backend_port}...")
+    backend_cmd = f"python -m uvicorn yanex.web.app:app --host 127.0.0.1 --port {args.backend_port} --reload"
     backend_process = run_command(backend_cmd, cwd=web_dir.parent.parent)
 
     # Wait a moment for backend to start
     time.sleep(2)
 
     # Start Next.js frontend
-    print("Starting Next.js frontend on http://localhost:3000...")
-    frontend_cmd = "npm run dev"
+    print(f"Starting Next.js frontend on http://localhost:{args.frontend_port}...")
+    frontend_cmd = f"npm run dev -- -p {args.frontend_port}"
     frontend_process = run_command(frontend_cmd, cwd=web_dir)
 
     try:
