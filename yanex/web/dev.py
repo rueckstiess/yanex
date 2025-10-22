@@ -23,10 +23,12 @@ def run_command(cmd, cwd=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run both FastAPI backend and Next.js frontend development servers")
+    parser = argparse.ArgumentParser(
+        description="Run both FastAPI backend and Next.js frontend development servers"
+    )
     parser.add_argument(
         "--backend-port",
-        "-b", \ \
+        "-b",
         type=int,
         default=8000,
         help="Port for the FastAPI backend (default: 8000)",
