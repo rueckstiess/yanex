@@ -16,6 +16,25 @@ recursive-include docs *.md
 # Include examples
 recursive-include examples *.py *.yaml *.yml *.json
 
+# Include web UI build artifacts (out directory from static export)
+recursive-include yanex/web/out *
+
+# Exclude web UI source files (not needed in distribution)
+recursive-exclude yanex/web/app *
+recursive-exclude yanex/web/components *
+recursive-exclude yanex/web/types *
+exclude yanex/web/*.tsx
+exclude yanex/web/*.ts
+exclude yanex/web/tsconfig.json
+exclude yanex/web/next.config.js
+exclude yanex/web/tailwind.config.js
+exclude yanex/web/postcss.config.js
+exclude yanex/web/package.json
+exclude yanex/web/package-lock.json
+exclude yanex/web/next-env.d.ts
+recursive-exclude yanex/web/node_modules *
+exclude yanex/web/.gitignore
+
 # Exclude test files from distribution
 exclude tests
 recursive-exclude tests *

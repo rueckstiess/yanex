@@ -230,7 +230,14 @@ class ExperimentFilter:
 
     def _ended_after(self, experiment: dict[str, Any], after_time: datetime) -> bool:
         """Check if experiment ended after the specified time."""
-        ended_at = experiment.get("ended_at")
+        # Check for ended_at first (used in some contexts like comparison)
+        # Otherwise check status-specific end times
+        ended_at = (
+            experiment.get("ended_at")
+            or experiment.get("completed_at")
+            or experiment.get("failed_at")
+            or experiment.get("cancelled_at")
+        )
         if not ended_at:
             return False
 
@@ -242,7 +249,14 @@ class ExperimentFilter:
 
     def _ended_before(self, experiment: dict[str, Any], before_time: datetime) -> bool:
         """Check if experiment ended before the specified time."""
-        ended_at = experiment.get("ended_at")
+        # Check for ended_at first (used in some contexts like comparison)
+        # Otherwise check status-specific end times
+        ended_at = (
+            experiment.get("ended_at")
+            or experiment.get("completed_at")
+            or experiment.get("failed_at")
+            or experiment.get("cancelled_at")
+        )
         if not ended_at:
             return False
 
