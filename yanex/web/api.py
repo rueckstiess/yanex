@@ -102,6 +102,16 @@ async def list_experiments(
             include_archived=archived,
         )
 
+        # Filter by archived status
+        if archived:
+            all_experiments = [
+                exp for exp in all_experiments if exp.get("archived", False)
+            ]
+        else:
+            all_experiments = [
+                exp for exp in all_experiments if not exp.get("archived", False)
+            ]
+
         # Apply sorting to ALL experiments
         # Handle legacy sort_order values
         if sort_order in ["newest", "oldest"]:
