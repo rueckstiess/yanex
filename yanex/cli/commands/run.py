@@ -46,6 +46,13 @@ from ...core.script_executor import ScriptExecutor
     is_flag=True,
     help="Execute staged experiments",
 )
+@click.option(
+    "--parallel",
+    "-j",
+    type=int,
+    metavar="N",
+    help="Execute N experiments in parallel (only valid with --staged). Use 0 for auto (number of CPUs).",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -59,6 +66,7 @@ def run(
     ignore_dirty: bool,
     stage: bool,
     staged: bool,
+    parallel: int | None,
 ) -> None:
     """
     Run a script as a tracked experiment.
@@ -113,9 +121,18 @@ def run(
         click.echo("Error: Cannot use both --stage and --staged flags", err=True)
         raise click.Abort()
 
+    # Validate parallel flag
+    if parallel is not None and not staged:
+        click.echo("Error: --parallel flag can only be used with --staged", err=True)
+        raise click.Abort()
+
+    if parallel is not None and parallel < 0:
+        click.echo("Error: --parallel must be 0 (auto) or positive integer", err=True)
+        raise click.Abort()
+
     if staged:
         # Execute staged experiments
-        _execute_staged_experiments(verbose, console)
+        _execute_staged_experiments(verbose, console, max_workers=parallel)
         return
 
     # Validate script is provided when not using --staged
@@ -389,10 +406,22 @@ def _stage_experiment(
         click.echo("  Use 'yanex run --staged' to execute staged experiments")
 
 
-def _execute_staged_experiments(verbose: bool = False, console: Console = None) -> None:
-    """Execute all staged experiments."""
+def _execute_staged_experiments(
+    verbose: bool = False,
+    console: Console = None,
+    max_workers: int | None = None,
+) -> None:
+    """Execute all staged experiments, optionally in parallel.
+
+    Args:
+        verbose: Show verbose output
+        console: Rich console for output
+        max_workers: Maximum parallel workers. None=sequential, 0=auto (CPU count)
+    """
+    import multiprocessing
+
     if console is None:
-        console = Console()  # Use stdout with colors
+        console = Console()
 
     manager = ExperimentManager()
     staged_experiments = manager.get_staged_experiments()
@@ -401,6 +430,27 @@ def _execute_staged_experiments(verbose: bool = False, console: Console = None) 
         console.print("[dim]No staged experiments found[/]")
         return
 
+    # Determine execution mode
+    if max_workers is None:
+        # Sequential execution (backward compatible)
+        _execute_staged_sequential(staged_experiments, manager, verbose, console)
+    else:
+        # Parallel execution
+        if max_workers == 0:
+            max_workers = multiprocessing.cpu_count()
+
+        _execute_staged_parallel(
+            staged_experiments, manager, verbose, console, max_workers
+        )
+
+
+def _execute_staged_sequential(
+    staged_experiments: list[str],
+    manager: ExperimentManager,
+    verbose: bool,
+    console: Console,
+) -> None:
+    """Execute staged experiments sequentially (original behavior)."""
     if verbose:
         console.print(f"[dim]Found {len(staged_experiments)} staged experiments[/]")
 
@@ -409,7 +459,7 @@ def _execute_staged_experiments(verbose: bool = False, console: Console = None) 
             if verbose:
                 console.print(f"[dim]Executing staged experiment: {experiment_id}[/]")
 
-            # Load experiment metadata to get script path and config
+            # Load experiment metadata
             metadata = manager.storage.load_metadata(experiment_id)
             config = manager.storage.load_config(experiment_id)
             script_path = Path(metadata["script_path"])
@@ -417,7 +467,7 @@ def _execute_staged_experiments(verbose: bool = False, console: Console = None) 
             # Transition to running state
             manager.execute_staged_experiment(experiment_id)
 
-            # Execute the script using the same logic as _execute_experiment
+            # Execute the script
             _execute_staged_script(
                 experiment_id=experiment_id,
                 script_path=script_path,
@@ -436,6 +486,118 @@ def _execute_staged_experiments(verbose: bool = False, console: Console = None) 
                 )
             except Exception:
                 pass  # Best effort to record failure
+
+
+def _execute_staged_parallel(
+    staged_experiments: list[str],
+    manager: ExperimentManager,
+    verbose: bool,
+    console: Console,
+    max_workers: int,
+) -> None:
+    """Execute staged experiments in parallel using multiprocessing."""
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    console.print(f"[dim]Found {len(staged_experiments)} staged experiments[/]")
+    console.print(f"[dim]Executing with {max_workers} parallel workers[/]")
+
+    # Pre-load all experiment data before forking
+    experiment_data = []
+    for experiment_id in staged_experiments:
+        try:
+            metadata = manager.storage.load_metadata(experiment_id)
+            config = manager.storage.load_config(experiment_id)
+            experiment_data.append(
+                {
+                    "experiment_id": experiment_id,
+                    "script_path": Path(metadata["script_path"]),
+                    "config": config,
+                }
+            )
+        except Exception as e:
+            console.print(f"[red]✗ Failed to load experiment {experiment_id}: {e}[/]")
+
+    # Track results
+    completed = 0
+    failed = 0
+
+    # Execute in parallel
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all experiments
+        future_to_exp = {
+            executor.submit(
+                _execute_single_experiment_worker,
+                exp_data["experiment_id"],
+                exp_data["script_path"],
+                exp_data["config"],
+                verbose,
+            ): exp_data["experiment_id"]
+            for exp_data in experiment_data
+        }
+
+        # Process results as they complete
+        for future in as_completed(future_to_exp):
+            experiment_id = future_to_exp[future]
+            try:
+                success = future.result()
+                if success:
+                    completed += 1
+                    console.print(f"[green]✓ Experiment completed: {experiment_id}[/]")
+                else:
+                    failed += 1
+                    console.print(f"[red]✗ Experiment failed: {experiment_id}[/]")
+            except Exception as e:
+                failed += 1
+                console.print(f"[red]✗ Experiment error: {experiment_id}: {e}[/]")
+
+    # Summary
+    console.print("\n[bold]Execution Summary:[/]")
+    console.print(f"  Total: {len(experiment_data)}")
+    console.print(f"  [green]Completed: {completed}[/]")
+    console.print(f"  [red]Failed: {failed}[/]")
+
+
+def _execute_single_experiment_worker(
+    experiment_id: str,
+    script_path: Path,
+    config: dict[str, Any],
+    verbose: bool,
+) -> bool:
+    """Worker function for parallel experiment execution.
+
+    This runs in a separate process, so it needs to create its own manager.
+
+    Returns:
+        True if experiment succeeded, False otherwise
+    """
+    # Create fresh manager in this process
+    manager = ExperimentManager()
+
+    try:
+        # Transition to running state
+        manager.execute_staged_experiment(experiment_id)
+
+        # Execute the script
+        _execute_staged_script(
+            experiment_id=experiment_id,
+            script_path=script_path,
+            config=config,
+            manager=manager,
+            verbose=verbose,
+        )
+
+        return True
+
+    except Exception as e:
+        # Record failure
+        try:
+            manager.fail_experiment(
+                experiment_id, f"Parallel execution failed: {str(e)}"
+            )
+        except Exception:
+            pass  # Best effort
+
+        return False
 
 
 def _execute_staged_script(

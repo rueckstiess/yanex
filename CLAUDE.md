@@ -146,6 +146,30 @@ The codebase has undergone significant refactoring to:
 - Two usage patterns: CLI-first (recommended) and explicit experiment creation
 - Configuration supports YAML files with CLI parameter overrides
 
+### Parallel Experiment Execution
+- **New in v0.5.0**: Run multiple experiments simultaneously on multi-core systems
+- Use `yanex run --staged --parallel N` to run N experiments concurrently
+- `--parallel 0` uses auto-detection (number of CPU cores)
+- Short flag: `-j N` (similar to `make -j`)
+- Each experiment runs in isolated process with separate storage
+- Useful for parameter sweeps and batch processing
+- Example workflow:
+  ```bash
+  # Stage parameter sweep
+  yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --stage
+
+  # Execute in parallel with 4 workers
+  yanex run --staged --parallel 4
+
+  # Or use auto-detection
+  yanex run --staged -j 0
+  ```
+- **Implementation details**:
+  - Uses `ProcessPoolExecutor` for true parallelism (bypasses GIL)
+  - Each experiment has unique process ID tracked in metadata
+  - Sequential execution remains default for backward compatibility
+  - PID tracking added for debugging and process monitoring
+
 ## Ruff Linting Memories
 
 - Don't add whitespace to empty lines to pass ruff's rule W293. 

@@ -231,6 +231,76 @@ class TestConcurrencyPrevention:
         with pytest.raises(ExperimentAlreadyRunningError):
             isolated_manager.prevent_concurrent_execution()
 
+    def test_prevent_concurrent_execution_with_allow_parallel(self, isolated_manager):
+        """Test prevent_concurrent_execution skips check when allow_parallel=True."""
+        # Create running experiment
+        experiment_id = "running123"
+        exp_dir = isolated_manager.experiments_dir / experiment_id
+        exp_dir.mkdir(parents=True)
+
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=experiment_id, status="running"
+        )
+        isolated_manager.storage.save_metadata(experiment_id, metadata)
+
+        # Should NOT raise with allow_parallel=True
+        isolated_manager.prevent_concurrent_execution(allow_parallel=True)
+
+    def test_get_running_experiments_empty(self, isolated_manager):
+        """Test get_running_experiments returns empty list when no running experiments."""
+        result = isolated_manager.get_running_experiments()
+        assert result == []
+
+    def test_get_running_experiments_single(self, isolated_manager):
+        """Test get_running_experiments returns single running experiment."""
+        experiment_id = "running001"
+        exp_dir = isolated_manager.experiments_dir / experiment_id
+        exp_dir.mkdir(parents=True)
+
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=experiment_id, status="running"
+        )
+        isolated_manager.storage.save_metadata(experiment_id, metadata)
+
+        result = isolated_manager.get_running_experiments()
+        assert result == [experiment_id]
+
+    def test_get_running_experiments_multiple(self, isolated_manager):
+        """Test get_running_experiments returns all running experiments."""
+        # Create 3 experiments: 2 running, 1 completed
+        running_ids = ["run001", "run002"]
+        completed_id = "comp001"
+
+        for exp_id in running_ids:
+            exp_dir = isolated_manager.experiments_dir / exp_id
+            exp_dir.mkdir(parents=True)
+            metadata = TestDataFactory.create_experiment_metadata(
+                experiment_id=exp_id, status="running"
+            )
+            isolated_manager.storage.save_metadata(exp_id, metadata)
+
+        # Create completed experiment
+        exp_dir = isolated_manager.experiments_dir / completed_id
+        exp_dir.mkdir(parents=True)
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=completed_id, status="completed"
+        )
+        isolated_manager.storage.save_metadata(completed_id, metadata)
+
+        # Should return only running experiments
+        result = isolated_manager.get_running_experiments()
+        assert set(result) == set(running_ids)
+
+    def test_get_running_experiments_no_experiments_dir(self, isolated_manager):
+        """Test get_running_experiments when experiments directory doesn't exist."""
+        # Remove experiments directory
+        import shutil
+
+        shutil.rmtree(isolated_manager.experiments_dir, ignore_errors=True)
+
+        result = isolated_manager.get_running_experiments()
+        assert result == []
+
 
 class TestExperimentCreation:
     """Test experiment creation functionality - major improvements with utilities."""

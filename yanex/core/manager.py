@@ -91,6 +91,32 @@ class ExperimentManager:
 
         return None
 
+    def get_running_experiments(self) -> list[str]:
+        """Get all currently running experiments.
+
+        Returns:
+            List of experiment IDs with status='running'
+        """
+        if not self.experiments_dir.exists():
+            return []
+
+        running_experiments = []
+        for experiment_dir in self.experiments_dir.iterdir():
+            if not experiment_dir.is_dir():
+                continue
+
+            experiment_id = experiment_dir.name
+            if self.storage.experiment_exists(experiment_id):
+                try:
+                    metadata = self.storage.load_metadata(experiment_id)
+                    if metadata.get("status") == "running":
+                        running_experiments.append(experiment_id)
+                except Exception:
+                    # Skip experiments with corrupted metadata
+                    continue
+
+        return running_experiments
+
     def start_experiment(self, experiment_id: str) -> None:
         """Transition experiment to running state.
 
@@ -120,9 +146,12 @@ class ExperimentManager:
             )
 
         # Update status and timestamps
+        import os
+
         now = datetime.utcnow().isoformat()
         metadata["status"] = "running"
         metadata["started_at"] = now
+        metadata["process_id"] = os.getpid()
 
         # Save updated metadata
         self.storage.save_metadata(experiment_id, metadata)
@@ -340,17 +369,24 @@ class ExperimentManager:
 
         return self.storage.archive_experiment(experiment_id)
 
-    def prevent_concurrent_execution(self) -> None:
-        """Ensure no other experiment is currently running.
+    def prevent_concurrent_execution(self, allow_parallel: bool = False) -> None:
+        """Ensure no other experiment is currently running (unless parallel mode enabled).
+
+        Args:
+            allow_parallel: If True, skip the concurrent execution check
 
         Raises:
-            ExperimentAlreadyRunningError: If another experiment is running
+            ExperimentAlreadyRunningError: If another experiment is running and allow_parallel=False
         """
+        if allow_parallel:
+            return  # Skip check in parallel mode
+
         running_experiment = self.get_running_experiment()
         if running_experiment is not None:
             raise ExperimentAlreadyRunningError(
                 f"Experiment {running_experiment} is already running. "
-                "Only one experiment can run at a time."
+                "Only one experiment can run at a time. "
+                "Use --parallel flag with --staged to enable parallel execution."
             )
 
     def create_experiment(
@@ -389,7 +425,7 @@ class ExperimentManager:
 
         # Prevent concurrent execution (unless staging only)
         if not stage_only:
-            self.prevent_concurrent_execution()
+            self.prevent_concurrent_execution(allow_parallel=False)
 
         # Set defaults
         if config is None:
@@ -500,9 +536,12 @@ class ExperimentManager:
             )
 
         # Transition to running state
+        import os
+
         now = datetime.utcnow().isoformat()
         metadata["status"] = "running"
         metadata["started_at"] = now
+        metadata["process_id"] = os.getpid()
         self.storage.save_metadata(experiment_id, metadata)
 
     def get_staged_experiments(self) -> list[str]:
