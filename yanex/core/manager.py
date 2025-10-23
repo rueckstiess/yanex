@@ -25,10 +25,17 @@ class ExperimentManager:
 
         Args:
             experiments_dir: Directory for experiment storage.
-                          Defaults to ~/.yanex/experiments
+                          Defaults to ~/.yanex/experiments unless YANEX_EXPERIMENTS_DIR
+                          environment variable is set
         """
         if experiments_dir is None:
-            experiments_dir = Path.home() / ".yanex" / "experiments"
+            import os
+
+            env_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+            if env_dir:
+                experiments_dir = Path(env_dir)
+            else:
+                experiments_dir = Path.home() / ".yanex" / "experiments"
 
         self.experiments_dir = experiments_dir
         self.storage = ExperimentStorage(experiments_dir)
