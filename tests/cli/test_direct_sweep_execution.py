@@ -130,9 +130,7 @@ class TestDirectSweepExecution:
 
     def test_parallel_with_stage_rejects(self, tmp_path, cli_runner):
         """Test that --stage + --parallel is rejected."""
-        script_path = TestFileHelpers.create_test_script(
-            tmp_path, "test.py", "simple"
-        )
+        script_path = TestFileHelpers.create_test_script(tmp_path, "test.py", "simple")
 
         result = cli_runner.invoke(
             cli,
@@ -184,9 +182,7 @@ class TestDirectSweepExecution:
             elif "YANEX_EXPERIMENTS_DIR" in os.environ:
                 del os.environ["YANEX_EXPERIMENTS_DIR"]
 
-    def test_sweep_execution_doesnt_affect_existing_staged(
-        self, tmp_path, cli_runner
-    ):
+    def test_sweep_execution_doesnt_affect_existing_staged(self, tmp_path, cli_runner):
         """Test that existing staged experiments are unaffected by direct execution."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "isolation_test.py", "simple"
