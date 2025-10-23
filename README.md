@@ -239,6 +239,7 @@ yanex run --staged --parallel 4
 - 🎯 Each experiment runs in isolation with separate storage
 - 📊 Progress tracking with completion summary
 - 💪 Ideal for multi-core systems and hyperparameter tuning
+- 🚀 Run multiple independent `yanex run` commands concurrently from different shells (no restrictions)
 
 
 ## Documentation

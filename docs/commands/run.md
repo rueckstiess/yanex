@@ -271,11 +271,12 @@ yanex run script.py --param "lr=logspace(-4, -1, 10)" -j 4
 - Each experiment runs in isolation with separate storage
 - Progress tracking with completion summary
 - Ideal for multi-core systems and hyperparameter tuning
+- Independent `yanex run` commands from different shells can run concurrently
 
-**Limitations:**
-- `--parallel` can only be used with parameter sweeps or `--staged`
+**Usage Notes:**
+- `--parallel` flag is for throttling managed execution (sweeps and staged experiments)
 - Cannot be combined with `--stage` (stage first, then run with `--parallel`)
-- Single experiments without sweeps must run sequentially
+- For running multiple independent experiments concurrently, simply run `yanex run` from different shells - no special flags needed
 
 
 ## Git Integration

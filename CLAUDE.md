@@ -149,7 +149,8 @@ The codebase has undergone significant refactoring to:
 ### Parallel Experiment Execution
 - **New in v0.5.0**: Run multiple experiments simultaneously on multi-core systems
 - **Enhanced in v0.6.0**: Direct parameter sweep execution without staging
-- Use `yanex run --staged --parallel N` to run N experiments concurrently
+- **Unrestricted concurrent execution**: Independent `yanex run` commands from different shells can run simultaneously (no restrictions)
+- Use `--parallel N` flag to throttle managed execution (sweeps and staged experiments)
 - `--parallel 0` uses auto-detection (number of CPU cores)
 - Short flag: `-j N` (similar to `make -j`)
 - Each experiment runs in isolated process with separate storage
