@@ -36,6 +36,8 @@ That's it. Yanex creates a separate directory for each experiment, saves the log
 - 🔒 **Reproducible**: Automatic Git state tracking ensures every experiment is reproducible
 - 📊 **Interactive Comparison**: Compare experiments side-by-side with an interactive table
 - ⚙️ **Flexible Parameters**: YAML configs with CLI overrides for easy experimentation and syntax for parameter sweeps
+- ⚡ **Parallel Execution**: Run multiple experiments simultaneously on multi-core systems (v0.5.0+)
+- 🚀 **Direct Sweep Execution**: Execute parameter sweeps immediately without staging (v0.6.0+)
 - 📈 **Rich Logging**: Track metrics, artifacts, and figures
 - 🔍 **Powerful Search**: Find experiments by status, parameters, tags, or time ranges
 - 📦 **Zero Dependencies**: No external services required - works offline
@@ -176,6 +178,67 @@ training:
   optimizer: "adam"
   scheduler: "cosine"
 ```
+
+## Parameter Sweeps & Parallel Execution
+
+**New in v0.5.0 & v0.6.0**: Run multiple experiments efficiently with parameter sweeps and parallel execution.
+
+### Direct Sweep Execution (v0.6.0+)
+
+Run parameter sweeps immediately without staging:
+
+```bash
+# Run sweep sequentially (one after another)
+yanex run train.py --param "lr=range(0.01, 0.1, 0.01)"
+
+# Run sweep in parallel with 4 workers
+yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --parallel 4
+
+# Auto-detect CPU count
+yanex run train.py --param "lr=logspace(-4, -1, 10)" --parallel 0
+```
+
+### Sweep Syntax
+
+Use Python-like syntax for parameter sweeps:
+
+```bash
+# Range: start, stop, step
+--param "lr=range(0.01, 0.1, 0.01)"
+
+# Linspace: start, stop, num_points
+--param "lr=linspace(0.001, 0.1, 10)"
+
+# Logspace: start_exp, stop_exp, num_points
+--param "lr=logspace(-4, -1, 10)"
+
+# List of values
+--param "batch_size=list(16, 32, 64, 128)"
+
+# Multi-parameter sweep (cross-product)
+yanex run train.py \
+  --param "lr=range(0.01, 0.1, 0.01)" \
+  --param "batch_size=list(32, 64)" \
+  --parallel 4
+```
+
+### Staged Execution (Original Workflow)
+
+Stage experiments first, execute later:
+
+```bash
+# Stage parameter sweep
+yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --stage
+
+# Execute all staged experiments in parallel
+yanex run --staged --parallel 4
+```
+
+**Benefits:**
+- ⚡ True parallelism using separate processes (bypasses Python GIL)
+- 🎯 Each experiment runs in isolation with separate storage
+- 📊 Progress tracking with completion summary
+- 💪 Ideal for multi-core systems and hyperparameter tuning
 
 
 ## Documentation

@@ -13,8 +13,8 @@ from yanex.cli.main import cli
 class TestCLIParameterSweeps:
     """Test CLI parameter sweep functionality."""
 
-    def test_sweep_requires_stage_flag(self, tmp_path, cli_runner):
-        """Test that parameter sweeps require --stage flag."""
+    def test_sweep_allowed_without_stage_flag(self, tmp_path, cli_runner):
+        """Test that parameter sweeps work without --stage flag (v0.6.0)."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "test_script.py", "simple"
         )
@@ -29,9 +29,9 @@ class TestCLIParameterSweeps:
                 "--dry-run",
             ],
         )
-        assert result.exit_code != 0
-        assert "Parameter sweeps require --stage flag" in result.output
-        assert "Use: yanex run script.py" in result.output
+        # Sweeps are now allowed without --stage
+        assert result.exit_code == 0
+        assert "Configuration validation passed" in result.output
 
     def test_sweep_with_stage_flag_dry_run(self, tmp_path, cli_runner):
         """Test parameter sweep with --stage flag in dry-run mode."""

@@ -1,9 +1,6 @@
 """Tests for parallel experiment execution."""
 
 import os
-from pathlib import Path
-
-import pytest
 
 from tests.test_utils import TestFileHelpers
 from yanex.cli.main import cli
@@ -12,17 +9,21 @@ from yanex.cli.main import cli
 class TestParallelExecution:
     """Test parallel experiment execution functionality."""
 
-    def test_parallel_flag_requires_staged(self, tmp_path, cli_runner):
-        """Test that --parallel requires --staged flag."""
+    def test_parallel_flag_requires_staged_or_sweep(self, tmp_path, cli_runner):
+        """Test that --parallel requires --staged or parameter sweep (v0.6.0)."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "test_script.py", "simple"
         )
 
+        # Single experiment without sweep should error
         result = cli_runner.invoke(
             cli, ["run", str(script_path), "--parallel", "2", "--ignore-dirty"]
         )
         assert result.exit_code != 0
-        assert "--parallel flag can only be used with --staged" in result.output
+        assert (
+            "--parallel can only be used with parameter sweeps or --staged"
+            in result.output
+        )
 
     def test_parallel_negative_value_rejected(self, tmp_path, cli_runner):
         """Test that negative --parallel values are rejected."""
