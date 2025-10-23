@@ -202,12 +202,21 @@ def log_metrics(data: dict[str, Any], step: int | None = None) -> None:
         data: Metrics data to log
         step: Optional step number (auto-incremented if None)
 
+    Raises:
+        TypeError: If step is not an int or None
+
     Note:
         Does nothing in standalone mode (no active experiment context)
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return  # No-op in standalone mode
+
+    # Validate step parameter type
+    if step is not None and not isinstance(step, int):
+        raise TypeError(
+            f"step parameter must be an int or None, got {type(step).__name__}"
+        )
 
     manager = _get_experiment_manager()
 

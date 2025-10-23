@@ -186,27 +186,40 @@ class TestCLIMain:
 
     def test_run_stage_flag(self, tmp_path):
         """Test run with --stage flag creates staged experiment."""
+        import os
+
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "staged_script.py", "simple", test_message="staged experiment"
         )
 
-        result = self.runner.invoke(
-            cli,
-            [
-                "run",
-                str(script_path),
-                "--stage",
-                "--param",
-                "test_param=value",
-                "--name",
-                "staged-test",
-                "--ignore-dirty",  # Allow dirty working directory in tests
-            ],
-        )
-        assert result.exit_code == 0
-        assert "Experiment staged:" in result.output
-        assert "Directory:" in result.output
-        assert "Use 'yanex run --staged' to execute" in result.output
+        # Use isolated temp directory to avoid polluting production experiments
+        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path / "experiments")
+
+        try:
+            result = self.runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(script_path),
+                    "--stage",
+                    "--param",
+                    "test_param=value",
+                    "--name",
+                    "staged-test",
+                    "--ignore-dirty",  # Allow dirty working directory in tests
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Experiment staged:" in result.output
+            assert "Directory:" in result.output
+            assert "Use 'yanex run --staged' to execute" in result.output
+        finally:
+            # Clean up environment variable
+            if old_yanex_dir:
+                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                del os.environ["YANEX_EXPERIMENTS_DIR"]
 
     def test_run_stage_and_staged_flags_conflict(self, tmp_path):
         """Test run with both --stage and --staged flags shows error."""
@@ -227,17 +240,30 @@ class TestCLIMain:
         assert result.exit_code != 0
         assert "Cannot use both --stage and --staged flags" in result.output
 
-    def test_run_staged_flag_no_script(self):
+    def test_run_staged_flag_no_script(self, tmp_path):
         """Test run with --staged flag doesn't require script argument."""
-        result = self.runner.invoke(cli, ["run", "--staged"])
-        # Should succeed - either find no staged experiments or successfully execute any that exist
-        assert result.exit_code == 0
-        # Check for expected messages (could be no staged experiments or successful execution)
-        assert (
-            "No staged experiments found" in result.output
-            or "Experiment completed successfully" in result.output
-            or "Experiment failed" in result.output
-        )
+        import os
+
+        # Use isolated temp directory to avoid polluting production experiments
+        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
+
+        try:
+            result = self.runner.invoke(cli, ["run", "--staged"])
+            # Should succeed - either find no staged experiments or successfully execute any that exist
+            assert result.exit_code == 0
+            # Check for expected messages (could be no staged experiments or successful execution)
+            assert (
+                "No staged experiments found" in result.output
+                or "Experiment completed successfully" in result.output
+                or "Experiment failed" in result.output
+            )
+        finally:
+            # Clean up environment variable
+            if old_yanex_dir:
+                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                del os.environ["YANEX_EXPERIMENTS_DIR"]
 
     def test_run_staged_flag_with_script_isolation(self, tmp_path):
         """Test run with --staged flag with isolated experiment directory."""

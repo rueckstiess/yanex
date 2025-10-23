@@ -337,6 +337,80 @@ class TestExperimentAPI:
         assert saved_results[0]["accuracy"] == 0.95
 
     @patch("yanex.api._get_experiment_manager")
+    def test_log_metrics_with_string_step_raises_type_error(self, mock_get_manager):
+        """Test that log_metrics raises TypeError when step is a string."""
+        mock_get_manager.return_value = self.manager
+
+        results = {"accuracy": 0.95}
+
+        with pytest.raises(TypeError, match="step parameter must be an int or None"):
+            yanex.log_metrics(results, step="0")
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_log_metrics_with_float_step_raises_type_error(self, mock_get_manager):
+        """Test that log_metrics raises TypeError when step is a float."""
+        mock_get_manager.return_value = self.manager
+
+        results = {"accuracy": 0.95}
+
+        with pytest.raises(TypeError, match="step parameter must be an int or None"):
+            yanex.log_metrics(results, step=1.0)
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_log_metrics_with_list_step_raises_type_error(self, mock_get_manager):
+        """Test that log_metrics raises TypeError when step is a list."""
+        mock_get_manager.return_value = self.manager
+
+        results = {"accuracy": 0.95}
+
+        with pytest.raises(TypeError, match="step parameter must be an int or None"):
+            yanex.log_metrics(results, step=[1])
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_log_metrics_with_dict_step_raises_type_error(self, mock_get_manager):
+        """Test that log_metrics raises TypeError when step is a dict."""
+        mock_get_manager.return_value = self.manager
+
+        results = {"accuracy": 0.95}
+
+        with pytest.raises(TypeError, match="step parameter must be an int or None"):
+            yanex.log_metrics(results, step={"step": 1})
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_log_metrics_mixed_types_scenario(self, mock_get_manager):
+        """Test the bug scenario: string step followed by None step."""
+        mock_get_manager.return_value = self.manager
+
+        # This should raise TypeError immediately, preventing the sorting bug
+        with pytest.raises(TypeError, match="step parameter must be an int or None"):
+            yanex.log_metrics({"loss": 0.5}, step="0")
+
+        # Verify no results were saved (error occurred before storage)
+        saved_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(saved_results) == 0
+
+    @patch("yanex.api._get_experiment_manager")
+    def test_log_metrics_valid_types_work(self, mock_get_manager):
+        """Test that log_metrics works correctly with valid types."""
+        mock_get_manager.return_value = self.manager
+
+        # Valid: explicit int step
+        yanex.log_metrics({"loss": 0.5}, step=0)
+
+        # Valid: None step (auto-incremented)
+        yanex.log_metrics({"accuracy": 0.9})
+
+        # Valid: another explicit int step
+        yanex.log_metrics({"f1_score": 0.85}, step=2)
+
+        # Verify all results were saved correctly
+        saved_results = self.manager.storage.load_results(self.experiment_id)
+        assert len(saved_results) == 3
+        assert saved_results[0]["step"] == 0
+        assert saved_results[1]["step"] == 1
+        assert saved_results[2]["step"] == 2
+
+    @patch("yanex.api._get_experiment_manager")
     def test_log_artifact(self, mock_get_manager):
         """Test artifact logging."""
         mock_get_manager.return_value = self.manager
