@@ -759,7 +759,7 @@ def _execute_sweep_sequential(
             completed += 1
             console.print(f"  [green]✓ Completed: {experiment_id}[/]")
 
-        except Exception as e:
+        except Exception:
             failed += 1
             # ScriptExecutor already prints detailed error info, just note the failure
             console.print(f"  [red]✗ Failed: {sweep_name}[/]")
