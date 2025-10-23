@@ -726,12 +726,12 @@ def _execute_sweep_sequential(
     failed = 0
 
     for i, expanded_config in enumerate(expanded_configs):
-        try:
-            # Generate descriptive name for each sweep experiment
-            sweep_name = _generate_sweep_experiment_name(
-                name, expanded_config, sweep_param_paths
-            )
+        # Generate descriptive name for each sweep experiment
+        sweep_name = _generate_sweep_experiment_name(
+            name, expanded_config, sweep_param_paths
+        )
 
+        try:
             if verbose:
                 console.print(
                     f"[dim][{i + 1}/{len(expanded_configs)}] Starting: {sweep_name}[/]"
@@ -746,6 +746,7 @@ def _execute_sweep_sequential(
                 description=description,
                 allow_dirty=ignore_dirty,
                 stage_only=False,  # Create as "created", not "staged"
+                allow_parallel=True,  # Allow sweep experiments to run sequentially
             )
 
             # Start experiment
@@ -760,7 +761,8 @@ def _execute_sweep_sequential(
 
         except Exception as e:
             failed += 1
-            console.print(f"  [red]✗ Failed: {e}[/]", err=True)
+            # ScriptExecutor already prints detailed error info, just note the failure
+            console.print(f"  [red]✗ Failed: {sweep_name}[/]")
             # Continue with next experiment
 
     # Summary
@@ -835,7 +837,7 @@ def _execute_sweep_parallel(
         for future in as_completed(future_to_exp):
             exp_name = future_to_exp[future]
             try:
-                success, experiment_id = future.result()
+                success, experiment_id, error_msg = future.result()
                 if success:
                     completed += 1
                     console.print(
@@ -843,7 +845,11 @@ def _execute_sweep_parallel(
                     )
                 else:
                     failed += 1
-                    console.print(f"  [red]✗ Failed: {exp_name}[/]")
+                    if error_msg:
+                        console.print(f"  [red]✗ Failed: {exp_name}[/]")
+                        console.print(f"    [red]Error: {error_msg}[/]")
+                    else:
+                        console.print(f"  [red]✗ Failed: {exp_name}[/]")
             except Exception as e:
                 failed += 1
                 console.print(f"  [red]✗ Error: {exp_name}: {e}[/]")
@@ -863,13 +869,13 @@ def _execute_single_sweep_experiment(
     config: dict[str, Any],
     verbose: bool,
     ignore_dirty: bool,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, str | None]:
     """Worker function for parallel sweep experiment execution.
 
     This runs in a separate process, so it needs to create its own manager.
 
     Returns:
-        (success, experiment_id) tuple
+        (success, experiment_id, error_message) tuple
     """
     manager = ExperimentManager()
 
@@ -883,6 +889,7 @@ def _execute_single_sweep_experiment(
             description=description,
             allow_dirty=ignore_dirty,
             stage_only=False,  # NOT staged
+            allow_parallel=True,  # Allow parallel sweep execution
         )
 
         # Start experiment
@@ -892,19 +899,20 @@ def _execute_single_sweep_experiment(
         executor = ScriptExecutor(manager)
         executor.execute_script(experiment_id, script, config, verbose)
 
-        return (True, experiment_id)
+        return (True, experiment_id, None)
 
     except Exception as e:
         # Try to mark as failed if experiment was created
+        error_msg = str(e)
         try:
             if "experiment_id" in locals():
                 manager.fail_experiment(
-                    experiment_id, f"Sweep execution failed: {str(e)}"
+                    experiment_id, f"Sweep execution failed: {error_msg}"
                 )
         except Exception:
             pass
 
-        return (False, "")
+        return (False, "", error_msg)
 
 
 def _normalize_tags(tag_value: Any) -> list[str]:

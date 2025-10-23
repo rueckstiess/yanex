@@ -398,6 +398,7 @@ class ExperimentManager:
         description: str | None = None,
         allow_dirty: bool = False,
         stage_only: bool = False,
+        allow_parallel: bool = False,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -409,6 +410,7 @@ class ExperimentManager:
             description: Optional experiment description
             allow_dirty: Allow running with uncommitted changes
             stage_only: If True, create experiment with "staged" status for later execution
+            allow_parallel: If True, allow creating experiment even if another is running
 
         Returns:
             Experiment ID
@@ -416,16 +418,16 @@ class ExperimentManager:
         Raises:
             DirtyWorkingDirectoryError: If git working directory is not clean and allow_dirty=False
             ValidationError: If input parameters are invalid
-            ExperimentAlreadyRunningError: If another experiment is running (unless stage_only=True)
+            ExperimentAlreadyRunningError: If another experiment is running (unless stage_only=True or allow_parallel=True)
             StorageError: If experiment creation fails
         """
         # Validate git working directory is clean (unless explicitly allowed)
         if not allow_dirty:
             validate_clean_working_directory()
 
-        # Prevent concurrent execution (unless staging only)
+        # Prevent concurrent execution (unless staging only or parallel allowed)
         if not stage_only:
-            self.prevent_concurrent_execution(allow_parallel=False)
+            self.prevent_concurrent_execution(allow_parallel=allow_parallel)
 
         # Set defaults
         if config is None:
