@@ -746,7 +746,6 @@ def _execute_sweep_sequential(
                 description=description,
                 allow_dirty=ignore_dirty,
                 stage_only=False,  # Create as "created", not "staged"
-                allow_parallel=True,  # Allow sweep experiments to run sequentially
             )
 
             # Start experiment
@@ -889,7 +888,6 @@ def _execute_single_sweep_experiment(
             description=description,
             allow_dirty=ignore_dirty,
             stage_only=False,  # NOT staged
-            allow_parallel=True,  # Allow parallel sweep execution
         )
 
         # Start experiment

@@ -17,7 +17,6 @@ from tests.test_utils import (
 from yanex.core.manager import ExperimentManager
 from yanex.utils.exceptions import (
     DirtyWorkingDirectoryError,
-    ExperimentAlreadyRunningError,
     ExperimentNotFoundError,
     ValidationError,
 )
@@ -188,63 +187,8 @@ class TestRunningExperimentDetection:
         assert result == "exp00001"
 
 
-class TestConcurrencyPrevention:
-    """Test concurrency prevention functionality - improved with utilities."""
-
-    def test_prevent_concurrent_execution_no_running(self, isolated_manager):
-        """Test prevent_concurrent_execution when no experiment is running."""
-        # Should not raise any exception
-        isolated_manager.prevent_concurrent_execution()
-
-    def test_prevent_concurrent_execution_with_running(self, isolated_manager):
-        """Test prevent_concurrent_execution raises error when experiment is running."""
-        # NEW: Use factory for running experiment creation
-        experiment_id = "running123"
-        exp_dir = isolated_manager.experiments_dir / experiment_id
-        exp_dir.mkdir(parents=True)
-
-        metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id, status="running"
-        )
-        isolated_manager.storage.save_metadata(experiment_id, metadata)
-
-        # Should raise ExperimentAlreadyRunningError
-        with pytest.raises(ExperimentAlreadyRunningError) as exc_info:
-            isolated_manager.prevent_concurrent_execution()
-
-        assert experiment_id in str(exc_info.value)
-        assert "already running" in str(exc_info.value).lower()
-
-    def test_prevent_concurrent_execution_error_type(self, isolated_manager):
-        """Test prevent_concurrent_execution raises correct exception type."""
-        # NEW: Use factory for metadata
-        experiment_id = "running456"
-        exp_dir = isolated_manager.experiments_dir / experiment_id
-        exp_dir.mkdir(parents=True)
-
-        metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id, status="running"
-        )
-        isolated_manager.storage.save_metadata(experiment_id, metadata)
-
-        # Should raise specific exception type
-        with pytest.raises(ExperimentAlreadyRunningError):
-            isolated_manager.prevent_concurrent_execution()
-
-    def test_prevent_concurrent_execution_with_allow_parallel(self, isolated_manager):
-        """Test prevent_concurrent_execution skips check when allow_parallel=True."""
-        # Create running experiment
-        experiment_id = "running123"
-        exp_dir = isolated_manager.experiments_dir / experiment_id
-        exp_dir.mkdir(parents=True)
-
-        metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id, status="running"
-        )
-        isolated_manager.storage.save_metadata(experiment_id, metadata)
-
-        # Should NOT raise with allow_parallel=True
-        isolated_manager.prevent_concurrent_execution(allow_parallel=True)
+class TestRunningExperimentsQuery:
+    """Test querying running experiments functionality."""
 
     def test_get_running_experiments_empty(self, isolated_manager):
         """Test get_running_experiments returns empty list when no running experiments."""
@@ -379,27 +323,6 @@ class TestExperimentCreation:
         mock_validate_git.side_effect = DirtyWorkingDirectoryError(["modified.py"])
 
         with pytest.raises(DirtyWorkingDirectoryError):
-            isolated_manager.create_experiment(Path(__file__))
-
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_create_experiment_concurrent_execution(
-        self, mock_validate_git, isolated_manager
-    ):
-        """Test experiment creation fails when another experiment is running."""
-        mock_validate_git.return_value = None
-
-        # NEW: Use factory to create running experiment
-        running_id = "running123"
-        exp_dir = isolated_manager.experiments_dir / running_id
-        exp_dir.mkdir(parents=True)
-
-        metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=running_id, status="running"
-        )
-        isolated_manager.storage.save_metadata(running_id, metadata)
-
-        # Should fail to create new experiment
-        with pytest.raises(ExperimentAlreadyRunningError):
             isolated_manager.create_experiment(Path(__file__))
 
     @patch("yanex.core.manager.validate_clean_working_directory")

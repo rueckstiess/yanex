@@ -10,7 +10,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..utils.exceptions import ExperimentAlreadyRunningError
 from ..utils.validation import validate_experiment_name, validate_tags
 from .environment import capture_full_environment
 from .git_utils import get_current_commit_info, validate_clean_working_directory
@@ -369,26 +368,6 @@ class ExperimentManager:
 
         return self.storage.archive_experiment(experiment_id)
 
-    def prevent_concurrent_execution(self, allow_parallel: bool = False) -> None:
-        """Ensure no other experiment is currently running (unless parallel mode enabled).
-
-        Args:
-            allow_parallel: If True, skip the concurrent execution check
-
-        Raises:
-            ExperimentAlreadyRunningError: If another experiment is running and allow_parallel=False
-        """
-        if allow_parallel:
-            return  # Skip check in parallel mode
-
-        running_experiment = self.get_running_experiment()
-        if running_experiment is not None:
-            raise ExperimentAlreadyRunningError(
-                f"Experiment {running_experiment} is already running. "
-                "Only one experiment can run at a time. "
-                "Use --parallel flag with --staged to enable parallel execution."
-            )
-
     def create_experiment(
         self,
         script_path: Path,
@@ -398,7 +377,6 @@ class ExperimentManager:
         description: str | None = None,
         allow_dirty: bool = False,
         stage_only: bool = False,
-        allow_parallel: bool = False,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -410,7 +388,6 @@ class ExperimentManager:
             description: Optional experiment description
             allow_dirty: Allow running with uncommitted changes
             stage_only: If True, create experiment with "staged" status for later execution
-            allow_parallel: If True, allow creating experiment even if another is running
 
         Returns:
             Experiment ID
@@ -418,16 +395,11 @@ class ExperimentManager:
         Raises:
             DirtyWorkingDirectoryError: If git working directory is not clean and allow_dirty=False
             ValidationError: If input parameters are invalid
-            ExperimentAlreadyRunningError: If another experiment is running (unless stage_only=True or allow_parallel=True)
             StorageError: If experiment creation fails
         """
         # Validate git working directory is clean (unless explicitly allowed)
         if not allow_dirty:
             validate_clean_working_directory()
-
-        # Prevent concurrent execution (unless staging only or parallel allowed)
-        if not stage_only:
-            self.prevent_concurrent_execution(allow_parallel=allow_parallel)
 
         # Set defaults
         if config is None:
