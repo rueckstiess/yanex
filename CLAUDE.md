@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Yanex** (Yet Another Experiment Tracker) is a lightweight, Git-aware experiment tracking system for Python designed for machine learning and research reproducibility. It's currently in alpha development (v0.1.0) and provides both CLI and Python API interfaces.
+**Yanex** (Yet Another Experiment Tracker) is a lightweight, Git-aware experiment tracking system for Python designed for machine learning and research reproducibility. It's currently in alpha development (v0.4.0) and provides CLI, Python API, and web UI interfaces.
 
 ## Essential Commands
 
@@ -36,8 +36,10 @@ python -m ruff format --check     # Check if formatting is needed
 
 ### Build and Distribution
 ```bash
-make build          # Build distribution packages
+make build          # Build distribution packages (includes web UI build)
+make build-web      # Build Next.js web UI only (outputs to yanex/web/out/)
 make clean          # Clean build artifacts and cache files
+make clean-web      # Clean web UI build artifacts
 ```
 
 ## Architecture Overview
@@ -65,10 +67,17 @@ make clean          # Clean build artifacts and cache files
 - Individual commands in `commands/` directory
 - Shared utilities: `error_handling.py`, `filters/`, `formatters/`
 
+**Web UI** (`yanex/web/`)
+- Next.js 14 static site with TypeScript and Tailwind CSS
+- FastAPI backend: `app.py` (main), `api.py` (endpoints)
+- Build script: `build_web_ui.sh` → static export to `out/`
+- Development server: `yanex/web/dev.py`
+
 ### Entry Points
 
 **CLI Entry Point**: `yanex` command → `yanex/cli/main.py`
-**Python API**: `yanex.get_params()`, `yanex.log_results()` → `yanex/api.py`
+**Python API**: `yanex.get_params()`, `yanex.log_metrics()` → `yanex/api.py`
+**Web UI**: `yanex ui` → launches FastAPI server with Next.js static frontend
 
 ### Key Patterns
 
@@ -80,16 +89,16 @@ make clean          # Clean build artifacts and cache files
 ## Test Infrastructure
 
 ### Test Organization
-- Comprehensive test coverage (455+ tests, 90%+ coverage required)
-- Structure mirrors source code: `tests/cli/`, `tests/core/`, `tests/utils/`
-- Shared fixtures in `conftest.py`
+- Comprehensive test coverage (12,000+ lines, 90%+ coverage required)
+- Structure mirrors source code: `tests/cli/`, `tests/core/`, `tests/utils/`, `tests/web/`
+- Shared fixtures in `conftest.py`: `temp_dir`, `git_repo`, `clean_git_repo`, `sample_config_yaml`, `sample_experiment_script`
 - Test utilities in `test_utils.py` with factory patterns
 
 ### Running Tests
 - Each test uses isolated temporary directories and git repositories
 - Use `TestDataFactory` for consistent test data generation
 - Use `TestAssertions` for domain-specific validation
-- Recent refactoring focused on eliminating test duplication while maintaining zero regressions
+- Tests run with pytest-cov for coverage reporting
 
 ## Configuration and Dependencies
 
@@ -100,14 +109,26 @@ make clean          # Clean build artifacts and cache files
 - `requirements-dev.txt`: Development dependencies
 
 ### Key Dependencies
+**Python Core:**
 - **Click**: CLI framework
-- **PyYAML**: Configuration file parsing  
+- **PyYAML**: Configuration file parsing
 - **Rich**: Terminal formatting and output
 - **GitPython**: Git integration
 - **textual**: Interactive terminal interfaces
-- **pytest**: Testing framework
+- **FastAPI + uvicorn**: Web UI backend server
+- **httpx**: HTTP client for API communication
+- **dateparser**: Natural language date parsing
+
+**Development:**
+- **pytest + pytest-cov**: Testing framework and coverage
 - **ruff**: Code linting and formatting (includes basic type checking)
-- **mypy**: Type checking (disabled for alpha development due to 90+ unresolved errors)
+- **mypy**: Type checking (disabled for alpha development)
+
+**Web UI (Node.js):**
+- **Next.js 14**: React framework with static export
+- **TypeScript**: Type safety for web code
+- **Tailwind CSS**: Styling framework
+- **Recharts**: Data visualization
 
 ## Development Guidelines
 
@@ -139,12 +160,32 @@ The codebase has undergone significant refactoring to:
 - Add test infrastructure utilities to reduce duplication
 - Eliminate date/time parsing duplication using centralized utilities
 - Modernize type annotations for Python 3.10+ (completed Dec 2024)
+- Add web UI with FastAPI backend and Next.js frontend (v0.4.0)
 
 ### Working with Experiments
-- Experiments have unique 8-character hex IDs
-- Git state is automatically tracked for reproducibility
-- Two usage patterns: CLI-first (recommended) and explicit experiment creation
+- Experiments have unique 8-character hex IDs generated via `secrets.token_hex(4)`
+- Git state is automatically tracked for reproducibility (commit hash, branch, dirty status)
 - Configuration supports YAML files with CLI parameter overrides
+- Experiment lifecycle: `created` → `running` → `completed`/`failed`/`cancelled`
+- Default storage location: `~/.yanex/experiments/` (configurable via `YANEX_EXPERIMENTS_DIR`)
+
+### Two Execution Patterns
+**1. CLI-First (Recommended):**
+- Run via `yanex run script.py --param key=value`
+- Script uses `yanex.get_params()` and `yanex.log_metrics()` which work standalone or with tracking
+- Experiment context set via environment variables (`YANEX_EXPERIMENT_ID`, `YANEX_CLI_ACTIVE`)
+
+**2. Explicit Context (Advanced):**
+- Use `yanex.create_experiment()` context manager in code
+- Intended for Jupyter notebooks or programmatic control
+- Cannot mix with CLI-first pattern (raises `ExperimentContextError`)
+
+### Web UI Development
+- Frontend: Next.js in `yanex/web/` with static export
+- Backend: FastAPI serves static files + REST API
+- Build workflow: `npm run build` → static export to `out/` → served by FastAPI
+- Development: `cd yanex/web && npm run dev` for Next.js hot reload
+- Production: `yanex ui` launches integrated server on port 8000
 
 ## Ruff Linting Memories
 
