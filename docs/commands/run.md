@@ -59,6 +59,9 @@ This ensures reproducibility and easy comparison of results.
 - `--stage`: Stage the experiment for later execution
 - `--staged`: Run all staged experiments
 
+#### Parallel Execution (v0.5.0+)
+- `--parallel N` / `-j N`: Run experiments in parallel with N workers (0=auto-detect CPUs)
+
 #### General Options
 
 - `--dry-run`: Validate parameters without executing the script
@@ -98,18 +101,24 @@ yanex run script.py \
 
 ## Staging Experiments
 
-Yanex allows you to stage experiments before running them, which is useful for preparing complex configurations or parameter sweeps.
+Yanex allows you to stage experiments before running them, which is useful for preparing batches of experiments or reviewing configurations before execution.
 
 ```bash
-# Stage an experiment
-yanex stage script.py --stage
+# Stage a single experiment
+yanex run script.py --stage
+
+# Stage parameter sweeps
+yanex run script.py --param "lr=list(0.01, 0.001)" --stage
 ```
 
 ### Run Staged Experiments
 
 ```bash
-# Run all staged experiments
+# Run all staged experiments sequentially
 yanex run --staged
+
+# Run all staged experiments in parallel (v0.5.0+)
+yanex run --staged --parallel 4
 ```
 
 
@@ -161,38 +170,113 @@ yanex run script.py --config production.yaml --param batch_size=128
 
 ## Parameter Sweeps
 
-You can perform parameter sweeps by staging multiple experiments with different configurations with a single command.
+Yanex supports parameter sweeps to run multiple experiments with different configurations. As of v0.6.0, you can execute sweeps immediately or stage them for later execution.
+
+### Direct Sweep Execution (v0.6.0+)
+
+Run parameter sweeps immediately without staging:
 
 ```bash
-# Explicit list of parameters
-yanex run script.py --param "workload_size=list(50, 100, 200)" --stage
+# Run sweep sequentially (one after another)
+yanex run script.py --param "workload_size=list(50, 100, 200)"
+
+# Run sweep in parallel with 4 workers
+yanex run script.py --param "workload_size=list(50, 100, 200)" --parallel 4
+
+# Auto-detect CPU count for parallel execution
+yanex run script.py --param "learning_rate=logspace(-4, -1, 10)" --parallel 0
 ```
 
-Then run all staged experiments:
-
-```bash
-yanex run --staged
-```
+### Sweep Syntax
 
 The following sweep syntax is supported:
 
 - `list(value1, value2, ...)` - Enumerates multiple values
-- `range(start, end, step)` - Generates a range of values
+- `range(start, end, step)` - Generates a range of values (Python range syntax)
 - `linspace(start, end, num)` - Generates evenly spaced values
-- `logspace(start, end, num)` - Generates logarithmically spaced values
+- `logspace(start_exp, end_exp, num)` - Generates logarithmically spaced values
 
-### Grid Search
-
-If multiple parameter sweeps are defined, Yanex will perform a grid search across all combinations.
+**Examples:**
 
 ```bash
-# Example: Sweep across two parameters
-yanex run script.py --param "learning_rate=list(0.001, 0.01, 0.1)" --param "batch_size=list(32, 64, 128)" --stage
+# List of specific values
+--param "batch_size=list(16, 32, 64, 128)"
+
+# Range: generates [4, 5, 6, 7]
+--param "workload_size=range(4, 8, 1)"
+
+# Linspace: generates 5 evenly spaced values from 10 to 100
+--param "n_nodes=linspace(10, 100, 5)"
+
+# Logspace: generates [0.0001, 0.001, 0.01, 0.1]
+--param "learning_rate=logspace(-4, -1, 4)"
 ```
 
-This will stage 9 experiments (3 learning rates x 3 batch sizes).
+### Grid Search (Multi-Parameter Sweeps)
 
-Note that parameter sweeps must use the `--stage` flag to prepare them for execution. You can then run all staged experiments with `yanex run --staged`.
+If multiple parameter sweeps are defined, Yanex performs a grid search across all combinations:
+
+```bash
+# Sequential execution of 9 experiments (3 × 3)
+yanex run script.py \
+  --param "learning_rate=list(0.001, 0.01, 0.1)" \
+  --param "batch_size=list(32, 64, 128)"
+
+# Parallel execution with 4 workers
+yanex run script.py \
+  --param "learning_rate=list(0.001, 0.01, 0.1)" \
+  --param "batch_size=list(32, 64, 128)" \
+  --parallel 4
+```
+
+This creates and runs 9 experiments with all combinations of the two parameters.
+
+### Staged Sweep Execution (Original Workflow)
+
+You can still stage experiments for later execution:
+
+```bash
+# Stage parameter sweep
+yanex run script.py --param "workload_size=list(50, 100, 200)" --stage
+
+# Run all staged experiments sequentially
+yanex run --staged
+
+# Run all staged experiments in parallel with 4 workers (v0.5.0+)
+yanex run --staged --parallel 4
+```
+
+**When to use staging:**
+- Preparing multiple experiment batches before execution
+- Running experiments at a later time (e.g., overnight)
+- Reviewing experiment configurations before execution
+
+### Parallel Execution (v0.5.0+)
+
+The `--parallel` flag enables parallel execution using multiple workers:
+
+```bash
+# Specify worker count
+yanex run script.py --param "lr=logspace(-4, -1, 10)" --parallel 4
+
+# Auto-detect CPU count (uses all available cores)
+yanex run script.py --param "lr=logspace(-4, -1, 10)" --parallel 0
+
+# Short flag syntax (like make -j)
+yanex run script.py --param "lr=logspace(-4, -1, 10)" -j 4
+```
+
+**Benefits:**
+- True parallelism using separate processes (bypasses Python GIL)
+- Each experiment runs in isolation with separate storage
+- Progress tracking with completion summary
+- Ideal for multi-core systems and hyperparameter tuning
+- Independent `yanex run` commands from different shells can run concurrently
+
+**Usage Notes:**
+- `--parallel` flag is for throttling managed execution (sweeps and staged experiments)
+- Cannot be combined with `--stage` (stage first, then run with `--parallel`)
+- For running multiple independent experiments concurrently, simply run `yanex run` from different shells - no special flags needed
 
 
 ## Git Integration

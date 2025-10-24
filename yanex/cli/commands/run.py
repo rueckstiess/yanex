@@ -46,6 +46,13 @@ from ...core.script_executor import ScriptExecutor
     is_flag=True,
     help="Execute staged experiments",
 )
+@click.option(
+    "--parallel",
+    "-j",
+    type=int,
+    metavar="N",
+    help="Execute N experiments in parallel (only valid with --staged). Use 0 for auto (number of CPUs).",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -59,6 +66,7 @@ def run(
     ignore_dirty: bool,
     stage: bool,
     staged: bool,
+    parallel: int | None,
 ) -> None:
     """
     Run a script as a tracked experiment.
@@ -113,9 +121,23 @@ def run(
         click.echo("Error: Cannot use both --stage and --staged flags", err=True)
         raise click.Abort()
 
+    # Validate parallel flag
+    if parallel is not None and parallel < 0:
+        click.echo("Error: --parallel must be 0 (auto) or positive integer", err=True)
+        raise click.Abort()
+
+    # Validate stage + parallel combination (incompatible)
+    if stage and parallel is not None:
+        click.echo(
+            "Error: --parallel cannot be used with --stage. "
+            "Stage experiments first, then run with: yanex run --staged --parallel N",
+            err=True,
+        )
+        raise click.Abort()
+
     if staged:
         # Execute staged experiments
-        _execute_staged_experiments(verbose, console)
+        _execute_staged_experiments(verbose, console, max_workers=parallel)
         return
 
     # Validate script is provided when not using --staged
@@ -169,6 +191,19 @@ def run(
         # Validate sweep requirements
         validate_sweep_requirements(experiment_config, resolved_stage)
 
+        # Validate parallel flag with non-sweep single experiments
+        if (
+            parallel is not None
+            and not staged
+            and not resolved_stage
+            and not has_sweep_parameters(experiment_config)
+        ):
+            click.echo(
+                "Error: --parallel can only be used with parameter sweeps or --staged",
+                err=True,
+            )
+            raise click.Abort()
+
         if resolved_dry_run:
             click.echo("✓ Configuration validation passed")
             click.echo("Dry run completed - experiment would be created with:")
@@ -179,8 +214,9 @@ def run(
             click.echo(f"  Config: {experiment_config}")
             return
 
-        # Phase 3: Execute or stage experiment
+        # Phase 3: Execute, stage, or execute sweep
         if resolved_stage:
+            # Stage for later execution
             _stage_experiment(
                 script=script,
                 name=resolved_name,
@@ -190,7 +226,20 @@ def run(
                 verbose=verbose,
                 ignore_dirty=resolved_ignore_dirty,
             )
+        elif has_sweep_parameters(experiment_config):
+            # Direct sweep execution (NEW in v0.6.0)
+            _execute_sweep_experiments(
+                script=script,
+                name=resolved_name,
+                tags=resolved_tags,
+                description=resolved_description,
+                config=experiment_config,
+                verbose=verbose,
+                ignore_dirty=resolved_ignore_dirty,
+                max_workers=parallel,  # None=sequential, N=parallel
+            )
         else:
+            # Single experiment execution
             _execute_experiment(
                 script=script,
                 name=resolved_name,
@@ -389,10 +438,22 @@ def _stage_experiment(
         click.echo("  Use 'yanex run --staged' to execute staged experiments")
 
 
-def _execute_staged_experiments(verbose: bool = False, console: Console = None) -> None:
-    """Execute all staged experiments."""
+def _execute_staged_experiments(
+    verbose: bool = False,
+    console: Console = None,
+    max_workers: int | None = None,
+) -> None:
+    """Execute all staged experiments, optionally in parallel.
+
+    Args:
+        verbose: Show verbose output
+        console: Rich console for output
+        max_workers: Maximum parallel workers. None=sequential, 0=auto (CPU count)
+    """
+    import multiprocessing
+
     if console is None:
-        console = Console()  # Use stdout with colors
+        console = Console()
 
     manager = ExperimentManager()
     staged_experiments = manager.get_staged_experiments()
@@ -401,6 +462,27 @@ def _execute_staged_experiments(verbose: bool = False, console: Console = None) 
         console.print("[dim]No staged experiments found[/]")
         return
 
+    # Determine execution mode
+    if max_workers is None:
+        # Sequential execution (backward compatible)
+        _execute_staged_sequential(staged_experiments, manager, verbose, console)
+    else:
+        # Parallel execution
+        if max_workers == 0:
+            max_workers = multiprocessing.cpu_count()
+
+        _execute_staged_parallel(
+            staged_experiments, manager, verbose, console, max_workers
+        )
+
+
+def _execute_staged_sequential(
+    staged_experiments: list[str],
+    manager: ExperimentManager,
+    verbose: bool,
+    console: Console,
+) -> None:
+    """Execute staged experiments sequentially (original behavior)."""
     if verbose:
         console.print(f"[dim]Found {len(staged_experiments)} staged experiments[/]")
 
@@ -409,7 +491,7 @@ def _execute_staged_experiments(verbose: bool = False, console: Console = None) 
             if verbose:
                 console.print(f"[dim]Executing staged experiment: {experiment_id}[/]")
 
-            # Load experiment metadata to get script path and config
+            # Load experiment metadata
             metadata = manager.storage.load_metadata(experiment_id)
             config = manager.storage.load_config(experiment_id)
             script_path = Path(metadata["script_path"])
@@ -417,7 +499,7 @@ def _execute_staged_experiments(verbose: bool = False, console: Console = None) 
             # Transition to running state
             manager.execute_staged_experiment(experiment_id)
 
-            # Execute the script using the same logic as _execute_experiment
+            # Execute the script
             _execute_staged_script(
                 experiment_id=experiment_id,
                 script_path=script_path,
@@ -438,6 +520,118 @@ def _execute_staged_experiments(verbose: bool = False, console: Console = None) 
                 pass  # Best effort to record failure
 
 
+def _execute_staged_parallel(
+    staged_experiments: list[str],
+    manager: ExperimentManager,
+    verbose: bool,
+    console: Console,
+    max_workers: int,
+) -> None:
+    """Execute staged experiments in parallel using multiprocessing."""
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    console.print(f"[dim]Found {len(staged_experiments)} staged experiments[/]")
+    console.print(f"[dim]Executing with {max_workers} parallel workers[/]")
+
+    # Pre-load all experiment data before forking
+    experiment_data = []
+    for experiment_id in staged_experiments:
+        try:
+            metadata = manager.storage.load_metadata(experiment_id)
+            config = manager.storage.load_config(experiment_id)
+            experiment_data.append(
+                {
+                    "experiment_id": experiment_id,
+                    "script_path": Path(metadata["script_path"]),
+                    "config": config,
+                }
+            )
+        except Exception as e:
+            console.print(f"[red]✗ Failed to load experiment {experiment_id}: {e}[/]")
+
+    # Track results
+    completed = 0
+    failed = 0
+
+    # Execute in parallel
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all experiments
+        future_to_exp = {
+            executor.submit(
+                _execute_single_experiment_worker,
+                exp_data["experiment_id"],
+                exp_data["script_path"],
+                exp_data["config"],
+                verbose,
+            ): exp_data["experiment_id"]
+            for exp_data in experiment_data
+        }
+
+        # Process results as they complete
+        for future in as_completed(future_to_exp):
+            experiment_id = future_to_exp[future]
+            try:
+                success = future.result()
+                if success:
+                    completed += 1
+                    console.print(f"[green]✓ Experiment completed: {experiment_id}[/]")
+                else:
+                    failed += 1
+                    console.print(f"[red]✗ Experiment failed: {experiment_id}[/]")
+            except Exception as e:
+                failed += 1
+                console.print(f"[red]✗ Experiment error: {experiment_id}: {e}[/]")
+
+    # Summary
+    console.print("\n[bold]Execution Summary:[/]")
+    console.print(f"  Total: {len(experiment_data)}")
+    console.print(f"  [green]Completed: {completed}[/]")
+    console.print(f"  [red]Failed: {failed}[/]")
+
+
+def _execute_single_experiment_worker(
+    experiment_id: str,
+    script_path: Path,
+    config: dict[str, Any],
+    verbose: bool,
+) -> bool:
+    """Worker function for parallel experiment execution.
+
+    This runs in a separate process, so it needs to create its own manager.
+
+    Returns:
+        True if experiment succeeded, False otherwise
+    """
+    # Create fresh manager in this process
+    manager = ExperimentManager()
+
+    try:
+        # Transition to running state
+        manager.execute_staged_experiment(experiment_id)
+
+        # Execute the script
+        _execute_staged_script(
+            experiment_id=experiment_id,
+            script_path=script_path,
+            config=config,
+            manager=manager,
+            verbose=verbose,
+        )
+
+        return True
+
+    except Exception as e:
+        # Record failure
+        try:
+            manager.fail_experiment(
+                experiment_id, f"Parallel execution failed: {str(e)}"
+            )
+        except Exception:
+            pass  # Best effort
+
+        return False
+
+
 def _execute_staged_script(
     experiment_id: str,
     script_path: Path,
@@ -450,6 +644,273 @@ def _execute_staged_script(
     # Execute script using ScriptExecutor
     executor = ScriptExecutor(manager)
     executor.execute_script(experiment_id, script_path, config, verbose)
+
+
+def _execute_sweep_experiments(
+    script: Path,
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    config: dict[str, Any],
+    verbose: bool = False,
+    ignore_dirty: bool = False,
+    max_workers: int | None = None,
+) -> None:
+    """Execute parameter sweep directly (sequential or parallel).
+
+    This creates and executes experiments on-the-fly without using
+    the "staged" status, avoiding interference with existing staged experiments.
+
+    Args:
+        script: Path to the Python script
+        name: Base experiment name
+        tags: List of experiment tags
+        description: Experiment description
+        config: Configuration with sweep parameters
+        verbose: Show verbose output
+        ignore_dirty: Allow running with uncommitted changes
+        max_workers: Maximum parallel workers. None=sequential, N=parallel
+    """
+    manager = ExperimentManager()
+
+    # Expand parameter sweeps into individual configurations
+    expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
+
+    click.echo(
+        f"✓ Parameter sweep detected: running {len(expanded_configs)} experiments"
+    )
+
+    if max_workers is None:
+        # Sequential execution
+        _execute_sweep_sequential(
+            script,
+            name,
+            tags,
+            description,
+            expanded_configs,
+            sweep_param_paths,
+            manager,
+            verbose,
+            ignore_dirty,
+        )
+    else:
+        # Parallel execution
+        _execute_sweep_parallel(
+            script,
+            name,
+            tags,
+            description,
+            expanded_configs,
+            sweep_param_paths,
+            manager,
+            verbose,
+            ignore_dirty,
+            max_workers,
+        )
+
+
+def _execute_sweep_sequential(
+    script: Path,
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    expanded_configs: list[dict[str, Any]],
+    sweep_param_paths: list[str],
+    manager: ExperimentManager,
+    verbose: bool,
+    ignore_dirty: bool,
+) -> None:
+    """Execute sweep experiments sequentially."""
+    console = Console()
+    completed = 0
+    failed = 0
+
+    for i, expanded_config in enumerate(expanded_configs):
+        # Generate descriptive name for each sweep experiment
+        sweep_name = _generate_sweep_experiment_name(
+            name, expanded_config, sweep_param_paths
+        )
+
+        try:
+            if verbose:
+                console.print(
+                    f"[dim][{i + 1}/{len(expanded_configs)}] Starting: {sweep_name}[/]"
+                )
+
+            # Create and execute immediately (NOT staged)
+            experiment_id = manager.create_experiment(
+                script_path=script,
+                name=sweep_name,
+                config=expanded_config,
+                tags=tags,
+                description=description,
+                allow_dirty=ignore_dirty,
+                stage_only=False,  # Create as "created", not "staged"
+            )
+
+            # Start experiment
+            manager.start_experiment(experiment_id)
+
+            # Execute script
+            executor = ScriptExecutor(manager)
+            executor.execute_script(experiment_id, script, expanded_config, verbose)
+
+            completed += 1
+            console.print(f"  [green]✓ Completed: {experiment_id}[/]")
+
+        except Exception:
+            failed += 1
+            # ScriptExecutor already prints detailed error info, just note the failure
+            console.print(f"  [red]✗ Failed: {sweep_name}[/]")
+            # Continue with next experiment
+
+    # Summary
+    click.echo("\n✓ Sweep execution completed")
+    click.echo(f"  Total: {len(expanded_configs)}")
+    click.echo(f"  Completed: {completed}")
+    click.echo(f"  Failed: {failed}")
+
+
+def _execute_sweep_parallel(
+    script: Path,
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    expanded_configs: list[dict[str, Any]],
+    sweep_param_paths: list[str],
+    manager: ExperimentManager,
+    verbose: bool,
+    ignore_dirty: bool,
+    max_workers: int,
+) -> None:
+    """Execute sweep experiments in parallel."""
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    console = Console()
+
+    if max_workers == 0:
+        max_workers = multiprocessing.cpu_count()
+
+    click.echo(f"  Executing with {max_workers} parallel workers")
+
+    # Pre-generate experiment data (names, configs)
+    experiment_data = []
+    for expanded_config in expanded_configs:
+        sweep_name = _generate_sweep_experiment_name(
+            name, expanded_config, sweep_param_paths
+        )
+        experiment_data.append(
+            {
+                "name": sweep_name,
+                "config": expanded_config,
+                "script": script,
+                "tags": tags,
+                "description": description,
+                "ignore_dirty": ignore_dirty,
+            }
+        )
+
+    # Track results
+    completed = 0
+    failed = 0
+
+    # Execute in parallel
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all experiments
+        future_to_exp = {
+            executor.submit(
+                _execute_single_sweep_experiment,
+                exp_data["script"],
+                exp_data["name"],
+                exp_data["tags"],
+                exp_data["description"],
+                exp_data["config"],
+                verbose,
+                exp_data["ignore_dirty"],
+            ): exp_data["name"]
+            for exp_data in experiment_data
+        }
+
+        # Process results as they complete
+        for future in as_completed(future_to_exp):
+            exp_name = future_to_exp[future]
+            try:
+                success, experiment_id, error_msg = future.result()
+                if success:
+                    completed += 1
+                    console.print(
+                        f"  [green]✓ Completed: {experiment_id} ({exp_name})[/]"
+                    )
+                else:
+                    failed += 1
+                    if error_msg:
+                        console.print(f"  [red]✗ Failed: {exp_name}[/]")
+                        console.print(f"    [red]Error: {error_msg}[/]")
+                    else:
+                        console.print(f"  [red]✗ Failed: {exp_name}[/]")
+            except Exception as e:
+                failed += 1
+                console.print(f"  [red]✗ Error: {exp_name}: {e}[/]")
+
+    # Summary
+    click.echo("\n✓ Sweep execution completed")
+    click.echo(f"  Total: {len(experiment_data)}")
+    click.echo(f"  Completed: {completed}")
+    click.echo(f"  Failed: {failed}")
+
+
+def _execute_single_sweep_experiment(
+    script: Path,
+    name: str,
+    tags: list[str],
+    description: str | None,
+    config: dict[str, Any],
+    verbose: bool,
+    ignore_dirty: bool,
+) -> tuple[bool, str, str | None]:
+    """Worker function for parallel sweep experiment execution.
+
+    This runs in a separate process, so it needs to create its own manager.
+
+    Returns:
+        (success, experiment_id, error_message) tuple
+    """
+    manager = ExperimentManager()
+
+    try:
+        # Create experiment
+        experiment_id = manager.create_experiment(
+            script_path=script,
+            name=name,
+            config=config,
+            tags=tags,
+            description=description,
+            allow_dirty=ignore_dirty,
+            stage_only=False,  # NOT staged
+        )
+
+        # Start experiment
+        manager.start_experiment(experiment_id)
+
+        # Execute script
+        executor = ScriptExecutor(manager)
+        executor.execute_script(experiment_id, script, config, verbose)
+
+        return (True, experiment_id, None)
+
+    except Exception as e:
+        # Try to mark as failed if experiment was created
+        error_msg = str(e)
+        try:
+            if "experiment_id" in locals():
+                manager.fail_experiment(
+                    experiment_id, f"Sweep execution failed: {error_msg}"
+                )
+        except Exception:
+            pass
+
+        return (False, "", error_msg)
 
 
 def _normalize_tags(tag_value: Any) -> list[str]:

@@ -131,6 +131,8 @@ yanex run script.py --param data.validation_split=0.3
 
 ### Parameter Sweeps
 
+As of v0.6.0, parameter sweeps can be executed immediately without staging, supporting both sequential and parallel execution.
+
 ```bash
 # Explicit parameter lists
 --param "batch_size=list(32, 64, 128)"
@@ -140,8 +142,33 @@ yanex run script.py --param data.validation_split=0.3
 
 # Linspace and logspace
 --param "n_nodes=linspace(10, 100, 5)"  # Generates [10, 30, 50, 70, 100]
---param "learning_rate=logspace(-4, -1, 4)"  # Generates [0.0001, 0.001, 0.01, 0.
+--param "learning_rate=logspace(-4, -1, 4)"  # Generates [0.0001, 0.001, 0.01, 0.1]
 ```
+
+**Direct Execution (v0.6.0+):**
+
+```bash
+# Run sweep sequentially
+yanex run script.py --param "lr=list(0.001, 0.01, 0.1)"
+
+# Run sweep in parallel with 4 workers
+yanex run script.py --param "lr=list(0.001, 0.01, 0.1)" --parallel 4
+
+# Auto-detect CPU count
+yanex run script.py --param "lr=logspace(-4, -1, 10)" --parallel 0
+```
+
+**Staged Execution:**
+
+```bash
+# Stage for later execution
+yanex run script.py --param "lr=list(0.001, 0.01, 0.1)" --stage
+
+# Execute staged experiments
+yanex run --staged --parallel 4
+```
+
+See [`yanex run`](commands/run.md) for complete documentation on parameter sweeps and parallel execution
 
 ## CLI Defaults from Config
 

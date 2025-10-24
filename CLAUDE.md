@@ -187,6 +187,37 @@ The codebase has undergone significant refactoring to:
 - Development: `cd yanex/web && npm run dev` for Next.js hot reload
 - Production: `yanex ui` launches integrated server on port 8000
 
+### Parallel Experiment Execution
+- **New in v0.5.0**: Run multiple experiments simultaneously on multi-core systems
+- **Enhanced in v0.6.0**: Direct parameter sweep execution without staging
+- **Unrestricted concurrent execution**: Independent `yanex run` commands from different shells can run simultaneously (no restrictions)
+- Use `--parallel N` flag to throttle managed execution (sweeps and staged experiments)
+- `--parallel 0` uses auto-detection (number of CPU cores)
+- Short flag: `-j N` (similar to `make -j`)
+- Each experiment runs in isolated process with separate storage
+- Useful for parameter sweeps and batch processing
+
+#### Direct Sweep Execution (v0.6.0+)
+Parameter sweeps can now execute immediately without staging:
+  ```bash
+  # Run sweep sequentially, immediately (NEW)
+  yanex run train.py --param "lr=range(0.01, 0.1, 0.01)"
+
+  # Run sweep in parallel, immediately (NEW)
+  yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --parallel 4
+
+  # Stage for later (existing workflow still supported)
+  yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --stage
+  yanex run --staged --parallel 4
+  ```
+
+- **Implementation details**:
+  - Uses `ProcessPoolExecutor` for true parallelism (bypasses GIL)
+  - Each experiment has unique process ID tracked in metadata
+  - Sequential execution remains default for backward compatibility
+  - Direct sweep execution avoids "staged" status to prevent interference
+  - PID tracking added for debugging and process monitoring
+
 ## Ruff Linting Memories
 
 - Don't add whitespace to empty lines to pass ruff's rule W293. 

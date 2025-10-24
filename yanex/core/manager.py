@@ -10,7 +10,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..utils.exceptions import ExperimentAlreadyRunningError
 from ..utils.validation import validate_experiment_name, validate_tags
 from .environment import capture_full_environment
 from .git_utils import get_current_commit_info, validate_clean_working_directory
@@ -98,6 +97,32 @@ class ExperimentManager:
 
         return None
 
+    def get_running_experiments(self) -> list[str]:
+        """Get all currently running experiments.
+
+        Returns:
+            List of experiment IDs with status='running'
+        """
+        if not self.experiments_dir.exists():
+            return []
+
+        running_experiments = []
+        for experiment_dir in self.experiments_dir.iterdir():
+            if not experiment_dir.is_dir():
+                continue
+
+            experiment_id = experiment_dir.name
+            if self.storage.experiment_exists(experiment_id):
+                try:
+                    metadata = self.storage.load_metadata(experiment_id)
+                    if metadata.get("status") == "running":
+                        running_experiments.append(experiment_id)
+                except Exception:
+                    # Skip experiments with corrupted metadata
+                    continue
+
+        return running_experiments
+
     def start_experiment(self, experiment_id: str) -> None:
         """Transition experiment to running state.
 
@@ -127,9 +152,12 @@ class ExperimentManager:
             )
 
         # Update status and timestamps
+        import os
+
         now = datetime.utcnow().isoformat()
         metadata["status"] = "running"
         metadata["started_at"] = now
+        metadata["process_id"] = os.getpid()
 
         # Save updated metadata
         self.storage.save_metadata(experiment_id, metadata)
@@ -347,19 +375,6 @@ class ExperimentManager:
 
         return self.storage.archive_experiment(experiment_id)
 
-    def prevent_concurrent_execution(self) -> None:
-        """Ensure no other experiment is currently running.
-
-        Raises:
-            ExperimentAlreadyRunningError: If another experiment is running
-        """
-        running_experiment = self.get_running_experiment()
-        if running_experiment is not None:
-            raise ExperimentAlreadyRunningError(
-                f"Experiment {running_experiment} is already running. "
-                "Only one experiment can run at a time."
-            )
-
     def create_experiment(
         self,
         script_path: Path,
@@ -387,16 +402,11 @@ class ExperimentManager:
         Raises:
             DirtyWorkingDirectoryError: If git working directory is not clean and allow_dirty=False
             ValidationError: If input parameters are invalid
-            ExperimentAlreadyRunningError: If another experiment is running (unless stage_only=True)
             StorageError: If experiment creation fails
         """
         # Validate git working directory is clean (unless explicitly allowed)
         if not allow_dirty:
             validate_clean_working_directory()
-
-        # Prevent concurrent execution (unless staging only)
-        if not stage_only:
-            self.prevent_concurrent_execution()
 
         # Set defaults
         if config is None:
@@ -507,9 +517,12 @@ class ExperimentManager:
             )
 
         # Transition to running state
+        import os
+
         now = datetime.utcnow().isoformat()
         metadata["status"] = "running"
         metadata["started_at"] = now
+        metadata["process_id"] = os.getpid()
         self.storage.save_metadata(experiment_id, metadata)
 
     def get_staged_experiments(self) -> list[str]:

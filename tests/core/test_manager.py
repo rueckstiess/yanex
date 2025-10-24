@@ -17,7 +17,6 @@ from tests.test_utils import (
 from yanex.core.manager import ExperimentManager
 from yanex.utils.exceptions import (
     DirtyWorkingDirectoryError,
-    ExperimentAlreadyRunningError,
     ExperimentNotFoundError,
     ValidationError,
 )
@@ -188,18 +187,17 @@ class TestRunningExperimentDetection:
         assert result == "exp00001"
 
 
-class TestConcurrencyPrevention:
-    """Test concurrency prevention functionality - improved with utilities."""
+class TestRunningExperimentsQuery:
+    """Test querying running experiments functionality."""
 
-    def test_prevent_concurrent_execution_no_running(self, isolated_manager):
-        """Test prevent_concurrent_execution when no experiment is running."""
-        # Should not raise any exception
-        isolated_manager.prevent_concurrent_execution()
+    def test_get_running_experiments_empty(self, isolated_manager):
+        """Test get_running_experiments returns empty list when no running experiments."""
+        result = isolated_manager.get_running_experiments()
+        assert result == []
 
-    def test_prevent_concurrent_execution_with_running(self, isolated_manager):
-        """Test prevent_concurrent_execution raises error when experiment is running."""
-        # NEW: Use factory for running experiment creation
-        experiment_id = "running123"
+    def test_get_running_experiments_single(self, isolated_manager):
+        """Test get_running_experiments returns single running experiment."""
+        experiment_id = "running001"
         exp_dir = isolated_manager.experiments_dir / experiment_id
         exp_dir.mkdir(parents=True)
 
@@ -208,28 +206,44 @@ class TestConcurrencyPrevention:
         )
         isolated_manager.storage.save_metadata(experiment_id, metadata)
 
-        # Should raise ExperimentAlreadyRunningError
-        with pytest.raises(ExperimentAlreadyRunningError) as exc_info:
-            isolated_manager.prevent_concurrent_execution()
+        result = isolated_manager.get_running_experiments()
+        assert result == [experiment_id]
 
-        assert experiment_id in str(exc_info.value)
-        assert "already running" in str(exc_info.value).lower()
+    def test_get_running_experiments_multiple(self, isolated_manager):
+        """Test get_running_experiments returns all running experiments."""
+        # Create 3 experiments: 2 running, 1 completed
+        running_ids = ["run001", "run002"]
+        completed_id = "comp001"
 
-    def test_prevent_concurrent_execution_error_type(self, isolated_manager):
-        """Test prevent_concurrent_execution raises correct exception type."""
-        # NEW: Use factory for metadata
-        experiment_id = "running456"
-        exp_dir = isolated_manager.experiments_dir / experiment_id
+        for exp_id in running_ids:
+            exp_dir = isolated_manager.experiments_dir / exp_id
+            exp_dir.mkdir(parents=True)
+            metadata = TestDataFactory.create_experiment_metadata(
+                experiment_id=exp_id, status="running"
+            )
+            isolated_manager.storage.save_metadata(exp_id, metadata)
+
+        # Create completed experiment
+        exp_dir = isolated_manager.experiments_dir / completed_id
         exp_dir.mkdir(parents=True)
-
         metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=experiment_id, status="running"
+            experiment_id=completed_id, status="completed"
         )
-        isolated_manager.storage.save_metadata(experiment_id, metadata)
+        isolated_manager.storage.save_metadata(completed_id, metadata)
 
-        # Should raise specific exception type
-        with pytest.raises(ExperimentAlreadyRunningError):
-            isolated_manager.prevent_concurrent_execution()
+        # Should return only running experiments
+        result = isolated_manager.get_running_experiments()
+        assert set(result) == set(running_ids)
+
+    def test_get_running_experiments_no_experiments_dir(self, isolated_manager):
+        """Test get_running_experiments when experiments directory doesn't exist."""
+        # Remove experiments directory
+        import shutil
+
+        shutil.rmtree(isolated_manager.experiments_dir, ignore_errors=True)
+
+        result = isolated_manager.get_running_experiments()
+        assert result == []
 
 
 class TestExperimentCreation:
@@ -309,27 +323,6 @@ class TestExperimentCreation:
         mock_validate_git.side_effect = DirtyWorkingDirectoryError(["modified.py"])
 
         with pytest.raises(DirtyWorkingDirectoryError):
-            isolated_manager.create_experiment(Path(__file__))
-
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_create_experiment_concurrent_execution(
-        self, mock_validate_git, isolated_manager
-    ):
-        """Test experiment creation fails when another experiment is running."""
-        mock_validate_git.return_value = None
-
-        # NEW: Use factory to create running experiment
-        running_id = "running123"
-        exp_dir = isolated_manager.experiments_dir / running_id
-        exp_dir.mkdir(parents=True)
-
-        metadata = TestDataFactory.create_experiment_metadata(
-            experiment_id=running_id, status="running"
-        )
-        isolated_manager.storage.save_metadata(running_id, metadata)
-
-        # Should fail to create new experiment
-        with pytest.raises(ExperimentAlreadyRunningError):
             isolated_manager.create_experiment(Path(__file__))
 
     @patch("yanex.core.manager.validate_clean_working_directory")

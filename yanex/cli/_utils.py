@@ -7,7 +7,7 @@ from typing import Any
 
 import click
 
-from ..core.config import has_sweep_parameters, resolve_config
+from ..core.config import resolve_config
 
 
 def load_and_merge_config(
@@ -101,17 +101,14 @@ def validate_experiment_config(
 
 def validate_sweep_requirements(config: dict[str, Any], stage_flag: bool) -> None:
     """
-    Validate that parameter sweeps are used with --stage flag.
+    Validate parameter sweep requirements.
+
+    As of v0.6.0, parameter sweeps can be executed directly without --stage flag.
+    This function is kept for backward compatibility but no longer enforces restrictions.
 
     Args:
         config: Configuration dictionary to check
         stage_flag: Whether --stage flag was provided
-
-    Raises:
-        click.ClickException: If sweep parameters used without --stage
     """
-    if has_sweep_parameters(config) and not stage_flag:
-        raise click.ClickException(
-            "Parameter sweeps require --stage flag to avoid accidental batch execution.\n"
-            'Use: yanex run script.py --param "lr=range(0.01, 0.1, 0.01)" --stage'
-        )
+    # No validation needed - sweeps are now allowed in all modes
+    pass
