@@ -261,7 +261,15 @@ Yanex is open source and welcomes contributions! See our [contributing guideline
 
 **Built with assistance from [Claude](https://claude.ai).**
 
+#### Contributors
+
+The Yanex web UI (`yanex ui`) is being developed by Leon Lei ([lytlei](https://github.com/lytlei)) as part of his
+Honours Thesis at the [University of Sydney](https://www.sydney.edu.au). 
+
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+
 
