@@ -295,74 +295,22 @@ def _generate_sweep_experiment_name(
     sweep_param_paths: list[str] | None = None,
 ) -> str:
     """
-    Generate a descriptive name for a sweep experiment based on its parameters.
+    Generate experiment name for a sweep experiment.
 
     Args:
         base_name: Base experiment name (can be None)
-        config: Configuration dictionary with parameter values
-        sweep_param_paths: List of parameter paths that were sweep parameters (only these will be included in name)
+        config: Configuration dictionary with parameter values (unused, kept for compatibility)
+        sweep_param_paths: List of parameter paths that were sweep parameters (unused, kept for compatibility)
 
     Returns:
-        Generated experiment name with parameter suffixes for sweep parameters only
+        Base experiment name or "sweep" if no name provided
     """
-    # Start with base name or default
+    # Return the base name as-is, without appending parameter values
+    # Parameter values are now tracked via the "sweep" tag instead
     if base_name:
-        name_parts = [base_name]
+        return base_name
     else:
-        name_parts = ["sweep"]
-
-    # Extract parameter name-value pairs
-    param_parts = []
-
-    def extract_params(d: dict[str, Any], prefix: str = "") -> None:
-        for key, value in d.items():
-            if isinstance(value, dict):
-                # Handle nested parameters
-                new_prefix = f"{prefix}.{key}" if prefix else key
-                extract_params(value, new_prefix)
-            else:
-                # Format parameter path (using dots to match sweep_param_paths format)
-                param_path = f"{prefix}.{key}" if prefix else key
-
-                # Only include this parameter if it's in the sweep paths or if no sweep paths specified
-                if sweep_param_paths is None or param_path in sweep_param_paths:
-                    # Format parameter name for display (using underscores)
-                    param_name = param_path.replace(".", "_")
-
-                    # Format parameter value
-                    if isinstance(value, bool):
-                        param_value = str(value).lower()
-                    elif isinstance(value, int | float):
-                        # Format numbers with reasonable precision
-                        if isinstance(value, float):
-                            # Remove trailing zeros and unnecessary decimal point
-                            if value == int(value):
-                                param_value = str(int(value))
-                            else:
-                                formatted = f"{value:.6g}"  # Up to 6 significant digits
-                                # Replace dots with 'p' and handle scientific notation
-                                param_value = (
-                                    formatted.replace(".", "p")
-                                    .replace("e", "e")
-                                    .replace("+", "")
-                                    .replace("-", "m")
-                                )
-                        else:
-                            param_value = str(value)
-                    else:
-                        # String values
-                        param_value = str(value)
-
-                    param_parts.append(f"{param_name}_{param_value}")
-
-    extract_params(config)
-
-    # Combine name parts
-    if param_parts:
-        name_parts.extend(param_parts)
-
-    result = "-".join(name_parts)
-    return result
+        return "sweep"
 
 
 def _stage_experiment(
@@ -387,6 +335,11 @@ def _stage_experiment(
             f"✓ Parameter sweep detected: expanding into {len(expanded_configs)} experiments"
         )
 
+        # Add "sweep" tag to all sweep experiments
+        sweep_tags = list(tags) if tags else []
+        if "sweep" not in sweep_tags:
+            sweep_tags.append("sweep")
+
         experiment_ids = []
         for i, expanded_config in enumerate(expanded_configs):
             # Generate descriptive name for each sweep experiment
@@ -398,7 +351,7 @@ def _stage_experiment(
                 script_path=script,
                 name=sweep_name,
                 config=expanded_config,
-                tags=tags,
+                tags=sweep_tags,
                 description=description,
                 allow_dirty=ignore_dirty,
                 stage_only=True,
@@ -725,6 +678,11 @@ def _execute_sweep_sequential(
     completed = 0
     failed = 0
 
+    # Add "sweep" tag to all sweep experiments
+    sweep_tags = list(tags) if tags else []
+    if "sweep" not in sweep_tags:
+        sweep_tags.append("sweep")
+
     for i, expanded_config in enumerate(expanded_configs):
         # Generate descriptive name for each sweep experiment
         sweep_name = _generate_sweep_experiment_name(
@@ -742,7 +700,7 @@ def _execute_sweep_sequential(
                 script_path=script,
                 name=sweep_name,
                 config=expanded_config,
-                tags=tags,
+                tags=sweep_tags,
                 description=description,
                 allow_dirty=ignore_dirty,
                 stage_only=False,  # Create as "created", not "staged"
@@ -794,6 +752,11 @@ def _execute_sweep_parallel(
 
     click.echo(f"  Executing with {max_workers} parallel workers")
 
+    # Add "sweep" tag to all sweep experiments
+    sweep_tags = list(tags) if tags else []
+    if "sweep" not in sweep_tags:
+        sweep_tags.append("sweep")
+
     # Pre-generate experiment data (names, configs)
     experiment_data = []
     for expanded_config in expanded_configs:
@@ -805,7 +768,7 @@ def _execute_sweep_parallel(
                 "name": sweep_name,
                 "config": expanded_config,
                 "script": script,
-                "tags": tags,
+                "tags": sweep_tags,
                 "description": description,
                 "ignore_dirty": ignore_dirty,
             }
