@@ -632,7 +632,9 @@ class TestGetStatus(TestWebAPIBase):
     ):
         """Test normal behavior of get status endpoint."""
         # Setup mocks - filtering now handled internally, return already-filtered results
-        non_archived = [exp for exp in sample_experiments if not exp.get("archived", False)]
+        non_archived = [
+            exp for exp in sample_experiments if not exp.get("archived", False)
+        ]
         archived = [exp for exp in sample_experiments if exp.get("archived", False)]
 
         mock_filter.filter_experiments.side_effect = [
@@ -708,7 +710,9 @@ class TestGetStatus(TestWebAPIBase):
 
         # Filtering now handled internally - return already-filtered results
         mock_filter.filter_experiments.side_effect = [
-            [exp for exp in mixed_experiments if not exp["archived"]],  # Non-archived (4)
+            [
+                exp for exp in mixed_experiments if not exp["archived"]
+            ],  # Non-archived (4)
             [exp for exp in mixed_experiments if exp["archived"]],  # Archived only (1)
         ]
 

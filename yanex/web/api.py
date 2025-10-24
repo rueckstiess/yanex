@@ -265,10 +265,12 @@ async def get_status() -> dict[str, Any]:
     try:
         # Get basic statistics
         all_experiments = experiment_filter.filter_experiments(
-            include_all=True, archived=False  # Changed from include_archived
+            include_all=True,
+            archived=False,  # Changed from include_archived
         )
         archived_experiments = experiment_filter.filter_experiments(
-            include_all=True, archived=True  # Changed from include_archived
+            include_all=True,
+            archived=True,  # Changed from include_archived
         )
         # Note: Manual archived filtering removed - now handled by filter_experiments()
 
