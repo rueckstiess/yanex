@@ -33,10 +33,14 @@ jobs:
         pip install -e ".[dev]"
     
     - name: Run format check
-      run: ruff format --check yanex tests
-      
+      run: |
+        echo "Checking code formatting..."
+        ruff format --check --diff .
+
     - name: Run linting
-      run: ruff check yanex tests
+      run: |
+        echo "Running linter..."
+        ruff check yanex tests
       
     - name: Test CLI functionality
       run: |
