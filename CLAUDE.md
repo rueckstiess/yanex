@@ -141,9 +141,9 @@ make clean-web      # Clean web UI build artifacts
 ### CRITICAL Development Workflow
 **ALWAYS run these commands after implementing new code:**
 ```bash
-python -m ruff check --fix    # Auto-fix linting issues
-python -m ruff format         # Apply consistent formatting
-python -m ruff check          # Verify no remaining lint errors
+uv run ruff check --fix    # Auto-fix linting issues
+uv run ruff format         # Apply consistent formatting (REQUIRED before push)
+uv run ruff check          # Verify no remaining lint errors
 ```
 
 **Why this is essential:**
@@ -151,6 +151,7 @@ python -m ruff check          # Verify no remaining lint errors
 - Local ruff behavior may differ from CI environment
 - Prevents CI failures and maintains code quality standards
 - Modern Python 3.10+ type annotations are required (use `X | None` not `Optional[X]`)
+- **ALWAYS run `uv run ruff format` before pushing to GitHub** to ensure consistent formatting across the codebase
 
 ### Recent Architecture Changes
 The codebase has undergone significant refactoring to:
