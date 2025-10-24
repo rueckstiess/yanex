@@ -155,15 +155,15 @@ class TestListExperiments(TestWebAPIBase):
         # Verify filter was called with correct parameters
         mock_filter.filter_experiments.assert_called_once_with(
             status=None,
-            name_pattern=None,
+            name=None,  # Changed from name_pattern
             tags=None,
             started_after=None,
             started_before=None,
             ended_after=None,
             ended_before=None,
+            archived=False,  # Changed from include_archived
             limit=None,
             include_all=True,
-            include_archived=False,
         )
 
     @patch("yanex.web.api.experiment_filter")
@@ -201,9 +201,9 @@ class TestListExperiments(TestWebAPIBase):
         mock_filter.filter_experiments.assert_called_once()
         call_args = mock_filter.filter_experiments.call_args[1]
         assert call_args["status"] == "completed"
-        assert call_args["name_pattern"] == "test-*"
+        assert call_args["name"] == "test-*"  # Changed from name_pattern
         assert call_args["tags"] == ["ml", "test"]
-        assert call_args["include_archived"] is False
+        assert call_args["archived"] is False  # Changed from include_archived
 
     @patch("yanex.web.api.experiment_filter")
     @patch("yanex.web.api.manager")
@@ -227,8 +227,11 @@ class TestListExperiments(TestWebAPIBase):
         self, mock_manager, mock_filter, client, sample_experiments
     ):
         """Test list experiments including archived experiments."""
-        # Setup mocks - return all experiments for the filter call
-        mock_filter.filter_experiments.return_value = sample_experiments
+        # Setup mocks - return only archived experiments (filtering now handled internally)
+        archived_experiments = [
+            exp for exp in sample_experiments if exp.get("archived", False)
+        ]
+        mock_filter.filter_experiments.return_value = archived_experiments
 
         # Test request with archived=True
         response = client.get("/api/experiments?archived=true")
@@ -237,15 +240,12 @@ class TestListExperiments(TestWebAPIBase):
         assert response.status_code == 200
         data = response.json()
         # Should return only archived experiments (1 out of 3)
-        archived_experiments = [
-            exp for exp in sample_experiments if exp.get("archived", False)
-        ]
         assert len(data["experiments"]) == len(archived_experiments)
 
         # Verify filter was called with archived=True
         mock_filter.filter_experiments.assert_called_once()
         call_args = mock_filter.filter_experiments.call_args[1]
-        assert call_args["include_archived"] is True
+        assert call_args["archived"] is True  # Changed from include_archived
 
     @patch("yanex.web.api.experiment_filter")
     @patch("yanex.web.api.manager")
@@ -413,7 +413,7 @@ class TestGetExperiment(TestWebAPIBase):
         # Verify filter was called with archived=True
         mock_filter.filter_experiments.assert_called_once()
         call_args = mock_filter.filter_experiments.call_args[1]
-        assert call_args["include_archived"] is True
+        assert call_args["archived"] is True  # Changed from include_archived
 
     @patch("yanex.web.api.experiment_filter")
     @patch("yanex.web.api.manager")
@@ -631,11 +631,13 @@ class TestGetStatus(TestWebAPIBase):
         self, mock_manager, mock_filter, client, sample_experiments
     ):
         """Test normal behavior of get status endpoint."""
-        # Setup mocks
-        # Non-archived experiments
+        # Setup mocks - filtering now handled internally, return already-filtered results
+        non_archived = [exp for exp in sample_experiments if not exp.get("archived", False)]
+        archived = [exp for exp in sample_experiments if exp.get("archived", False)]
+
         mock_filter.filter_experiments.side_effect = [
-            sample_experiments[:2],  # First call for non-archived
-            sample_experiments,  # Second call for all (including archived)
+            non_archived,  # First call for non-archived (2 experiments)
+            archived,  # Second call for archived only (1 experiment)
         ]
 
         # Test request
@@ -704,9 +706,10 @@ class TestGetStatus(TestWebAPIBase):
             {"id": "exp5", "status": "cancelled", "archived": False},
         ]
 
+        # Filtering now handled internally - return already-filtered results
         mock_filter.filter_experiments.side_effect = [
-            [exp for exp in mixed_experiments if not exp["archived"]],  # Non-archived
-            mixed_experiments,  # All experiments
+            [exp for exp in mixed_experiments if not exp["archived"]],  # Non-archived (4)
+            [exp for exp in mixed_experiments if exp["archived"]],  # Archived only (1)
         ]
 
         # Test request
