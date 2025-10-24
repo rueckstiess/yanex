@@ -89,28 +89,20 @@ async def list_experiments(
             )
 
         # Get ALL experiments first (no limit applied yet)
+        # Note: archived parameter changed - True=only archived, False=only non-archived, None=both
         all_experiments = experiment_filter.filter_experiments(
             status=status,
-            name_pattern=name_pattern,
+            name=name_pattern,  # Changed from name_pattern to name
             tags=tag_list,
             started_after=started_after_dt,
             started_before=started_before_dt,
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
+            archived=archived,  # Changed from include_archived - now handles filtering internally
             limit=None,  # Get all experiments
             include_all=True,
-            include_archived=archived,
         )
-
-        # Filter by archived status
-        if archived:
-            all_experiments = [
-                exp for exp in all_experiments if exp.get("archived", False)
-            ]
-        else:
-            all_experiments = [
-                exp for exp in all_experiments if not exp.get("archived", False)
-            ]
+        # Note: Manual archived filtering removed - now handled by filter_experiments()
 
         # Apply sorting to ALL experiments
         # Handle legacy sort_order values
@@ -169,14 +161,9 @@ async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str
         # Find the experiment
         experiments = experiment_filter.filter_experiments(
             include_all=True,
-            include_archived=archived,
+            archived=archived,  # Changed from include_archived
         )
-
-        # Filter by archived status
-        if archived:
-            experiments = [exp for exp in experiments if exp.get("archived", False)]
-        else:
-            experiments = [exp for exp in experiments if not exp.get("archived", False)]
+        # Note: Manual archived filtering removed - now handled by filter_experiments()
 
         # Find matching experiment
         experiment = None
@@ -278,14 +265,14 @@ async def get_status() -> dict[str, Any]:
     try:
         # Get basic statistics
         all_experiments = experiment_filter.filter_experiments(
-            include_all=True, include_archived=False
+            include_all=True,
+            archived=False,  # Changed from include_archived
         )
         archived_experiments = experiment_filter.filter_experiments(
-            include_all=True, include_archived=True
+            include_all=True,
+            archived=True,  # Changed from include_archived
         )
-        archived_experiments = [
-            exp for exp in archived_experiments if exp.get("archived", False)
-        ]
+        # Note: Manual archived filtering removed - now handled by filter_experiments()
 
         # Count by status
         status_counts = {}

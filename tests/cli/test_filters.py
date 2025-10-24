@@ -118,7 +118,7 @@ class TestExperimentFilter:
         with patch.object(
             self.filter, "_load_all_experiments", return_value=self.sample_experiments
         ):
-            results = self.filter.filter_experiments(name_pattern=name_pattern)
+            results = self.filter.filter_experiments(name=name_pattern)
 
             assert len(results) == expected_count
             result_ids = [exp["id"] for exp in results]
@@ -131,7 +131,7 @@ class TestExperimentFilter:
             self.filter, "_load_all_experiments", return_value=self.sample_experiments
         ):
             # Test empty string pattern
-            results = self.filter.filter_experiments(name_pattern="")
+            results = self.filter.filter_experiments(name="")
 
             # Should only match the unnamed experiment (exp11111)
             assert len(results) == 1
@@ -166,7 +166,7 @@ class TestExperimentFilter:
             self.filter, "_load_all_experiments", return_value=test_experiments
         ):
             # Empty pattern should match both None and empty string names
-            results = self.filter.filter_experiments(name_pattern="")
+            results = self.filter.filter_experiments(name="")
 
             assert len(results) == 2
             result_ids = [exp["id"] for exp in results]
@@ -180,20 +180,18 @@ class TestExperimentFilter:
             self.filter, "_load_all_experiments", return_value=self.sample_experiments
         ):
             # Empty pattern - should get only unnamed
-            unnamed_results = self.filter.filter_experiments(name_pattern="")
+            unnamed_results = self.filter.filter_experiments(name="")
             assert len(unnamed_results) == 1
             assert unnamed_results[0].get("name") is None
 
             # Pattern that matches named experiments
-            named_results = self.filter.filter_experiments(name_pattern="test-*")
+            named_results = self.filter.filter_experiments(name="test-*")
             assert len(named_results) == 2
             assert all(exp["name"] is not None for exp in named_results)
             assert all(exp["name"].startswith("test-") for exp in named_results)
 
             # Pattern that should match unnamed (alternative method)
-            unnamed_alt_results = self.filter.filter_experiments(
-                name_pattern="*unnamed*"
-            )
+            unnamed_alt_results = self.filter.filter_experiments(name="*unnamed*")
             assert len(unnamed_alt_results) == 1
             assert unnamed_alt_results[0].get("name") is None
 
@@ -260,7 +258,7 @@ class TestExperimentFilter:
             self.filter, "_load_all_experiments", return_value=self.sample_experiments
         ):
             results = self.filter.filter_experiments(
-                status="completed", tags=["ml"], name_pattern="*experiment*"
+                status="completed", tags=["ml"], name="*experiment*"
             )
 
             # Should match only test-experiment-1 (completed, has ml tag, name matches pattern)

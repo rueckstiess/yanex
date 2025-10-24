@@ -145,20 +145,20 @@ def compare_experiments(
         if experiment_identifiers:
             # Compare specific experiments by ID/name
             experiments = find_experiments_by_identifiers(
-                filter_obj, list(experiment_identifiers), include_archived=archived
+                filter_obj, list(experiment_identifiers), archived=archived
             )
         else:
             # Compare experiments by filter criteria
             experiments = find_experiments_by_filters(
                 filter_obj,
                 status=status,
-                name_pattern=name_pattern,
+                name=name_pattern,
                 tags=list(tags) if tags else None,
                 started_after=started_after_dt,
                 started_before=started_before_dt,
                 ended_after=ended_after_dt,
                 ended_before=ended_before_dt,
-                include_archived=archived,
+                archived=archived,
             )
 
         if not experiments:
@@ -190,7 +190,6 @@ def compare_experiments(
             params=param_list,
             metrics=metric_list,
             only_different=only_different,
-            include_archived=archived,
         )
 
         if not comparison_data.get("rows"):

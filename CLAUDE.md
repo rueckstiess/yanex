@@ -139,18 +139,26 @@ make clean-web      # Clean web UI build artifacts
 - Follow existing patterns and conventions
 
 ### CRITICAL Development Workflow
+
+**First-time setup or after pulling changes:**
+```bash
+uv sync --all-extras --dev    # Ensure correct tool versions from uv.lock
+```
+
 **ALWAYS run these commands after implementing new code:**
 ```bash
-python -m ruff check --fix    # Auto-fix linting issues
-python -m ruff format         # Apply consistent formatting
-python -m ruff check          # Verify no remaining lint errors
+uv run ruff check --fix    # Auto-fix linting issues
+uv run ruff format         # Apply consistent formatting (REQUIRED before push)
+uv run ruff check          # Verify no remaining lint errors
 ```
 
 **Why this is essential:**
 - GitHub Actions CI will fail if ruff check or format issues exist
-- Local ruff behavior may differ from CI environment
+- **uv.lock pins ruff version** - local and CI must use the same version
+- Run `uv sync --all-extras --dev` if you get different formatting results than CI
 - Prevents CI failures and maintains code quality standards
 - Modern Python 3.10+ type annotations are required (use `X | None` not `Optional[X]`)
+- **ALWAYS run `uv run ruff format` before pushing to GitHub** to ensure consistent formatting across the codebase
 
 ### Recent Architecture Changes
 The codebase has undergone significant refactoring to:
@@ -225,3 +233,4 @@ Parameter sweeps can now execute immediately without staging:
 ## Documentation Guidelines
 
 - After implementing user-facing changes, check if the documentation needs updating and make the necessary changes.
+- At the end of a larger code change, always run all unit tests to confirm we didn't break anything else.
