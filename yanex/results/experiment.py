@@ -5,7 +5,7 @@ This module provides the Experiment class for working with individual experiment
 including metadata access, data retrieval, and metadata updates.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -104,7 +104,7 @@ class Experiment:
         if started and completed:
             return completed - started
         elif started and self.status == "running":
-            return datetime.utcnow() - started
+            return datetime.now(timezone.utc) - started
 
         return None
 

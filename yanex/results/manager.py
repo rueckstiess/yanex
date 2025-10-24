@@ -5,6 +5,7 @@ This module provides the ResultsManager class that handles the heavy lifting
 for experiment filtering, comparison, and bulk operations.
 """
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +21,8 @@ from ..core.filtering import ExperimentFilter
 from ..core.manager import ExperimentManager
 from ..utils.exceptions import ExperimentNotFoundError
 from .experiment import Experiment
+
+logger = logging.getLogger(__name__)
 
 
 class ResultsManager:
@@ -111,8 +114,11 @@ class ResultsManager:
             try:
                 exp = Experiment(metadata["id"], manager=self._manager)
                 experiments.append(exp)
-            except ExperimentNotFoundError:
-                # Skip experiments that can't be loaded
+            except ExperimentNotFoundError as e:
+                # Skip experiments that can't be loaded but log the issue
+                logger.warning(
+                    "Skipping experiment %s: %s", metadata.get("id", "unknown"), str(e)
+                )
                 continue
 
         return experiments
