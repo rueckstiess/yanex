@@ -93,6 +93,8 @@ def load_and_merge_config(
                 default_config = Path.cwd() / "config.yaml"
                 if default_config.exists():
                     click.echo(f"Loaded default config: {default_config}")
+                else:
+                    click.echo("No configuration file found, using defaults")
 
         # Merge: base (cloned) + file config + param overrides
         # Note: resolve_config already merges file config + param overrides,
