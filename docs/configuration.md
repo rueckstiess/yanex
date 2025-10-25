@@ -131,7 +131,9 @@ yanex run script.py --param data.validation_split=0.3
 
 ### Parameter Sweeps
 
-As of v0.6.0, parameter sweeps can be executed immediately without staging, supporting both sequential and parallel execution.
+As of v0.6.0, parameter sweeps can be executed immediately without staging, supporting both sequential and parallel execution. Parameter sweeps can be defined via CLI parameters or directly in configuration files.
+
+#### CLI Parameter Sweeps
 
 ```bash
 # Explicit parameter lists
@@ -145,7 +147,49 @@ As of v0.6.0, parameter sweeps can be executed immediately without staging, supp
 --param "learning_rate=logspace(-4, -1, 4)"  # Generates [0.0001, 0.001, 0.01, 0.1]
 ```
 
-**Direct Execution (v0.6.0+):**
+#### Config File Sweeps
+
+Parameter sweeps can also be defined directly in YAML configuration files using the same syntax:
+
+```yaml
+# config.yaml
+# Single parameter sweep
+learning_rate: "list(0.001, 0.01, 0.1)"
+batch_size: 32
+epochs: 100
+
+# Multiple parameter sweeps (creates grid search)
+model:
+  dropout: "linspace(0.1, 0.5, 5)"
+  hidden_size: "list(128, 256, 512)"
+
+training:
+  lr_schedule: "list(constant, linear, cosine)"
+  warmup_steps: "range(0, 1000, 200)"
+```
+
+**Whitespace handling:** Whitespace in sweep syntax is flexible and ignored:
+```yaml
+# All of these are equivalent
+epochs: "list(10, 20, 30)"
+epochs: "list(10,20,30)"
+epochs: "list( 10 , 20 , 30 )"
+```
+
+**Execution:**
+
+```bash
+# Run config file sweep sequentially
+yanex run script.py --config config.yaml
+
+# Run config file sweep in parallel with 4 workers
+yanex run script.py --config config.yaml --parallel 4
+
+# Override config sweep with CLI parameter (CLI takes precedence)
+yanex run script.py --config config.yaml --param "learning_rate=0.001"
+```
+
+#### Direct Execution (v0.6.0+)
 
 ```bash
 # Run sweep sequentially
@@ -158,7 +202,7 @@ yanex run script.py --param "lr=list(0.001, 0.01, 0.1)" --parallel 4
 yanex run script.py --param "lr=logspace(-4, -1, 10)" --parallel 0
 ```
 
-**Staged Execution:**
+#### Staged Execution
 
 ```bash
 # Stage for later execution

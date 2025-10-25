@@ -189,14 +189,14 @@ yanex run script.py --param "learning_rate=logspace(-4, -1, 10)" --parallel 0
 
 ### Sweep Syntax
 
-The following sweep syntax is supported:
+The following sweep syntax is supported in both CLI parameters and config files:
 
 - `list(value1, value2, ...)` - Enumerates multiple values
 - `range(start, end, step)` - Generates a range of values (Python range syntax)
 - `linspace(start, end, num)` - Generates evenly spaced values
 - `logspace(start_exp, end_exp, num)` - Generates logarithmically spaced values
 
-**Examples:**
+**CLI Examples:**
 
 ```bash
 # List of specific values
@@ -212,9 +212,32 @@ The following sweep syntax is supported:
 --param "learning_rate=logspace(-4, -1, 4)"
 ```
 
+**Config File Examples:**
+
+```yaml
+# config.yaml
+# Define sweeps directly in configuration files
+learning_rate: "list(0.001, 0.01, 0.1)"
+batch_size: "list(32, 64, 128)"
+dropout: "linspace(0.1, 0.5, 5)"
+warmup_steps: "range(0, 1000, 200)"
+```
+
+```bash
+# Run config file sweep
+yanex run script.py --config config.yaml
+
+# Run in parallel with 4 workers
+yanex run script.py --config config.yaml --parallel 4
+```
+
+**Note:** Whitespace in sweep syntax is flexible (e.g., `list(1,2,3)` equals `list(1, 2, 3)`)
+
 ### Grid Search (Multi-Parameter Sweeps)
 
-If multiple parameter sweeps are defined, Yanex performs a grid search across all combinations:
+If multiple parameter sweeps are defined (via CLI or config file), Yanex performs a grid search across all combinations:
+
+**CLI Grid Search:**
 
 ```bash
 # Sequential execution of 9 experiments (3 × 3)
@@ -229,7 +252,22 @@ yanex run script.py \
   --parallel 4
 ```
 
-This creates and runs 9 experiments with all combinations of the two parameters.
+**Config File Grid Search:**
+
+```yaml
+# config.yaml
+# Creates 9 experiments (3 × 3)
+learning_rate: "list(0.001, 0.01, 0.1)"
+batch_size: "list(32, 64, 128)"
+epochs: 100  # Regular parameter (not swept)
+```
+
+```bash
+# Run grid search from config
+yanex run script.py --config config.yaml --parallel 4
+```
+
+This creates and runs 9 experiments with all combinations of the two swept parameters.
 
 ### Staged Sweep Execution (Original Workflow)
 

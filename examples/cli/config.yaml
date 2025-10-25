@@ -1,16 +1,16 @@
 ---
 # Example configuration for yanex CLI examples
-# Run with: 
+# Run with:
 #   yanex run advanced_benchmark.py --config config.yaml
 #   yanex run bash_script_example.py --config config.yaml
 
 # Database benchmark parameters (for advanced_benchmark.py)
 duration: 15          # seconds to run benchmark
-workload: list(read-heavy,write-heavy,mixed)     # read_heavy, write_heavy, or mixed
+workload: list(read-heavy,write-heavy,mixed)     # Parameter sweep: creates 3 experiments
 target_qps: 25        # target queries per second
 
 # LinkBench parameters (for bash_script_example.py)
-num_threads: range(3,6,1)        # number of concurrent threads
+num_threads: range(3,6,1)        # Parameter sweep: range from 3 to 5 (step 1)
 read_ratio: 0.85      # ratio of read operations (0.0-1.0)
 database_size: 2000000 # number of links in database
 
