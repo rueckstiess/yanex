@@ -22,6 +22,12 @@ from ...core.script_executor import ScriptExecutor
     help="Configuration file (YAML/JSON)",
 )
 @click.option(
+    "--clone-from",
+    type=str,
+    metavar="ID",
+    help="Clone parameters from existing experiment (ID can be shortened)",
+)
+@click.option(
     "--param",
     "-p",
     multiple=True,
@@ -58,6 +64,7 @@ def run(
     ctx: click.Context,
     script: Path | None,
     config: Path | None,
+    clone_from: str | None,
     param: list[str],
     name: str | None,
     tag: list[str],
@@ -83,6 +90,12 @@ def run(
 
       # With parameter overrides
       yanex run train.py --param learning_rate=0.01 --param epochs=100
+
+      # Clone parameters from existing experiment
+      yanex run train.py --clone-from abc123
+
+      # Clone and override specific parameters
+      yanex run train.py --clone-from abc123 --param lr=0.05
 
       # Parameter sweeps (requires --stage)
       yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --stage
@@ -150,13 +163,18 @@ def run(
         console.print(f"[dim]Running script: {script}[/]")
         if config:
             console.print(f"[dim]Using config: {config}[/]")
+        if clone_from:
+            console.print(f"[dim]Cloning from experiment: {clone_from}[/]")
         if param:
             console.print(f"[dim]Parameter overrides: {param}[/]")
 
     try:
         # Load and merge configuration
         experiment_config, cli_defaults = load_and_merge_config(
-            config_path=config, param_overrides=list(param), verbose=verbose
+            config_path=config,
+            clone_from_id=clone_from,
+            param_overrides=list(param),
+            verbose=verbose,
         )
 
         # Resolve CLI parameters with config defaults and CLI overrides
