@@ -7,17 +7,27 @@ from typing import Any
 
 import click
 
-from ..core.config import resolve_config
+from ..core.config import merge_configs, resolve_config
+from ..core.manager import ExperimentManager
 
 
 def load_and_merge_config(
-    config_path: Path | None, param_overrides: list[str], verbose: bool = False
+    config_path: Path | None,
+    clone_from_id: str | None,
+    param_overrides: list[str],
+    verbose: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Load and merge configuration from various sources.
 
+    Merge precedence (highest to lowest):
+    1. CLI parameter overrides (--param)
+    2. Config file parameters (--config)
+    3. Cloned experiment parameters (--clone-from)
+
     Args:
         config_path: Optional explicit config file path
+        clone_from_id: Optional experiment ID to clone parameters from (can be shortened)
         param_overrides: Parameter override strings from CLI
         verbose: Whether to enable verbose output
 
@@ -25,10 +35,52 @@ def load_and_merge_config(
         Tuple of (experiment_config, cli_defaults)
         - experiment_config: Configuration for experiment parameters
         - cli_defaults: CLI parameter defaults from 'yanex' section
+
+    Raises:
+        click.ClickException: If configuration cannot be loaded or clone experiment not found
     """
     try:
-        # Use existing resolve_config function from core.config
-        experiment_config, cli_defaults = resolve_config(
+        # Start with base config (either empty or from cloned experiment)
+        base_config = {}
+
+        if clone_from_id:
+            # Load config from existing experiment using the same logic as show command
+            from ..cli.commands.confirm import find_experiment
+            from ..cli.filters import ExperimentFilter
+
+            filter_obj = ExperimentFilter()
+            experiment = find_experiment(
+                filter_obj, clone_from_id, include_archived=False
+            )
+
+            if experiment is None:
+                raise click.ClickException(
+                    f"No experiment found with ID or name '{clone_from_id}'"
+                )
+
+            if isinstance(experiment, list):
+                # Multiple experiments found (ambiguous ID prefix or name)
+                click.echo(
+                    f"Error: Multiple experiments match '{clone_from_id}'. "
+                    "Please use a more specific ID prefix."
+                )
+                raise click.ClickException(
+                    f"Ambiguous experiment identifier: '{clone_from_id}'"
+                )
+
+            # Load config from the found experiment
+            manager = ExperimentManager()
+            full_id = experiment["id"]
+            cloned_config = manager.storage.load_config(full_id)
+            base_config = cloned_config
+
+            if verbose:
+                click.echo(f"Cloned config from experiment: {full_id}")
+                if cloned_config:
+                    click.echo(f"  Parameters: {cloned_config}")
+
+        # Load and merge with config file if specified
+        file_config, file_cli_defaults = resolve_config(
             config_path=config_path,
             param_overrides=param_overrides,
         )
@@ -44,11 +96,26 @@ def load_and_merge_config(
                 else:
                     click.echo("No configuration file found, using defaults")
 
-            if cli_defaults:
-                click.echo(f"Loaded CLI defaults: {cli_defaults}")
+        # Merge: base (cloned) + file config + param overrides
+        # Note: resolve_config already merges file config + param overrides,
+        # so we just need to merge base with the result
+        if base_config:
+            # Merge base config with file config (file config takes precedence)
+            experiment_config = merge_configs(base_config, file_config)
+            # CLI defaults come from the file config
+            cli_defaults = file_cli_defaults
+        else:
+            # No cloning, use file config as-is
+            experiment_config = file_config
+            cli_defaults = file_cli_defaults
+
+        if verbose and cli_defaults:
+            click.echo(f"CLI defaults: {cli_defaults}")
 
         return experiment_config, cli_defaults
 
+    except click.ClickException:
+        raise
     except Exception as e:
         raise click.ClickException(f"Failed to load configuration: {e}") from e
 
