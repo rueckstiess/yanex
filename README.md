@@ -200,8 +200,9 @@ yanex run train.py --param "lr=logspace(-4, -1, 10)" --parallel 0
 
 ### Sweep Syntax
 
-Use Python-like syntax for parameter sweeps:
+Use Python-like syntax for parameter sweeps in both CLI parameters and config files:
 
+**CLI Parameters:**
 ```bash
 # Range: start, stop, step
 --param "lr=range(0.01, 0.1, 0.01)"
@@ -220,6 +221,19 @@ yanex run train.py \
   --param "lr=range(0.01, 0.1, 0.01)" \
   --param "batch_size=list(32, 64)" \
   --parallel 4
+```
+
+**Config Files:**
+```yaml
+# config.yaml
+learning_rate: "list(0.001, 0.01, 0.1)"
+batch_size: "range(16, 128, 16)"
+dropout: "linspace(0.1, 0.5, 5)"
+```
+
+```bash
+# Run config file sweep
+yanex run train.py --config config.yaml --parallel 4
 ```
 
 ### Staged Execution (Original Workflow)

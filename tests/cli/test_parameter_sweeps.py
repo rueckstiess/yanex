@@ -477,6 +477,164 @@ class TestCLIParameterSweeps:
         assert "epochs" in result.output
         assert "model_type" in result.output
 
+    def test_sweep_in_config_file(self, tmp_path, cli_runner):
+        """Test parameter sweeps defined directly in config file."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "config_sweep_script.py", "yanex_basic"
+        )
+
+        # Create config file WITH sweep syntax
+        config_data = {
+            "epochs": "list(2, 4, 6)",  # Sweep in config
+            "batch_size": 32,
+        }
+        config_path = TestFileHelpers.create_config_file(
+            tmp_path, config_data, "sweep_in_config.yaml"
+        )
+
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--config",
+                str(config_path),
+                "--dry-run",
+                "--ignore-dirty",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Configuration validation passed" in result.output
+        # Should detect the sweep from config file
+        assert "ListSweep" in result.output or "expanding" in result.output.lower()
+
+    def test_multiple_sweeps_in_config_file(self, tmp_path, cli_runner):
+        """Test multiple parameter sweeps defined in config file."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "multi_sweep_script.py", "yanex_basic"
+        )
+
+        # Create config file with multiple sweeps
+        config_data = {
+            "lr": "range(0.01, 0.03, 0.01)",  # 2 values
+            "epochs": "list(10, 20)",  # 2 values
+            "model": "vgg",  # Regular value
+        }
+        config_path = TestFileHelpers.create_config_file(
+            tmp_path, config_data, "multi_sweep_config.yaml"
+        )
+
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--config",
+                str(config_path),
+                "--dry-run",
+                "--ignore-dirty",
+            ],
+        )
+        assert result.exit_code == 0
+        # Should create 2 * 2 = 4 experiments
+        assert "Configuration validation passed" in result.output
+
+    def test_sweep_whitespace_handling_in_config(self, tmp_path, cli_runner):
+        """Test that whitespace in sweep syntax is handled correctly in config files."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "whitespace_test.py", "simple"
+        )
+
+        # Create config with various whitespace patterns
+        config_data = {
+            "no_space": "list(1,2,3)",  # No spaces
+            "with_space": "list(1, 2, 3)",  # Spaces after commas
+            "extra_space": "list( 1 , 2 , 3 )",  # Extra spaces
+            "range_no_space": "range(0,10,2)",
+            "range_with_space": "range( 0 , 10 , 2 )",
+        }
+        config_path = TestFileHelpers.create_config_file(
+            tmp_path, config_data, "whitespace_config.yaml"
+        )
+
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--config",
+                str(config_path),
+                "--dry-run",
+                "--ignore-dirty",
+            ],
+        )
+        # Should parse all sweeps successfully regardless of whitespace
+        assert result.exit_code == 0
+        assert "Configuration validation passed" in result.output
+
+    def test_all_sweep_types_in_config(self, tmp_path, cli_runner):
+        """Test all sweep types (range, linspace, logspace, list) in config file."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "all_types_script.py", "simple"
+        )
+
+        # Create config with all sweep types
+        config_data = {
+            "range_param": "range(1, 3, 1)",
+            "linspace_param": "linspace(0.0, 1.0, 3)",
+            "logspace_param": "logspace(0, 2, 3)",
+            "list_param": "list(a, b, c)",
+        }
+        config_path = TestFileHelpers.create_config_file(
+            tmp_path, config_data, "all_types_config.yaml"
+        )
+
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--config",
+                str(config_path),
+                "--dry-run",
+                "--ignore-dirty",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Configuration validation passed" in result.output
+
+    def test_config_sweep_with_cli_override(self, tmp_path, cli_runner):
+        """Test that CLI parameters can override config file sweep parameters."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "override_test.py", "yanex_basic"
+        )
+
+        # Create config with sweep
+        config_data = {
+            "epochs": "list(10, 20, 30)",  # Sweep in config
+            "lr": 0.01,
+        }
+        config_path = TestFileHelpers.create_config_file(
+            tmp_path, config_data, "override_config.yaml"
+        )
+
+        # Override the sweep with a single value from CLI
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--config",
+                str(config_path),
+                "--param",
+                "epochs=100",  # Override sweep with single value
+                "--dry-run",
+                "--ignore-dirty",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Configuration validation passed" in result.output
+
     def test_sweep_isolation_between_tests(self, tmp_path, cli_runner):
         """Test that sweeps from different tests don't interfere."""
         script_path = TestFileHelpers.create_test_script(

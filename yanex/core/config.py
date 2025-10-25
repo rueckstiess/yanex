@@ -14,15 +14,55 @@ from ..utils.exceptions import ConfigError
 from ..utils.validation import validate_config_data
 
 
+def _parse_config_values(config_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Recursively parse configuration values to detect sweep syntax.
+
+    This allows sweep definitions like 'list(1, 2, 3)' or 'range(0, 10, 1)'
+    to be used in YAML config files, not just CLI parameters.
+
+    Args:
+        config_data: Raw configuration dictionary from YAML
+
+    Returns:
+        Configuration dictionary with parsed sweep parameters
+    """
+    from .parameter_parser_factory import ParameterParserFactory
+
+    factory = ParameterParserFactory()
+    parsed_config = {}
+
+    for key, value in config_data.items():
+        if isinstance(value, str):
+            # Parse string values to detect sweep syntax
+            parsed_config[key] = factory.parse_value(value)
+        elif isinstance(value, dict):
+            # Recursively parse nested dictionaries
+            parsed_config[key] = _parse_config_values(value)
+        elif isinstance(value, list):
+            # Parse each item in lists
+            parsed_config[key] = [
+                factory.parse_value(item) if isinstance(item, str) else item
+                for item in value
+            ]
+        else:
+            # Keep other types as-is (int, float, bool, None)
+            parsed_config[key] = value
+
+    return parsed_config
+
+
 def load_yaml_config(config_path: Path) -> dict[str, Any]:
     """
     Load configuration from YAML file.
+
+    String values are parsed to detect sweep syntax (range, linspace, logspace, list).
 
     Args:
         config_path: Path to YAML configuration file
 
     Returns:
-        Configuration dictionary
+        Configuration dictionary with parsed sweep parameters
 
     Raises:
         ConfigError: If config file cannot be loaded or parsed
@@ -46,7 +86,10 @@ def load_yaml_config(config_path: Path) -> dict[str, Any]:
             f"Configuration must be a dictionary, got {type(config_data)}"
         )
 
-    return validate_config_data(config_data)
+    # Parse config values to detect sweep syntax
+    parsed_config = _parse_config_values(config_data)
+
+    return validate_config_data(parsed_config)
 
 
 def save_yaml_config(config_data: dict[str, Any], config_path: Path) -> None:
