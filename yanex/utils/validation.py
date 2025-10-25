@@ -138,10 +138,21 @@ def validate_config_data(config_data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(config_data, dict):
         raise ValidationError("Configuration must be a dictionary")
 
-    # Basic validation - ensure values are JSON serializable types
+    # Import SweepParameter to check for sweep instances
+    # Import here to avoid circular dependency
+    try:
+        from ..core.config import SweepParameter
+    except ImportError:
+        SweepParameter = None  # type: ignore
+
+    # Basic validation - ensure values are JSON serializable types or sweep parameters
     allowed_types = (str, int, float, bool, list, dict, type(None))
 
     def validate_value(key: str, value: Any) -> None:
+        # Allow SweepParameter instances (for parameter sweeps)
+        if SweepParameter is not None and isinstance(value, SweepParameter):
+            return
+
         if not isinstance(value, allowed_types):
             raise ValidationError(
                 f"Configuration value for '{key}' must be JSON serializable, "
