@@ -9,10 +9,10 @@ Move experiments to archived directory for long-term storage while keeping them 
 yanex archive a1b2c3d4 exp-name
 
 # Archive all failed experiments
-yanex archive --status failed
+yanex archive -s failed
 
 # Archive old completed experiments
-yanex archive --status completed --ended-before "1 month ago"
+yanex archive -s completed --ended-before "1 month ago"
 ```
 
 ## Overview
@@ -34,11 +34,11 @@ This is useful for managing completed experiments that you want to keep for refe
 
 ### Filter Options
 
-- `--status STATUS`: Archive experiments with specific status (completed, failed, cancelled, running, staged)
-- `--name PATTERN`: Archive experiments matching name pattern (supports glob syntax like `*training*`)
-- `--tag TAG`: Archive experiments with ALL specified tags (repeatable)
+- `--status`, `-s STATUS`: Archive experiments with specific status (completed, failed, cancelled, running, staged)
+- `--name`, `-n PATTERN`: Archive experiments matching name pattern (supports glob syntax like `*training*`)
+- `--tag`, `-t TAG`: Archive experiments with ALL specified tags (repeatable)
 - `--started-after DATE`: Archive experiments started after date/time
-- `--started-before DATE`: Archive experiments started before date/time  
+- `--started-before DATE`: Archive experiments started before date/time
 - `--ended-after DATE`: Archive experiments ended after date/time
 - `--ended-before DATE`: Archive experiments ended before date/time
 
@@ -60,7 +60,7 @@ Archives the specified experiments by ID or name.
 ### Archive by Status
 
 ```bash
-yanex archive --status completed
+yanex archive -s completed
 ```
 
 Archives all completed experiments. Useful for regular cleanup of finished work.
@@ -68,7 +68,7 @@ Archives all completed experiments. Useful for regular cleanup of finished work.
 ### Archive Old Experiments
 
 ```bash
-yanex archive --status completed --ended-before "1 month ago"
+yanex archive -s completed --ended-before "1 month ago"
 ```
 
 Archives completed experiments that finished more than a month ago. Date formats support natural language like "yesterday", "1 week ago", or specific dates like "2024-01-01".

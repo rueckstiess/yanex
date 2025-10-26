@@ -9,10 +9,10 @@ Move archived experiments back to the active experiments directory.
 yanex unarchive a1b2c3d4 exp-name
 
 # Unarchive all completed experiments
-yanex unarchive --status completed
+yanex unarchive -s completed
 
 # Unarchive experiments with specific tag
-yanex unarchive --tag baseline
+yanex unarchive -t baseline
 ```
 
 ## Overview
@@ -34,11 +34,11 @@ Unarchived experiments retain all their original data including:
 
 ### Filter Options
 
-- `--status STATUS`: Unarchive experiments with specific status (completed, failed, cancelled, running, staged)
-- `--name PATTERN`: Unarchive experiments matching name pattern (supports glob syntax like `*training*`)
-- `--tag TAG`: Unarchive experiments with ALL specified tags (repeatable)
+- `--status`, `-s STATUS`: Unarchive experiments with specific status (completed, failed, cancelled, running, staged)
+- `--name`, `-n PATTERN`: Unarchive experiments matching name pattern (supports glob syntax like `*training*`)
+- `--tag`, `-t TAG`: Unarchive experiments with ALL specified tags (repeatable)
 - `--started-after DATE`: Unarchive experiments started after date/time
-- `--started-before DATE`: Unarchive experiments started before date/time  
+- `--started-before DATE`: Unarchive experiments started before date/time
 - `--ended-after DATE`: Unarchive experiments ended after date/time
 - `--ended-before DATE`: Unarchive experiments ended before date/time
 
@@ -60,7 +60,7 @@ Restores the specified archived experiments by ID or name back to the active dir
 ### Unarchive by Filter Criteria
 
 ```bash
-yanex unarchive --status completed --tag baseline
+yanex unarchive -s completed -t baseline
 ```
 
 Restores all archived experiments that are completed and have the "baseline" tag.

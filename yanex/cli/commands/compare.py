@@ -5,38 +5,16 @@ Compare experiments - interactive table with parameters and metrics.
 import click
 
 from ...core.comparison import ExperimentComparisonData
-from ...core.constants import EXPERIMENT_STATUSES
 from ...ui.compare_table import run_comparison_table
 from ..filters import ExperimentFilter, parse_time_spec
+from ..filters.arguments import experiment_filter_options
 from .confirm import find_experiments_by_filters, find_experiments_by_identifiers
 
 
 @click.command("compare")
 @click.argument("experiment_identifiers", nargs=-1)
-@click.option(
-    "--status",
-    type=click.Choice(EXPERIMENT_STATUSES),
-    help="Compare experiments with specific status",
-)
-@click.option(
-    "--name",
-    "name_pattern",
-    help="Compare experiments matching name pattern (glob syntax)",
-)
-@click.option(
-    "--tag", "tags", multiple=True, help="Compare experiments with ALL specified tags"
-)
-@click.option(
-    "--started-after",
-    help="Compare experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
-)
-@click.option("--started-before", help="Compare experiments started before date/time")
-@click.option("--ended-after", help="Compare experiments ended after date/time")
-@click.option("--ended-before", help="Compare experiments ended before date/time")
-@click.option(
-    "--archived",
-    is_flag=True,
-    help="Include archived experiments (default: only regular experiments)",
+@experiment_filter_options(
+    include_ids=False, include_archived=True, include_limit=False
 )
 @click.option(
     "--params",
@@ -101,8 +79,8 @@ def compare_experiments(
     \\b
         yanex compare                                    # All experiments
         yanex compare exp1 exp2 exp3                    # Specific experiments
-        yanex compare --status completed                # Completed experiments
-        yanex compare --tag training --only-different  # Training experiments, show differences only
+        yanex compare -s completed                      # Completed experiments
+        yanex compare -t training --only-different      # Training experiments, show differences only
         yanex compare --params learning_rate,epochs    # Show only specified parameters
         yanex compare --export results.csv             # Export to CSV
         yanex compare --no-interactive                  # Static table output

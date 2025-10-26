@@ -88,7 +88,7 @@ yanex compare
 yanex compare exp1 exp2 exp3
 
 # Filter and compare
-yanex compare --status completed --tag baseline
+yanex compare -s completed -t baseline
 ```
 
 ### 3. Track Everything
@@ -100,7 +100,7 @@ List, search, and manage your experiments:
 yanex list
 
 # Find experiments by criteria
-yanex list --status completed --tag production
+yanex list -s completed -t production
 yanex list --started-after "1 week ago"
 
 # Show detailed experiment info

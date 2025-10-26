@@ -12,7 +12,7 @@ yanex update a1b2c3d4 --set-name "New Name" --set-description "Updated descripti
 yanex update exp-name --add-tag production --remove-tag testing
 
 # Bulk update by filter
-yanex update --status failed --set-description "Failed batch run"
+yanex update -s failed --set-description "Failed batch run"
 ```
 
 ## Overview
@@ -42,17 +42,17 @@ Updates can be applied to single experiments or in bulk using filter criteria.
 
 ### Filter Options (for bulk updates)
 
-- `--status STATUS`: Filter experiments by status
-- `--name PATTERN`: Filter experiments by name pattern (supports glob syntax)
-- `--tag TAG`: Filter experiments with ALL specified tags (repeatable)
+- `--status`, `-s STATUS`: Filter experiments by status
+- `--name`, `-n PATTERN`: Filter experiments by name pattern (supports glob syntax)
+- `--tag`, `-t TAG`: Filter experiments with ALL specified tags (repeatable)
 - `--started-after DATE`: Filter experiments started after date/time
-- `--started-before DATE`: Filter experiments started before date/time  
+- `--started-before DATE`: Filter experiments started before date/time
 - `--ended-after DATE`: Filter experiments ended after date/time
 - `--ended-before DATE`: Filter experiments ended before date/time
 
 ### Control Options
 
-- `--archived`: Update archived experiments
+- `--archived`, `-a`: Update archived experiments
 - `--force`: Skip confirmation prompt for bulk operations
 - `--dry-run`: Show what would be updated without making changes
 - `--help`: Show help message and exit
@@ -78,7 +78,7 @@ Adds "production" and "validated" tags while removing the "testing" tag.
 ### Bulk Updates
 
 ```bash
-yanex update --status failed --set-description "Failed during data preprocessing" --add-tag needs-review
+yanex update -s failed --set-description "Failed during data preprocessing" --add-tag needs-review
 ```
 
 Updates all failed experiments with a common description and adds a review tag.

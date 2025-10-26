@@ -10,6 +10,7 @@ from ..error_handling import (
     CLIErrorHandler,
 )
 from ..filters import ExperimentFilter
+from ..filters.arguments import experiment_filter_options
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -19,36 +20,8 @@ from .confirm import (
 
 @click.command("update")
 @click.argument("experiment_identifiers", nargs=-1)
-@click.option(
-    "--status",
-    "filter_status",
-    type=click.Choice(EXPERIMENT_STATUSES),
-    help="Filter experiments by status for bulk updates",
-)
-@click.option(
-    "--name",
-    "filter_name_pattern",
-    help="Filter experiments by name pattern for bulk updates (glob syntax)",
-)
-@click.option(
-    "--tag",
-    "filter_tags",
-    multiple=True,
-    help="Filter experiments by tag for bulk updates (experiments must have ALL specified tags)",
-)
-@click.option(
-    "--started-after",
-    help="Filter experiments started after date/time for bulk updates",
-)
-@click.option(
-    "--started-before",
-    help="Filter experiments started before date/time for bulk updates",
-)
-@click.option(
-    "--ended-after", help="Filter experiments ended after date/time for bulk updates"
-)
-@click.option(
-    "--ended-before", help="Filter experiments ended before date/time for bulk updates"
+@experiment_filter_options(
+    include_ids=False, include_archived=True, include_limit=False
 )
 @click.option(
     "--set-name", "new_name", help="Set experiment name (use empty string to clear)"
@@ -73,7 +46,6 @@ from .confirm import (
     multiple=True,
     help="Remove tag from experiment(s) (repeatable)",
 )
-@click.option("--archived", is_flag=True, help="Update archived experiments")
 @click.option(
     "--force", is_flag=True, help="Skip confirmation prompt for bulk operations"
 )
@@ -85,19 +57,19 @@ from .confirm import (
 def update_experiments(
     ctx,
     experiment_identifiers: tuple,
-    filter_status: str | None,
-    filter_name_pattern: str | None,
-    filter_tags: tuple,
+    status: str | None,
+    name_pattern: str | None,
+    tags: tuple,
     started_after: str | None,
     started_before: str | None,
     ended_after: str | None,
     ended_before: str | None,
+    archived: bool,
     new_name: str | None,
     new_description: str | None,
     new_status: str | None,
     add_tags: tuple,
     remove_tags: tuple,
-    archived: bool,
     force: bool,
     dry_run: bool,
 ):
@@ -115,8 +87,8 @@ def update_experiments(
         yanex update exp123 --set-status completed
 
         # Bulk updates with filters
-        yanex update --status failed --set-description "Failed batch run"
-        yanex update --tag experimental --remove-tag experimental --add-tag archived
+        yanex update -s failed --set-description "Failed batch run"
+        yanex update -t experimental --remove-tag experimental --add-tag archived
         yanex update --ended-before "1 week ago" --add-tag old-runs
 
         # Preview changes without applying
@@ -141,9 +113,9 @@ def update_experiments(
     # Validate mutually exclusive targeting
     has_filters = any(
         [
-            filter_status,
-            filter_name_pattern,
-            filter_tags,
+            status,
+            name_pattern,
+            tags,
             started_after,
             started_before,
             ended_after,
@@ -172,9 +144,9 @@ def update_experiments(
         # Update experiments by filter criteria
         experiments = find_experiments_by_filters(
             filter_obj,
-            status=filter_status,
-            name=filter_name_pattern,
-            tags=list(filter_tags) if filter_tags else None,
+            status=status,
+            name=name_pattern,
+            tags=list(tags) if tags else None,
             started_after=started_after_dt,
             started_before=started_before_dt,
             ended_after=ended_after_dt,

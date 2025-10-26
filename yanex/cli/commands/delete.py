@@ -4,12 +4,12 @@ Delete experiments permanently.
 
 import click
 
-from ...core.constants import EXPERIMENT_STATUSES
 from ..error_handling import (
     BulkOperationReporter,
     CLIErrorHandler,
 )
 from ..filters import ExperimentFilter
+from ..filters.arguments import experiment_filter_options
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -19,30 +19,8 @@ from .confirm import (
 
 @click.command("delete")
 @click.argument("experiment_identifiers", nargs=-1)
-@click.option(
-    "--status",
-    type=click.Choice(EXPERIMENT_STATUSES),
-    help="Delete experiments with specific status",
-)
-@click.option(
-    "--name",
-    "name_pattern",
-    help="Delete experiments matching name pattern (glob syntax)",
-)
-@click.option(
-    "--tag", "tags", multiple=True, help="Delete experiments with ALL specified tags"
-)
-@click.option(
-    "--started-after",
-    help="Delete experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
-)
-@click.option("--started-before", help="Delete experiments started before date/time")
-@click.option("--ended-after", help="Delete experiments ended after date/time")
-@click.option("--ended-before", help="Delete experiments ended before date/time")
-@click.option(
-    "--archived",
-    is_flag=True,
-    help="Delete from archived experiments (default: delete from regular experiments)",
+@experiment_filter_options(
+    include_ids=False, include_archived=True, include_limit=False
 )
 @click.option("--force", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
@@ -71,10 +49,10 @@ def delete_experiments(
     Examples:
     \\b
         yanex delete exp1 exp2               # Delete specific experiments
-        yanex delete --status failed         # Delete all failed experiments
-        yanex delete --archived --ended-before "6 months ago"
-        yanex delete --name "*test*"         # Delete experiments with "test" in name
-        yanex delete --tag temp              # Delete experiments with "temp" tag
+        yanex delete -s failed               # Delete all failed experiments
+        yanex delete -a --ended-before "6 months ago"
+        yanex delete -n "*test*"             # Delete experiments with "test" in name
+        yanex delete -t temp                 # Delete experiments with "temp" tag
     """
     filter_obj = ExperimentFilter()
 
