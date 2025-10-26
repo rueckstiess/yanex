@@ -4,12 +4,12 @@ Archive experiments - move them to archived directory.
 
 import click
 
-from ...core.constants import EXPERIMENT_STATUSES
 from ..error_handling import (
     BulkOperationReporter,
     CLIErrorHandler,
 )
 from ..filters import ExperimentFilter
+from ..filters.arguments import experiment_filter_options
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -19,26 +19,9 @@ from .confirm import (
 
 @click.command("archive")
 @click.argument("experiment_identifiers", nargs=-1)
-@click.option(
-    "--status",
-    type=click.Choice(EXPERIMENT_STATUSES),
-    help="Archive experiments with specific status",
+@experiment_filter_options(
+    include_ids=False, include_archived=False, include_limit=False
 )
-@click.option(
-    "--name",
-    "name_pattern",
-    help="Archive experiments matching name pattern (glob syntax)",
-)
-@click.option(
-    "--tag", "tags", multiple=True, help="Archive experiments with ALL specified tags"
-)
-@click.option(
-    "--started-after",
-    help="Archive experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
-)
-@click.option("--started-before", help="Archive experiments started before date/time")
-@click.option("--ended-after", help="Archive experiments ended after date/time")
-@click.option("--ended-before", help="Archive experiments ended before date/time")
 @click.option("--force", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
@@ -63,10 +46,10 @@ def archive_experiments(
     Examples:
     \\b
         yanex archive exp1 exp2              # Archive specific experiments
-        yanex archive --status failed        # Archive all failed experiments
-        yanex archive --status completed --ended-before "1 month ago"
-        yanex archive --name "*training*"    # Archive experiments with "training" in name
-        yanex archive --tag experiment-v1   # Archive experiments with specific tag
+        yanex archive -s failed              # Archive all failed experiments
+        yanex archive -s completed --ended-before "1 month ago"
+        yanex archive -n "*training*"        # Archive experiments with "training" in name
+        yanex archive -t experiment-v1       # Archive experiments with specific tag
     """
     filter_obj = ExperimentFilter()
 

@@ -4,12 +4,12 @@ Unarchive experiments - move them back from archived directory.
 
 import click
 
-from ...core.constants import EXPERIMENT_STATUSES
 from ..error_handling import (
     BulkOperationReporter,
     CLIErrorHandler,
 )
 from ..filters import ExperimentFilter
+from ..filters.arguments import experiment_filter_options
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -19,26 +19,9 @@ from .confirm import (
 
 @click.command("unarchive")
 @click.argument("experiment_identifiers", nargs=-1)
-@click.option(
-    "--status",
-    type=click.Choice(EXPERIMENT_STATUSES),
-    help="Unarchive experiments with specific status",
+@experiment_filter_options(
+    include_ids=False, include_archived=False, include_limit=False
 )
-@click.option(
-    "--name",
-    "name_pattern",
-    help="Unarchive experiments matching name pattern (glob syntax)",
-)
-@click.option(
-    "--tag", "tags", multiple=True, help="Unarchive experiments with ALL specified tags"
-)
-@click.option(
-    "--started-after",
-    help="Unarchive experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
-)
-@click.option("--started-before", help="Unarchive experiments started before date/time")
-@click.option("--ended-after", help="Unarchive experiments ended after date/time")
-@click.option("--ended-before", help="Unarchive experiments ended before date/time")
 @click.option("--force", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
@@ -63,9 +46,9 @@ def unarchive_experiments(
     Examples:
     \\b
         yanex unarchive exp1 exp2            # Unarchive specific experiments
-        yanex unarchive --status completed   # Unarchive all completed experiments
-        yanex unarchive --name "*training*"  # Unarchive experiments with "training" in name
-        yanex unarchive --tag experiment-v1 # Unarchive experiments with specific tag
+        yanex unarchive -s completed         # Unarchive all completed experiments
+        yanex unarchive -n "*training*"      # Unarchive experiments with "training" in name
+        yanex unarchive -t experiment-v1     # Unarchive experiments with specific tag
     """
     filter_obj = ExperimentFilter()
 

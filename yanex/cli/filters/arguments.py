@@ -57,6 +57,7 @@ def experiment_filter_options(
         # Core filtering options
         func = click.option(
             "--tag",
+            "-t",
             "tags",
             multiple=True,
             help="Filter experiments that have ALL specified tags (repeatable)",
@@ -64,15 +65,16 @@ def experiment_filter_options(
 
         func = click.option(
             "--name",
+            "-n",
             "name_pattern",
             help="Filter by name using glob patterns (e.g., '*training*'). Use empty string '' to match unnamed experiments.",
         )(func)
 
         func = click.option(
             "--status",
-            multiple=True,
+            "-s",
             type=click.Choice(EXPERIMENT_STATUSES, case_sensitive=False),
-            help="Filter by experiment status (repeatable for OR logic)",
+            help="Filter by experiment status",
         )(func)
 
         # Conditional options
@@ -86,6 +88,7 @@ def experiment_filter_options(
         if include_archived:
             func = click.option(
                 "--archived",
+                "-a",
                 is_flag=True,
                 help="Include archived experiments (default: only regular experiments)",
             )(func)
@@ -96,7 +99,7 @@ def experiment_filter_options(
                 help_text += f" (default: {default_limit})"
 
             func = click.option(
-                "--limit", type=int, default=default_limit, help=help_text
+                "--limit", "-l", type=int, default=default_limit, help=help_text
             )(func)
 
         return func
@@ -106,7 +109,7 @@ def experiment_filter_options(
 
 def validate_filter_arguments(
     ids: tuple | None = None,
-    status: tuple | None = None,
+    status: str | None = None,
     name_pattern: str | None = None,
     tags: tuple | None = None,
     started_after: str | None = None,
@@ -121,7 +124,7 @@ def validate_filter_arguments(
 
     Args:
         ids: Tuple of experiment IDs from Click
-        status: Tuple of statuses from Click
+        status: Status string from Click
         name_pattern: Name pattern string
         tags: Tuple of tags from Click
         started_after: Start time filter string
@@ -143,8 +146,8 @@ def validate_filter_arguments(
     if ids and len(ids) > 0:
         normalized["ids"] = list(ids)
 
-    if status and len(status) > 0:
-        normalized["status"] = list(status)
+    if status:
+        normalized["status"] = status
 
     if name_pattern is not None:
         normalized["name_pattern"] = name_pattern
@@ -233,7 +236,11 @@ def format_filter_summary(filter_args: dict[str, Any]) -> str:
         parts.append(f"IDs: {ids_str}")
 
     if "status" in filter_args:
-        parts.append(f"Status: {', '.join(filter_args['status'])}")
+        status_val = filter_args["status"]
+        if isinstance(status_val, list):
+            parts.append(f"Status: {', '.join(status_val)}")
+        else:
+            parts.append(f"Status: {status_val}")
 
     if "name_pattern" in filter_args:
         parts.append(f"Name pattern: '{filter_args['name_pattern']}'")

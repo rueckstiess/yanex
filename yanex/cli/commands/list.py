@@ -4,9 +4,9 @@ List command implementation for yanex CLI.
 
 import click
 
-from ...core.constants import EXPERIMENT_STATUSES
 from ..error_handling import CLIErrorHandler
 from ..filters import ExperimentFilter
+from ..filters.arguments import experiment_filter_options
 from ..formatters import ExperimentTableFormatter
 
 
@@ -17,35 +17,7 @@ from ..formatters import ExperimentTableFormatter
     is_flag=True,
     help="Show all experiments (overrides default limit of 10)",
 )
-@click.option("-n", "--limit", type=int, help="Maximum number of experiments to show")
-@click.option(
-    "--status",
-    type=click.Choice(EXPERIMENT_STATUSES, case_sensitive=False),
-    help="Filter by experiment status",
-)
-@click.option(
-    "--name",
-    "name_pattern",
-    help="Filter by name using glob patterns (e.g., '*tuning*'). Use empty string '' to match unnamed experiments.",
-)
-@click.option(
-    "--tag",
-    "tags",
-    multiple=True,
-    help="Filter by tag (repeatable, experiments must have ALL specified tags)",
-)
-@click.option(
-    "--started-after",
-    help="Show experiments started after date/time (e.g., '2025-01-01', 'yesterday', '1 week ago')",
-)
-@click.option("--started-before", help="Show experiments started before date/time")
-@click.option("--ended-after", help="Show experiments ended after date/time")
-@click.option("--ended-before", help="Show experiments ended before date/time")
-@click.option(
-    "--archived",
-    is_flag=True,
-    help="Show archived experiments instead of regular experiments",
-)
+@experiment_filter_options(include_ids=False, include_archived=True, include_limit=True)
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
 def list_experiments(
@@ -54,7 +26,7 @@ def list_experiments(
     limit: int | None,
     status: str | None,
     name_pattern: str | None,
-    tags: list[str],
+    tags: tuple,
     started_after: str | None,
     started_before: str | None,
     ended_after: str | None,
@@ -65,7 +37,7 @@ def list_experiments(
     List experiments with filtering options.
 
     Shows the last 10 experiments by default. Use --all to show all experiments
-    or -n to specify a custom limit.
+    or -l to specify a custom limit.
 
     Examples:
 
@@ -76,19 +48,19 @@ def list_experiments(
       yanex list --all
 
       # Show last 5 experiments
-      yanex list -n 5
+      yanex list -l 5
 
       # Filter by status
-      yanex list --status completed
+      yanex list -s completed
 
       # Filter by name pattern
-      yanex list --name "*tuning*"
+      yanex list -n "*tuning*"
 
       # Filter unnamed experiments
-      yanex list --name ""
+      yanex list -n ""
 
       # Filter by multiple tags (AND logic)
-      yanex list --tag hyperopt --tag production
+      yanex list -t hyperopt -t production
 
       # Filter by time (started after last week)
       yanex list --started-after "last week"
@@ -97,7 +69,7 @@ def list_experiments(
       yanex list --started-after "last month" --started-before "last week"
 
       # Complex filtering
-      yanex list --status completed --tag production --started-after "last month" -n 20
+      yanex list -s completed -t production --started-after "last month" -l 20
     """
     verbose = ctx.obj.get("verbose", False)
 
