@@ -9,10 +9,10 @@ Permanently delete experiments and all associated data.
 yanex delete a1b2c3d4 exp-name
 
 # Delete all failed experiments
-yanex delete --status failed
+yanex delete -s failed
 
 # Delete old archived experiments
-yanex delete --archived --ended-before "6 months ago"
+yanex delete -a --ended-before "6 months ago"
 ```
 
 ## Overview
@@ -36,17 +36,17 @@ Unlike archiving, deleted experiments cannot be recovered. Use this command only
 
 ### Filter Options
 
-- `--status STATUS`: Delete experiments with specific status (completed, failed, cancelled, running, staged)
-- `--name PATTERN`: Delete experiments matching name pattern (supports glob syntax like `*test*`)
-- `--tag TAG`: Delete experiments with ALL specified tags (repeatable)
+- `--status`, `-s STATUS`: Delete experiments with specific status (completed, failed, cancelled, running, staged)
+- `--name`, `-n PATTERN`: Delete experiments matching name pattern (supports glob syntax like `*test*`)
+- `--tag`, `-t TAG`: Delete experiments with ALL specified tags (repeatable)
 - `--started-after DATE`: Delete experiments started after date/time
-- `--started-before DATE`: Delete experiments started before date/time  
+- `--started-before DATE`: Delete experiments started before date/time
 - `--ended-after DATE`: Delete experiments ended after date/time
 - `--ended-before DATE`: Delete experiments ended before date/time
 
 ### Location Options
 
-- `--archived`: Delete from archived experiments (default: delete from regular experiments)
+- `--archived`, `-a`: Delete from archived experiments (default: delete from regular experiments)
 
 ### Control Options
 
@@ -66,7 +66,7 @@ Permanently deletes the specified experiments by ID or name.
 ### Delete Failed Experiments
 
 ```bash
-yanex delete --status failed
+yanex delete -s failed
 ```
 
 Removes all failed experiments to clean up unsuccessful runs.
@@ -74,7 +74,7 @@ Removes all failed experiments to clean up unsuccessful runs.
 ### Delete Old Archived Experiments
 
 ```bash
-yanex delete --archived --ended-before "6 months ago"
+yanex delete -a --ended-before "6 months ago"
 ```
 
 Permanently removes archived experiments older than 6 months to free up storage space.

@@ -12,7 +12,7 @@ yanex compare
 yanex compare exp1 exp2 exp3
 
 # Compare with filters
-yanex compare --status completed --tag production
+yanex compare -s completed -t production
 ```
 
 ## Overview
@@ -20,7 +20,7 @@ yanex compare --status completed --tag production
 The `yanex compare` command provides a powerful way to analyze and compare experiments:
 
 - **Interactive Table**: Navigate with keyboard, sort by any column
-- **Flexible Filtering**: Compare subsets of experiments using various criteria
+- **Flexible Filtering**: Compare subsets of experiments using various criteria (with convenient short aliases)
 - **Column Selection**: Focus on specific parameters and metrics
 - **Export Options**: Save comparison data to CSV for external analysis
 
@@ -70,28 +70,34 @@ yanex compare baseline-model experiment-v2 abc1234
 
 ### By Status
 
+Filter using `--status` or `-s`:
+
 ```bash
-yanex compare --status completed
-yanex compare --status failed
-yanex compare --status running
+yanex compare -s completed
+yanex compare -s failed
+yanex compare -s running
 ```
 
 ### By Tags
 
+Filter using `--tag` or `-t`:
+
 ```bash
 # Experiments with specific tag
-yanex compare --tag production
+yanex compare -t production
 
 # Multiple tags (experiments must have ALL tags)
-yanex compare --tag baseline --tag validated
+yanex compare -t baseline -t validated
 ```
 
 ### By Name Pattern
 
+Filter using `--name` or `-n`:
+
 ```bash
 # Wildcard matching
-yanex compare --name "*baseline*"
-yanex compare --name "model-v*"
+yanex compare -n "*baseline*"
+yanex compare -n "model-v*"
 ```
 
 ### By Time Range
@@ -110,9 +116,11 @@ yanex compare --ended-after "yesterday"
 
 ### Include Archived
 
+Use `--archived` or `-a`:
+
 ```bash
 # Include archived experiments in comparison
-yanex compare --archived
+yanex compare -a
 ```
 
 ## Column Selection
@@ -193,36 +201,47 @@ yanex compare --tag production --only-different --export prod_results.csv
 ### Compare Recent Successful Experiments
 
 ```bash
-yanex compare --status completed --started-after "1 week ago"
+yanex compare -s completed --started-after "1 week ago"
 ```
 
 ### Parameter Sweep Analysis
 
 ```bash
 # After running a learning rate sweep
-yanex compare --tag "lr-sweep" --only-different
+yanex compare -t "lr-sweep" --only-different
 ```
 
 ### Model Comparison
 
 ```bash
 # Compare different model architectures
-yanex compare --name "*resnet*" --name "*transformer*" --only-different
+yanex compare -n "*resnet*" --only-different
 ```
 
 ### Production Model Analysis
 
 ```bash
 # Compare all production models, export for reporting
-yanex compare --tag production --export production_models.csv
+yanex compare -t production --export production_models.csv
 ```
 
 ### Failed Experiment Analysis
 
 ```bash
 # Analyze what went wrong with failed experiments
-yanex compare --status failed --started-after "yesterday"
+yanex compare -s failed --started-after "yesterday"
 ```
+
+## Short Aliases
+
+All filtering options have convenient short aliases:
+
+- `-s` for `--status`
+- `-n` for `--name`
+- `-t` for `--tag`
+- `-a` for `--archived`
+
+These aliases match the `run` and `list` commands for consistency.
 
 ## Column Types and Formatting
 
