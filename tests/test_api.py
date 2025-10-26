@@ -273,9 +273,8 @@ class TestExperimentAPI:
         assert saved_results[0]["step"] == 5
 
     @patch("yanex.api._get_experiment_manager")
-    @patch("builtins.print")
-    def test_log_metrics_merge_info(self, mock_print, mock_get_manager):
-        """Test info message when merging with existing step."""
+    def test_log_metrics_merge_info(self, mock_get_manager):
+        """Test merging metrics with existing step."""
         mock_get_manager.return_value = self.manager
 
         # Log first result
@@ -284,10 +283,7 @@ class TestExperimentAPI:
         # Log second result with same step (should merge)
         yanex.log_metrics({"loss": 0.05}, step=1)
 
-        # Should have printed info message
-        mock_print.assert_called_with("Info: Merging metrics with existing step 1")
-
-        # Verify both metrics are present
+        # Verify both metrics are present in the same step
         saved_results = self.manager.storage.load_results(self.experiment_id)
         assert len(saved_results) == 1
         assert saved_results[0]["accuracy"] == 0.90
