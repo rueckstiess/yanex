@@ -11,7 +11,6 @@ from click.testing import CliRunner
 from tests.test_utils import TestDataFactory
 from yanex.cli.commands.open import _open_in_file_explorer, open_experiment
 from yanex.cli.filters import ExperimentFilter
-from yanex.core.manager import ExperimentManager
 
 
 class TestOpenCommand:
