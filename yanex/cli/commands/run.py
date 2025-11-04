@@ -13,7 +13,9 @@ from ...core.manager import ExperimentManager
 from ...core.script_executor import ScriptExecutor
 
 
-@click.command()
+@click.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
 @click.argument("script", type=click.Path(exists=True, path_type=Path), required=False)
 @click.option(
     "--config",
@@ -97,6 +99,14 @@ def run(
       # Clone and override specific parameters
       yanex run train.py --clone-from abc123 --param lr=0.05
 
+      # Pass script-specific arguments (forwarded to script)
+      yanex run train.py -p learning_rate=0.01 --data-exp abc123 --fold 0
+
+      # Script args are passed to your script via sys.argv
+      # In your script, use argparse to parse them:
+      # parser.add_argument('--data-exp', required=True)
+      # parser.add_argument('--fold', type=int, default=0)
+
       # Parameter sweeps (requires --stage)
       yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --stage
       yanex run train.py --param "lr=linspace(0.001, 0.1, 5)" --stage
@@ -128,6 +138,9 @@ def run(
 
     verbose = ctx.obj.get("verbose", False)
     console = Console()  # Use stdout with colors
+
+    # Capture script-specific arguments (unknown to yanex)
+    script_args = list(ctx.args) if ctx.args else []
 
     # Handle mutually exclusive flags
     if stage and staged:
@@ -167,6 +180,8 @@ def run(
             console.print(f"[dim]Cloning from experiment: {clone_from}[/]")
         if param:
             console.print(f"[dim]Parameter overrides: {param}[/]")
+        if script_args:
+            console.print(f"[dim]Script arguments: {script_args}[/]")
 
     try:
         # Load and merge configuration
@@ -243,6 +258,7 @@ def run(
                 config=experiment_config,
                 verbose=verbose,
                 ignore_dirty=resolved_ignore_dirty,
+                script_args=script_args,
             )
         elif has_sweep_parameters(experiment_config):
             # Direct sweep execution (NEW in v0.6.0)
@@ -255,6 +271,7 @@ def run(
                 verbose=verbose,
                 ignore_dirty=resolved_ignore_dirty,
                 max_workers=parallel,  # None=sequential, N=parallel
+                script_args=script_args,
             )
         else:
             # Single experiment execution
@@ -266,6 +283,7 @@ def run(
                 config=experiment_config,
                 verbose=verbose,
                 ignore_dirty=resolved_ignore_dirty,
+                script_args=script_args,
             )
 
     except Exception as e:
@@ -281,9 +299,13 @@ def _execute_experiment(
     config: dict[str, Any],
     verbose: bool = False,
     ignore_dirty: bool = False,
+    script_args: list[str] | None = None,
 ) -> None:
     """Execute script as an experiment with proper lifecycle management."""
     console = Console()  # Use stdout with colors
+
+    if script_args is None:
+        script_args = []
 
     # Create experiment
     manager = ExperimentManager()
@@ -294,6 +316,7 @@ def _execute_experiment(
         tags=tags,
         description=description,
         allow_dirty=ignore_dirty,
+        script_args=script_args,
     )
 
     if verbose:
@@ -304,7 +327,7 @@ def _execute_experiment(
 
     # Execute script using ScriptExecutor
     executor = ScriptExecutor(manager)
-    executor.execute_script(experiment_id, script, config, verbose)
+    executor.execute_script(experiment_id, script, config, verbose, script_args)
 
 
 def _generate_sweep_experiment_name(
@@ -339,10 +362,14 @@ def _stage_experiment(
     config: dict[str, Any],
     verbose: bool = False,
     ignore_dirty: bool = False,
+    script_args: list[str] | None = None,
 ) -> None:
     """Stage experiment(s) for later execution, expanding parameter sweeps."""
 
     manager = ExperimentManager()
+
+    if script_args is None:
+        script_args = []
 
     # Check if this is a parameter sweep
     if has_sweep_parameters(config):
@@ -373,6 +400,7 @@ def _stage_experiment(
                 description=description,
                 allow_dirty=ignore_dirty,
                 stage_only=True,
+                script_args=script_args,
             )
 
             experiment_ids.append(experiment_id)
@@ -398,6 +426,7 @@ def _stage_experiment(
             description=description,
             allow_dirty=ignore_dirty,
             stage_only=True,
+            script_args=script_args,
         )
 
         if verbose:
@@ -612,9 +641,13 @@ def _execute_staged_script(
 ) -> None:
     """Execute the script for a staged experiment."""
 
+    # Load script_args from metadata (if present)
+    metadata = manager.storage.load_metadata(experiment_id)
+    script_args = metadata.get("script_args", [])
+
     # Execute script using ScriptExecutor
     executor = ScriptExecutor(manager)
-    executor.execute_script(experiment_id, script_path, config, verbose)
+    executor.execute_script(experiment_id, script_path, config, verbose, script_args)
 
 
 def _execute_sweep_experiments(
@@ -626,6 +659,7 @@ def _execute_sweep_experiments(
     verbose: bool = False,
     ignore_dirty: bool = False,
     max_workers: int | None = None,
+    script_args: list[str] | None = None,
 ) -> None:
     """Execute parameter sweep directly (sequential or parallel).
 
@@ -641,8 +675,12 @@ def _execute_sweep_experiments(
         verbose: Show verbose output
         ignore_dirty: Allow running with uncommitted changes
         max_workers: Maximum parallel workers. None=sequential, N=parallel
+        script_args: Arguments to pass through to the script
     """
     manager = ExperimentManager()
+
+    if script_args is None:
+        script_args = []
 
     # Expand parameter sweeps into individual configurations
     expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
@@ -663,6 +701,7 @@ def _execute_sweep_experiments(
             manager,
             verbose,
             ignore_dirty,
+            script_args,
         )
     else:
         # Parallel execution
@@ -677,6 +716,7 @@ def _execute_sweep_experiments(
             verbose,
             ignore_dirty,
             max_workers,
+            script_args,
         )
 
 
@@ -690,6 +730,7 @@ def _execute_sweep_sequential(
     manager: ExperimentManager,
     verbose: bool,
     ignore_dirty: bool,
+    script_args: list[str],
 ) -> None:
     """Execute sweep experiments sequentially."""
     console = Console()
@@ -722,6 +763,7 @@ def _execute_sweep_sequential(
                 description=description,
                 allow_dirty=ignore_dirty,
                 stage_only=False,  # Create as "created", not "staged"
+                script_args=script_args,
             )
 
             # Start experiment
@@ -729,7 +771,9 @@ def _execute_sweep_sequential(
 
             # Execute script
             executor = ScriptExecutor(manager)
-            executor.execute_script(experiment_id, script, expanded_config, verbose)
+            executor.execute_script(
+                experiment_id, script, expanded_config, verbose, script_args
+            )
 
             completed += 1
             console.print(f"  [green]✓ Completed: {experiment_id}[/]")
@@ -758,6 +802,7 @@ def _execute_sweep_parallel(
     verbose: bool,
     ignore_dirty: bool,
     max_workers: int,
+    script_args: list[str],
 ) -> None:
     """Execute sweep experiments in parallel."""
     import multiprocessing
@@ -789,6 +834,7 @@ def _execute_sweep_parallel(
                 "tags": sweep_tags,
                 "description": description,
                 "ignore_dirty": ignore_dirty,
+                "script_args": script_args,
             }
         )
 
@@ -809,6 +855,7 @@ def _execute_sweep_parallel(
                 exp_data["config"],
                 verbose,
                 exp_data["ignore_dirty"],
+                exp_data["script_args"],
             ): exp_data["name"]
             for exp_data in experiment_data
         }
@@ -849,6 +896,7 @@ def _execute_single_sweep_experiment(
     config: dict[str, Any],
     verbose: bool,
     ignore_dirty: bool,
+    script_args: list[str],
 ) -> tuple[bool, str, str | None]:
     """Worker function for parallel sweep experiment execution.
 
@@ -869,6 +917,7 @@ def _execute_single_sweep_experiment(
             description=description,
             allow_dirty=ignore_dirty,
             stage_only=False,  # NOT staged
+            script_args=script_args,
         )
 
         # Start experiment
@@ -876,7 +925,7 @@ def _execute_single_sweep_experiment(
 
         # Execute script
         executor = ScriptExecutor(manager)
-        executor.execute_script(experiment_id, script, config, verbose)
+        executor.execute_script(experiment_id, script, config, verbose, script_args)
 
         return (True, experiment_id, None)
 
