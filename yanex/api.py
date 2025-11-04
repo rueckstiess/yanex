@@ -144,6 +144,57 @@ def get_param(key: str, default: Any = None) -> Any:
         return params.get(key, default)
 
 
+def get_cli_args() -> list[str]:
+    """Get the CLI arguments used to run the current experiment.
+
+    This function provides access to the complete command-line arguments
+    that were used to invoke the experiment via 'yanex run'.
+
+    Returns:
+        List of CLI arguments (e.g., ['run', 'script.py', '--parallel', '3'])
+        Empty list in standalone mode (when not run via yanex CLI)
+
+    Example:
+        >>> # When run via: yanex run train.py --parallel 3 --param lr=0.01
+        >>> cli_args = yanex.get_cli_args()
+        >>> # cli_args = ['run', 'train.py', '--parallel', '3', '--param', 'lr=0.01']
+        >>>
+        >>> # Extract specific flag value
+        >>> if '--parallel' in cli_args:
+        ...     parallel_idx = cli_args.index('--parallel')
+        ...     parallel_workers = int(cli_args[parallel_idx + 1])
+        >>>
+        >>> # Use in orchestrator scripts that spawn child experiments
+        >>> parallel = 3  # default
+        >>> if '--parallel' in cli_args:
+        ...     parallel_idx = cli_args.index('--parallel')
+        ...     parallel = int(cli_args[parallel_idx + 1])
+        >>> results = yanex.run_multiple(experiments, parallel=parallel)
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return []
+
+    # If experiment ID comes from environment (CLI mode), read from environment
+    if not hasattr(_local, "experiment_id"):
+        # CLI subprocess mode - read from environment variable
+        cli_args_json = os.environ.get("YANEX_CLI_ARGS", "[]")
+        try:
+            import json
+
+            return json.loads(cli_args_json)
+        except (json.JSONDecodeError, ValueError):
+            return []
+    else:
+        # Direct API usage - read from experiment metadata
+        manager = _get_experiment_manager()
+        try:
+            metadata = manager.get_experiment_metadata(experiment_id)
+            return metadata.get("cli_args", [])
+        except Exception:
+            return []
+
+
 def get_status() -> str | None:
     """Get current experiment status.
 

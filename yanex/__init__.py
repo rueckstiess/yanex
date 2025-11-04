@@ -23,6 +23,7 @@ from .api import (
     execute_bash_script,
     fail,
     # Experiment information
+    get_cli_args,
     get_experiment_dir,
     get_experiment_id,
     get_metadata,
@@ -41,6 +42,9 @@ from .api import (
     log_text,
 )
 
+# Batch execution API
+from .executor import ExperimentResult, ExperimentSpec, run_multiple
+
 __version__ = "0.4.0"
 __author__ = "Thomas"
 
@@ -48,6 +52,7 @@ __all__ = [
     # Parameter access
     "get_params",
     "get_param",
+    "get_cli_args",
     # Context detection
     "is_standalone",
     "has_context",
@@ -72,6 +77,10 @@ __all__ = [
     "completed",
     "fail",
     "cancel",
+    # Batch execution API
+    "ExperimentSpec",
+    "ExperimentResult",
+    "run_multiple",
     # Internal functions (for testing)
     "_clear_current_experiment_id",
     "_ExperimentCancelledException",

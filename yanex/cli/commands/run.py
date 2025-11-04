@@ -2,6 +2,7 @@
 Run command implementation for yanex CLI.
 """
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -142,6 +143,10 @@ def run(
     # Capture script-specific arguments (unknown to yanex)
     script_args = list(ctx.args) if ctx.args else []
 
+    # Capture complete CLI arguments for yanex.get_cli_args()
+    # sys.argv[1:] gives us everything after 'yanex'
+    cli_args = sys.argv[1:] if len(sys.argv) > 1 else []
+
     # Handle mutually exclusive flags
     if stage and staged:
         click.echo("Error: Cannot use both --stage and --staged flags", err=True)
@@ -259,6 +264,7 @@ def run(
                 verbose=verbose,
                 ignore_dirty=resolved_ignore_dirty,
                 script_args=script_args,
+                cli_args=cli_args,
             )
         elif has_sweep_parameters(experiment_config):
             # Direct sweep execution (NEW in v0.6.0)
@@ -272,6 +278,7 @@ def run(
                 ignore_dirty=resolved_ignore_dirty,
                 max_workers=parallel,  # None=sequential, N=parallel
                 script_args=script_args,
+                cli_args=cli_args,
             )
         else:
             # Single experiment execution
@@ -284,6 +291,7 @@ def run(
                 verbose=verbose,
                 ignore_dirty=resolved_ignore_dirty,
                 script_args=script_args,
+                cli_args=cli_args,
             )
 
     except Exception as e:
@@ -300,12 +308,15 @@ def _execute_experiment(
     verbose: bool = False,
     ignore_dirty: bool = False,
     script_args: list[str] | None = None,
+    cli_args: list[str] | None = None,
 ) -> None:
     """Execute script as an experiment with proper lifecycle management."""
     console = Console()  # Use stdout with colors
 
     if script_args is None:
         script_args = []
+    if cli_args is None:
+        cli_args = []
 
     # Create experiment
     manager = ExperimentManager()
@@ -317,6 +328,7 @@ def _execute_experiment(
         description=description,
         allow_dirty=ignore_dirty,
         script_args=script_args,
+        cli_args=cli_args,
     )
 
     if verbose:
@@ -328,6 +340,23 @@ def _execute_experiment(
     # Execute script using ScriptExecutor
     executor = ScriptExecutor(manager)
     executor.execute_script(experiment_id, script, config, verbose, script_args)
+
+
+def _print_sweep_summary(results: list, total: int) -> None:
+    """Print CLI-friendly summary of sweep execution.
+
+    Args:
+        results: List of ExperimentResult objects
+        total: Total number of experiments attempted
+    """
+    completed = [r for r in results if r.status == "completed"]
+    failed = [r for r in results if r.status == "failed"]
+
+    click.echo("\n✓ Sweep execution completed")
+    click.echo(f"  Total: {total}")
+    click.echo(f"  Completed: {len(completed)}")
+    if failed:
+        click.echo(f"  Failed: {len(failed)}")
 
 
 def _generate_sweep_experiment_name(
@@ -363,6 +392,7 @@ def _stage_experiment(
     verbose: bool = False,
     ignore_dirty: bool = False,
     script_args: list[str] | None = None,
+    cli_args: list[str] | None = None,
 ) -> None:
     """Stage experiment(s) for later execution, expanding parameter sweeps."""
 
@@ -370,6 +400,8 @@ def _stage_experiment(
 
     if script_args is None:
         script_args = []
+    if cli_args is None:
+        cli_args = []
 
     # Validate git working directory is clean (unless explicitly allowed)
     # Check ONCE before creating any experiments to fail fast
@@ -410,6 +442,7 @@ def _stage_experiment(
                 allow_dirty=ignore_dirty,
                 stage_only=True,
                 script_args=script_args,
+                cli_args=cli_args,
             )
 
             experiment_ids.append(experiment_id)
@@ -436,6 +469,7 @@ def _stage_experiment(
             allow_dirty=ignore_dirty,
             stage_only=True,
             script_args=script_args,
+            cli_args=cli_args,
         )
 
         if verbose:
@@ -669,8 +703,9 @@ def _execute_sweep_experiments(
     ignore_dirty: bool = False,
     max_workers: int | None = None,
     script_args: list[str] | None = None,
+    cli_args: list[str] | None = None,
 ) -> None:
-    """Execute parameter sweep directly (sequential or parallel).
+    """Execute parameter sweep directly using shared executor.
 
     This creates and executes experiments on-the-fly without using
     the "staged" status, avoiding interference with existing staged experiments.
@@ -685,11 +720,14 @@ def _execute_sweep_experiments(
         ignore_dirty: Allow running with uncommitted changes
         max_workers: Maximum parallel workers. None=sequential, N=parallel
         script_args: Arguments to pass through to the script
+        cli_args: Complete CLI arguments used to run the experiment
     """
-    manager = ExperimentManager()
+    from ...executor import ExperimentSpec, run_multiple
 
     if script_args is None:
         script_args = []
+    if cli_args is None:
+        cli_args = []
 
     # Validate git working directory is clean (unless explicitly allowed)
     # Check ONCE before creating any experiments to fail fast
@@ -707,258 +745,34 @@ def _execute_sweep_experiments(
         f"✓ Parameter sweep detected: running {len(expanded_configs)} experiments"
     )
 
-    if max_workers is None:
-        # Sequential execution
-        _execute_sweep_sequential(
-            script,
-            name,
-            tags,
-            description,
-            expanded_configs,
-            sweep_param_paths,
-            manager,
-            verbose,
-            ignore_dirty,
-            script_args,
-        )
-    else:
-        # Parallel execution
-        _execute_sweep_parallel(
-            script,
-            name,
-            tags,
-            description,
-            expanded_configs,
-            sweep_param_paths,
-            manager,
-            verbose,
-            ignore_dirty,
-            max_workers,
-            script_args,
-        )
-
-
-def _execute_sweep_sequential(
-    script: Path,
-    name: str | None,
-    tags: list[str],
-    description: str | None,
-    expanded_configs: list[dict[str, Any]],
-    sweep_param_paths: list[str],
-    manager: ExperimentManager,
-    verbose: bool,
-    ignore_dirty: bool,
-    script_args: list[str],
-) -> None:
-    """Execute sweep experiments sequentially."""
-    console = Console()
-    completed = 0
-    failed = 0
-
-    # Add "sweep" tag to all sweep experiments
+    # Add "sweep" tag to all sweep experiments (CLI convention)
     sweep_tags = list(tags) if tags else []
     if "sweep" not in sweep_tags:
         sweep_tags.append("sweep")
 
-    for i, expanded_config in enumerate(expanded_configs):
-        # Generate descriptive name for each sweep experiment
-        sweep_name = _generate_sweep_experiment_name(
-            name, expanded_config, sweep_param_paths
-        )
-
-        try:
-            if verbose:
-                console.print(
-                    f"[dim][{i + 1}/{len(expanded_configs)}] Starting: {sweep_name}[/]"
-                )
-
-            # Create and execute immediately (NOT staged)
-            experiment_id = manager.create_experiment(
-                script_path=script,
-                name=sweep_name,
-                config=expanded_config,
-                tags=sweep_tags,
-                description=description,
-                allow_dirty=ignore_dirty,
-                stage_only=False,  # Create as "created", not "staged"
-                script_args=script_args,
-            )
-
-            # Start experiment
-            manager.start_experiment(experiment_id)
-
-            # Execute script
-            executor = ScriptExecutor(manager)
-            executor.execute_script(
-                experiment_id, script, expanded_config, verbose, script_args
-            )
-
-            completed += 1
-            console.print(f"  [green]✓ Completed: {experiment_id}[/]")
-
-        except Exception:
-            failed += 1
-            # ScriptExecutor already prints detailed error info, just note the failure
-            console.print(f"  [red]✗ Failed: {sweep_name}[/]")
-            # Continue with next experiment
-
-    # Summary
-    click.echo("\n✓ Sweep execution completed")
-    click.echo(f"  Total: {len(expanded_configs)}")
-    click.echo(f"  Completed: {completed}")
-    click.echo(f"  Failed: {failed}")
-
-
-def _execute_sweep_parallel(
-    script: Path,
-    name: str | None,
-    tags: list[str],
-    description: str | None,
-    expanded_configs: list[dict[str, Any]],
-    sweep_param_paths: list[str],
-    manager: ExperimentManager,
-    verbose: bool,
-    ignore_dirty: bool,
-    max_workers: int,
-    script_args: list[str],
-) -> None:
-    """Execute sweep experiments in parallel."""
-    import multiprocessing
-    from concurrent.futures import ProcessPoolExecutor, as_completed
-
-    console = Console()
-
-    if max_workers == 0:
-        max_workers = multiprocessing.cpu_count()
-
-    click.echo(f"  Executing with {max_workers} parallel workers")
-
-    # Add "sweep" tag to all sweep experiments
-    sweep_tags = list(tags) if tags else []
-    if "sweep" not in sweep_tags:
-        sweep_tags.append("sweep")
-
-    # Pre-generate experiment data (names, configs)
-    experiment_data = []
-    for expanded_config in expanded_configs:
-        sweep_name = _generate_sweep_experiment_name(
-            name, expanded_config, sweep_param_paths
-        )
-        experiment_data.append(
-            {
-                "name": sweep_name,
-                "config": expanded_config,
-                "script": script,
-                "tags": sweep_tags,
-                "description": description,
-                "ignore_dirty": ignore_dirty,
-                "script_args": script_args,
-            }
-        )
-
-    # Track results
-    completed = 0
-    failed = 0
-
-    # Execute in parallel
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all experiments
-        future_to_exp = {
-            executor.submit(
-                _execute_single_sweep_experiment,
-                exp_data["script"],
-                exp_data["name"],
-                exp_data["tags"],
-                exp_data["description"],
-                exp_data["config"],
-                verbose,
-                exp_data["ignore_dirty"],
-                exp_data["script_args"],
-            ): exp_data["name"]
-            for exp_data in experiment_data
-        }
-
-        # Process results as they complete
-        for future in as_completed(future_to_exp):
-            exp_name = future_to_exp[future]
-            try:
-                success, experiment_id, error_msg = future.result()
-                if success:
-                    completed += 1
-                    console.print(
-                        f"  [green]✓ Completed: {experiment_id} ({exp_name})[/]"
-                    )
-                else:
-                    failed += 1
-                    if error_msg:
-                        console.print(f"  [red]✗ Failed: {exp_name}[/]")
-                        console.print(f"    [red]Error: {error_msg}[/]")
-                    else:
-                        console.print(f"  [red]✗ Failed: {exp_name}[/]")
-            except Exception as e:
-                failed += 1
-                console.print(f"  [red]✗ Error: {exp_name}: {e}[/]")
-
-    # Summary
-    click.echo("\n✓ Sweep execution completed")
-    click.echo(f"  Total: {len(experiment_data)}")
-    click.echo(f"  Completed: {completed}")
-    click.echo(f"  Failed: {failed}")
-
-
-def _execute_single_sweep_experiment(
-    script: Path,
-    name: str,
-    tags: list[str],
-    description: str | None,
-    config: dict[str, Any],
-    verbose: bool,
-    ignore_dirty: bool,
-    script_args: list[str],
-) -> tuple[bool, str, str | None]:
-    """Worker function for parallel sweep experiment execution.
-
-    This runs in a separate process, so it needs to create its own manager.
-
-    Returns:
-        (success, experiment_id, error_message) tuple
-    """
-    manager = ExperimentManager()
-
-    try:
-        # Create experiment
-        experiment_id = manager.create_experiment(
+    # Build ExperimentSpec objects for each configuration
+    experiments = [
+        ExperimentSpec(
             script_path=script,
-            name=name,
-            config=config,
-            tags=tags,
+            config=expanded_config,
+            name=_generate_sweep_experiment_name(
+                name, expanded_config, sweep_param_paths
+            ),
+            tags=sweep_tags,
             description=description,
-            allow_dirty=ignore_dirty,
-            stage_only=False,  # NOT staged
             script_args=script_args,
+            cli_args=cli_args,
         )
+        for expanded_config in expanded_configs
+    ]
 
-        # Start experiment
-        manager.start_experiment(experiment_id)
+    # Use shared executor for sequential or parallel execution
+    results = run_multiple(
+        experiments, parallel=max_workers, allow_dirty=ignore_dirty, verbose=verbose
+    )
 
-        # Execute script
-        executor = ScriptExecutor(manager)
-        executor.execute_script(experiment_id, script, config, verbose, script_args)
-
-        return (True, experiment_id, None)
-
-    except Exception as e:
-        # Try to mark as failed if experiment was created
-        error_msg = str(e)
-        try:
-            if "experiment_id" in locals():
-                manager.fail_experiment(
-                    experiment_id, f"Sweep execution failed: {error_msg}"
-                )
-        except Exception:
-            pass
-
-        return (False, "", error_msg)
+    # Print CLI-specific summary
+    _print_sweep_summary(results, len(expanded_configs))
 
 
 def _normalize_tags(tag_value: Any) -> list[str]:

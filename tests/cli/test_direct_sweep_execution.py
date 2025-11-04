@@ -64,7 +64,7 @@ class TestDirectSweepExecution:
             )
             assert result.exit_code == 0
             assert "Parameter sweep detected: running 3 experiments" in result.output
-            assert "Executing with 2 parallel workers" in result.output
+            assert "Running 3 experiments with 2 parallel workers" in result.output
             assert "Sweep execution completed" in result.output
         finally:
             if old_yanex_dir:
@@ -98,7 +98,7 @@ class TestDirectSweepExecution:
             assert result.exit_code == 0
             assert "Parameter sweep detected" in result.output
             # Check that parallel workers message appears (with some number of workers)
-            assert "Executing with" in result.output
+            assert "Running 2 experiments with" in result.output
             assert "parallel workers" in result.output
         finally:
             if old_yanex_dir:
