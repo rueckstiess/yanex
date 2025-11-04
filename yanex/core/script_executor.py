@@ -32,6 +32,7 @@ class ScriptExecutor:
         script_path: Path,
         config: dict[str, Any],
         verbose: bool = False,
+        script_args: list[str] | None = None,
     ) -> None:
         """Execute a script for an experiment with proper output handling.
 
@@ -40,11 +41,14 @@ class ScriptExecutor:
             script_path: Path to the script to execute.
             config: Configuration parameters for the script.
             verbose: Whether to show verbose output.
+            script_args: Arguments to pass through to the script via sys.argv.
 
         Raises:
             click.Abort: If the script execution fails.
             KeyboardInterrupt: If execution is interrupted by user.
         """
+        if script_args is None:
+            script_args = []
         try:
             # Prepare environment for subprocess
             env = self._prepare_environment(experiment_id, config)
@@ -54,7 +58,7 @@ class ScriptExecutor:
 
             # Execute script with real-time output streaming
             return_code, stdout_text, stderr_text = self._execute_with_streaming(
-                script_path, env
+                script_path, env, script_args
             )
 
             # Save captured output as artifacts
@@ -105,13 +109,14 @@ class ScriptExecutor:
         return env
 
     def _execute_with_streaming(
-        self, script_path: Path, env: dict[str, str]
+        self, script_path: Path, env: dict[str, str], script_args: list[str]
     ) -> tuple[int, str, str]:
         """Execute script with real-time output streaming.
 
         Args:
             script_path: Path to the script to execute.
             env: Environment variables for the subprocess.
+            script_args: Arguments to pass through to the script via sys.argv.
 
         Returns:
             Tuple of (return_code, stdout_text, stderr_text).
@@ -119,8 +124,11 @@ class ScriptExecutor:
         stdout_capture: list[str] = []
         stderr_capture: list[str] = []
 
+        # Build command: python -u script.py [script_args...]
+        cmd = [sys.executable, "-u", str(script_path.resolve())] + script_args
+
         process = subprocess.Popen(
-            [sys.executable, "-u", str(script_path.resolve())],
+            cmd,
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

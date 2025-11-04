@@ -384,6 +384,7 @@ class ExperimentManager:
         description: str | None = None,
         allow_dirty: bool = False,
         stage_only: bool = False,
+        script_args: list[str] | None = None,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -395,6 +396,7 @@ class ExperimentManager:
             description: Optional experiment description
             allow_dirty: Allow running with uncommitted changes
             stage_only: If True, create experiment with "staged" status for later execution
+            script_args: Arguments to pass through to the script via sys.argv
 
         Returns:
             Experiment ID
@@ -429,7 +431,7 @@ class ExperimentManager:
 
         # Build and save metadata
         metadata = self.build_metadata(
-            experiment_id, script_path, name, tags, description, stage_only
+            experiment_id, script_path, name, tags, description, stage_only, script_args
         )
         self.storage.save_metadata(experiment_id, metadata)
 
@@ -446,6 +448,7 @@ class ExperimentManager:
         tags: list[str],
         description: str | None,
         stage_only: bool = False,
+        script_args: list[str] | None = None,
     ) -> dict[str, Any]:
         """Build complete experiment metadata.
 
@@ -456,6 +459,7 @@ class ExperimentManager:
             tags: List of experiment tags
             description: Optional experiment description
             stage_only: If True, create with "staged" status
+            script_args: Arguments to pass through to the script via sys.argv
 
         Returns:
             Complete metadata dictionary
@@ -484,6 +488,7 @@ class ExperimentManager:
             "duration": None,
             "git": git_info,
             "environment": environment_info,
+            "script_args": script_args if script_args else [],
         }
 
         return metadata
