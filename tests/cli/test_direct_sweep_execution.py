@@ -268,3 +268,66 @@ class TestDirectSweepExecution:
                 os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
             elif "YANEX_EXPERIMENTS_DIR" in os.environ:
                 del os.environ["YANEX_EXPERIMENTS_DIR"]
+
+    def test_sweep_fails_early_on_dirty_git(self, tmp_path, cli_runner, clean_git_repo):
+        """Test that sweep fails immediately on dirty git, not after creating experiments."""
+        from pathlib import Path
+
+        # Get the working directory from the repo
+        repo_path = Path(clean_git_repo.working_dir)
+
+        # Create a script in the git repo
+        script_path = repo_path / "sweep_script.py"
+        script_path.write_text(
+            """
+import yanex
+param_value = yanex.get_param('x', default=1)
+print(f"Param: {param_value}")
+"""
+        )
+
+        # Make git repo dirty
+        dirty_file = repo_path / "dirty.txt"
+        dirty_file.write_text("uncommitted change")
+
+        # Use isolated experiment directory
+        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
+
+        try:
+            # Run sweep WITHOUT --ignore-dirty
+            result = cli_runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(script_path),
+                    "--param",
+                    "x=list(1,2,3)",
+                ],
+            )
+
+            # Should fail immediately with non-zero exit code
+            assert result.exit_code != 0, (
+                f"Expected non-zero exit code, got {result.exit_code}"
+            )
+
+            # Should see error about git working directory not being clean
+            assert "not clean" in result.output.lower(), (
+                f"Expected 'not clean' error message, got: {result.output}"
+            )
+
+            # Verify NO experiments were created (should fail before creating any)
+            from yanex.core.manager import ExperimentManager
+
+            manager = ExperimentManager(experiments_dir=tmp_path)
+            experiments = manager.list_experiments()
+            # Expect 0 experiments (fails before creating any)
+            assert len(experiments) == 0, (
+                f"Expected 0 experiments, got {len(experiments)} (should fail before creating any)"
+            )
+
+        finally:
+            if old_yanex_dir:
+                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
+            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
+                del os.environ["YANEX_EXPERIMENTS_DIR"]

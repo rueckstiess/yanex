@@ -371,6 +371,13 @@ def _stage_experiment(
     if script_args is None:
         script_args = []
 
+    # Validate git working directory is clean (unless explicitly allowed)
+    # Check ONCE before creating any experiments to fail fast
+    if not ignore_dirty:
+        from ...core.git_utils import validate_clean_working_directory
+
+        validate_clean_working_directory()
+
     # Check if this is a parameter sweep
     if has_sweep_parameters(config):
         # Expand parameter sweeps into individual configurations
@@ -681,6 +688,13 @@ def _execute_sweep_experiments(
 
     if script_args is None:
         script_args = []
+
+    # Validate git working directory is clean (unless explicitly allowed)
+    # Check ONCE before creating any experiments to fail fast
+    if not ignore_dirty:
+        from ...core.git_utils import validate_clean_working_directory
+
+        validate_clean_working_directory()
 
     # Expand parameter sweeps into individual configurations
     expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
