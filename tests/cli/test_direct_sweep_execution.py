@@ -276,7 +276,7 @@ class TestDirectSweepExecution:
         # Get the working directory from the repo
         repo_path = Path(clean_git_repo.working_dir)
 
-        # Create a script in the git repo
+        # Create and commit a script in the git repo
         script_path = repo_path / "sweep_script.py"
         script_path.write_text(
             """
@@ -285,10 +285,18 @@ param_value = yanex.get_param('x', default=1)
 print(f"Param: {param_value}")
 """
         )
+        clean_git_repo.index.add([str(script_path)])
+        clean_git_repo.index.commit("Add sweep script")
 
-        # Make git repo dirty
-        dirty_file = repo_path / "dirty.txt"
-        dirty_file.write_text("uncommitted change")
+        # Make git repo dirty by modifying the tracked file
+        script_path.write_text(
+            """
+import yanex
+param_value = yanex.get_param('x', default=1)
+print(f"Param: {param_value}")
+# This is a modification
+"""
+        )
 
         # Use isolated experiment directory
         old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")

@@ -47,8 +47,7 @@ def validate_clean_working_directory(repo: Repo | None = None) -> None:
         repo = get_git_repo()
 
     try:
-        # Check for modified/staged files OR untracked files
-        if repo.is_dirty() or repo.untracked_files:
+        if repo.is_dirty():
             # Get list of changed files
             changes = []
 
