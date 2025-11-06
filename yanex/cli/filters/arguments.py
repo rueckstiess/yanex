@@ -81,7 +81,7 @@ def experiment_filter_options(
             "--script",
             "-c",
             "script_pattern",
-            help="Filter by script name using glob patterns (e.g., 'train.py', '*prep*'). Extensions are optional.",
+            help="Filter by script name using glob patterns (case insensitive, e.g., 'train.py', '*prep*'). Extensions are optional.",
         )(func)
 
         # Conditional options
@@ -180,6 +180,14 @@ def validate_filter_arguments(
     # Pass through any additional keyword arguments
     for key, value in kwargs.items():
         if value is not None:
+            # Validate script_pattern doesn't contain directory separators
+            if key == "script_pattern" and isinstance(value, str):
+                if "/" in value or "\\" in value:
+                    click.echo(
+                        "Warning: Script patterns should not include path separators. "
+                        "Use filename patterns only (e.g., 'train.py', '*prep*').",
+                        err=True,
+                    )
             normalized[key] = value
 
     return normalized

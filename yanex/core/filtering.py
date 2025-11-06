@@ -375,12 +375,15 @@ class ExperimentFilter:
         if not script_path:
             return False
 
-        script_name = Path(script_path).name  # Full filename: "train.py"
-        script_stem = Path(script_path).stem  # Stem only: "train"
+        # Create Path object once for performance
+        script_path_obj = Path(script_path)
+        script_name = script_path_obj.name  # Full filename: "train.py"
+        script_stem = script_path_obj.stem  # Stem only: "train"
 
         # Match against both full name and stem for flexibility
-        return fnmatch.fnmatch(script_name.lower(), pattern.lower()) or fnmatch.fnmatch(
-            script_stem.lower(), pattern.lower()
+        pattern_lower = pattern.lower()
+        return fnmatch.fnmatch(script_name.lower(), pattern_lower) or fnmatch.fnmatch(
+            script_stem.lower(), pattern_lower
         )
 
     def _has_all_tags(
