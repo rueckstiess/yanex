@@ -430,6 +430,7 @@ class TestOpenInFileExplorer:
 
     def test_open_in_file_explorer_windows_no_startfile(self):
         """Test error handling when os.startfile is not available."""
+
         # Mock hasattr to return False for 'startfile'
         def mock_hasattr(obj, name):
             if name == "startfile":
