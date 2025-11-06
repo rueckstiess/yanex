@@ -168,8 +168,9 @@ results = yanex.run_multiple(experiments, parallel=parallel_workers)
 **Returns:**
 - `dict[str, Any]`: Dictionary with parsed CLI flags (empty dict in standalone mode)
   - Keys: `script`, `config`, `clone_from`, `param`, `name`, `tag`, `description`,
-    `dry_run`, `ignore_dirty`, `stage`, `staged`, `parallel`
+    `dry_run`, `stage`, `staged`, `parallel`
   - Note: `script_args` are NOT included - they're passed separately to your script
+  - Note: `ignore_dirty` is deprecated and excluded (uncommitted changes are automatically captured as patches)
 
 **Usage:**
 ```bash
@@ -466,7 +467,7 @@ print(f"Output: {result['stdout']}")
 
 Execute multiple experiments programmatically, either sequentially or in parallel.
 
-#### `yanex.run_multiple(experiments, parallel=None, allow_dirty=False, verbose=False)`
+#### `yanex.run_multiple(experiments, parallel=None, verbose=False)`
 
 Run multiple experiments from within a Python script. Useful for k-fold cross-validation, grid search, ensemble training, and batch processing.
 
@@ -488,7 +489,7 @@ experiments = [
 ]
 
 # Execute in parallel with 4 workers
-results = yanex.run_multiple(experiments, parallel=4, allow_dirty=True)
+results = yanex.run_multiple(experiments, parallel=4)
 
 # Check results (blocks until all experiments complete)
 completed = [r for r in results if r.status == "completed"]
@@ -502,8 +503,9 @@ print(f"Completed: {len(completed)}/{len(experiments)}")
   - `None`: Sequential execution (default)
   - `0`: Auto-detect number of CPU cores
   - `N > 0`: Use N parallel workers
-- `allow_dirty` (bool): Allow running with uncommitted git changes (default: False)
 - `verbose` (bool): Show detailed execution output (default: False)
+
+**Note:** Uncommitted git changes are automatically captured as patch files, so no special flag is needed.
 
 **Returns:**
 - `list[ExperimentResult]`: Results for all experiments (both successful and failed)
@@ -599,7 +601,7 @@ if fold_idx is None:
     ]
 
     # Execute all folds in parallel
-    results = yanex.run_multiple(experiments, parallel=5, allow_dirty=True)
+    results = yanex.run_multiple(experiments, parallel=5)
 
     # Aggregate results
     completed = [r for r in results if r.status == "completed"]

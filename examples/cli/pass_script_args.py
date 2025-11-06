@@ -9,7 +9,7 @@ Use case: Training a model using data from a previous experiment
 
 Run examples:
     # Basic usage (uses default demo_data)
-    yanex run pass_script_args.py --ignore-dirty
+    yanex run pass_script_args.py
 
     # With data experiment ID
     yanex run pass_script_args.py \\
@@ -17,7 +17,6 @@ Run examples:
         -p batch_size=32 \\
         --data-exp abc123 \\
         --fold 0 \\
-        --ignore-dirty
 
     # With additional script arguments
     yanex run pass_script_args.py \\
@@ -25,14 +24,12 @@ Run examples:
         --data-exp abc123 \\
         --fold 2 \\
         --verbose \\
-        --ignore-dirty
 
     # Parameter sweep with fixed script arguments
     yanex run pass_script_args.py \\
         -p 'learning_rate=list(0.001, 0.01, 0.1)' \\
         --data-exp abc123 \\
         --fold 0 \\
-        --ignore-dirty
 """
 
 import argparse

@@ -234,7 +234,6 @@ class TestCLIMain:
                 str(script_path),
                 "--stage",
                 "--staged",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code != 0
@@ -308,7 +307,6 @@ class TestCLIMain:
                 "--dry-run",
                 "--param",
                 "learning_rate=0.01",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0

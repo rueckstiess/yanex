@@ -51,15 +51,13 @@ class TestResultsAPIIntegration:
         return yr.get_manager(storage_path=isolated_experiments_dir)
 
     @pytest.fixture
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
     def comprehensive_experiments(
-        self, mock_capture_env, mock_git_info, mock_validate_git, experiment_manager
+        self, mock_capture_env, mock_git_info, experiment_manager
     ):
         """Create a comprehensive set of experiments for testing."""
         # Setup mocks
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
@@ -418,20 +416,17 @@ class TestResultsAPIIntegration:
         finally:
             yr._default_manager = None
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
     def test_performance_with_many_experiments(
         self,
         mock_capture_env,
         mock_git_info,
-        mock_validate_git,
         custom_manager,
         experiment_manager,
     ):
         """Test performance with a larger number of experiments."""
         # Setup mocks
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 

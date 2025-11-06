@@ -42,7 +42,7 @@ from ...core.script_executor import ScriptExecutor
 @click.option(
     "--ignore-dirty",
     is_flag=True,
-    help="Allow running with uncommitted changes (bypasses git cleanliness check)",
+    help="[DEPRECATED] This flag is no longer necessary. Git patches are captured automatically.",
 )
 @click.option(
     "--stage",
@@ -139,6 +139,13 @@ def run(
     verbose = ctx.obj.get("verbose", False)
     console = Console()  # Use stdout with colors
 
+    # Show deprecation warning for --ignore-dirty flag
+    if ignore_dirty:
+        console.print(
+            "[yellow]Warning: --ignore-dirty flag is deprecated and no longer necessary. "
+            "Git patches are now captured automatically.[/yellow]"
+        )
+
     # Capture script-specific arguments (unknown to yanex)
     script_args = list(ctx.args) if ctx.args else []
 
@@ -152,7 +159,6 @@ def run(
         "tag": list(tag),
         "description": description,
         "dry_run": dry_run,
-        "ignore_dirty": ignore_dirty,
         "stage": stage,
         "staged": staged,
         "parallel": parallel,
@@ -216,7 +222,6 @@ def run(
         resolved_description = (
             description if description is not None else cli_defaults.get("description")
         )
-        resolved_ignore_dirty = ignore_dirty or cli_defaults.get("ignore_dirty", False)
         resolved_dry_run = dry_run or cli_defaults.get("dry_run", False)
         resolved_stage = stage or cli_defaults.get("stage", False)
 
@@ -225,7 +230,7 @@ def run(
             if cli_defaults:
                 console.print(f"[dim]CLI defaults from config: {cli_defaults}[/]")
             console.print(
-                f"[dim]Resolved CLI parameters: name={resolved_name}, tags={resolved_tags}, description={resolved_description}, ignore_dirty={resolved_ignore_dirty}, dry_run={resolved_dry_run}, stage={resolved_stage}[/]"
+                f"[dim]Resolved CLI parameters: name={resolved_name}, tags={resolved_tags}, description={resolved_description}, dry_run={resolved_dry_run}, stage={resolved_stage}[/]"
             )
 
         # Validate configuration
@@ -260,7 +265,6 @@ def run(
                 description=resolved_description,
                 config=experiment_config,
                 verbose=verbose,
-                ignore_dirty=resolved_ignore_dirty,
                 script_args=script_args,
                 cli_args=cli_args,
             )
@@ -273,7 +277,6 @@ def run(
                 description=resolved_description,
                 config=experiment_config,
                 verbose=verbose,
-                ignore_dirty=resolved_ignore_dirty,
                 max_workers=parallel,  # None=sequential, N=parallel
                 script_args=script_args,
                 cli_args=cli_args,
@@ -287,7 +290,6 @@ def run(
                 description=resolved_description,
                 config=experiment_config,
                 verbose=verbose,
-                ignore_dirty=resolved_ignore_dirty,
                 script_args=script_args,
                 cli_args=cli_args,
             )
@@ -304,7 +306,6 @@ def _execute_experiment(
     description: str | None,
     config: dict[str, Any],
     verbose: bool = False,
-    ignore_dirty: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
 ) -> None:
@@ -324,7 +325,6 @@ def _execute_experiment(
         config=config,
         tags=tags,
         description=description,
-        allow_dirty=ignore_dirty,
         script_args=script_args,
         cli_args=cli_args,
     )
@@ -388,7 +388,6 @@ def _stage_experiment(
     description: str | None,
     config: dict[str, Any],
     verbose: bool = False,
-    ignore_dirty: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
 ) -> None:
@@ -400,15 +399,6 @@ def _stage_experiment(
         script_args = []
     if cli_args is None:
         cli_args = []
-
-    # Validate git working directory is clean (unless explicitly allowed)
-    # Check ONCE before creating any experiments to fail fast
-    if not ignore_dirty:
-        from ...core.git_utils import get_git_repo, validate_clean_working_directory
-
-        # Check the git repo containing the script
-        repo = get_git_repo(script.parent)
-        validate_clean_working_directory(repo)
 
     # Check if this is a parameter sweep
     if has_sweep_parameters(config):
@@ -437,7 +427,6 @@ def _stage_experiment(
                 config=expanded_config,
                 tags=sweep_tags,
                 description=description,
-                allow_dirty=ignore_dirty,
                 stage_only=True,
                 script_args=script_args,
                 cli_args=cli_args,
@@ -464,7 +453,6 @@ def _stage_experiment(
             config=config,
             tags=tags,
             description=description,
-            allow_dirty=ignore_dirty,
             stage_only=True,
             script_args=script_args,
             cli_args=cli_args,
@@ -698,7 +686,6 @@ def _execute_sweep_experiments(
     description: str | None,
     config: dict[str, Any],
     verbose: bool = False,
-    ignore_dirty: bool = False,
     max_workers: int | None = None,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
@@ -715,7 +702,6 @@ def _execute_sweep_experiments(
         description: Experiment description
         config: Configuration with sweep parameters
         verbose: Show verbose output
-        ignore_dirty: Allow running with uncommitted changes
         max_workers: Maximum parallel workers. None=sequential, N=parallel
         script_args: Arguments to pass through to the script
         cli_args: Complete CLI arguments used to run the experiment
@@ -726,15 +712,6 @@ def _execute_sweep_experiments(
         script_args = []
     if cli_args is None:
         cli_args = []
-
-    # Validate git working directory is clean (unless explicitly allowed)
-    # Check ONCE before creating any experiments to fail fast
-    if not ignore_dirty:
-        from ...core.git_utils import get_git_repo, validate_clean_working_directory
-
-        # Check the git repo containing the script
-        repo = get_git_repo(script.parent)
-        validate_clean_working_directory(repo)
 
     # Expand parameter sweeps into individual configurations
     expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
@@ -765,9 +742,7 @@ def _execute_sweep_experiments(
     ]
 
     # Use shared executor for sequential or parallel execution
-    results = run_multiple(
-        experiments, parallel=max_workers, allow_dirty=ignore_dirty, verbose=verbose
-    )
+    results = run_multiple(experiments, parallel=max_workers, verbose=verbose)
 
     # Print CLI-specific summary
     _print_sweep_summary(results, len(expanded_configs))

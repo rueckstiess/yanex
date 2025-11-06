@@ -12,7 +12,7 @@ from typing import Any
 
 from ..utils.validation import validate_experiment_name, validate_tags
 from .environment import capture_full_environment
-from .git_utils import get_current_commit_info, validate_clean_working_directory
+from .git_utils import generate_git_patch, get_current_commit_info
 from .storage import ExperimentStorage
 
 
@@ -382,7 +382,6 @@ class ExperimentManager:
         config: dict[str, Any] | None = None,
         tags: list[str] | None = None,
         description: str | None = None,
-        allow_dirty: bool = False,
         stage_only: bool = False,
         script_args: list[str] | None = None,
         cli_args: dict[str, Any] | None = None,
@@ -395,7 +394,6 @@ class ExperimentManager:
             config: Configuration dictionary
             tags: List of tags for the experiment
             description: Optional experiment description
-            allow_dirty: Allow running with uncommitted changes
             stage_only: If True, create experiment with "staged" status for later execution
             script_args: Arguments to pass through to the script via sys.argv
             cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
@@ -404,13 +402,9 @@ class ExperimentManager:
             Experiment ID
 
         Raises:
-            DirtyWorkingDirectoryError: If git working directory is not clean and allow_dirty=False
             ValidationError: If input parameters are invalid
             StorageError: If experiment creation fails
         """
-        # Validate git working directory is clean (unless explicitly allowed)
-        if not allow_dirty:
-            validate_clean_working_directory()
 
         # Set defaults
         if config is None:
@@ -475,11 +469,32 @@ class ExperimentManager:
         Returns:
             Complete metadata dictionary
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         # Get current timestamp
         timestamp = datetime.utcnow().isoformat()
 
         # Capture git information
         git_info = get_current_commit_info()
+
+        # Capture git patch if uncommitted changes exist
+        git_patch = None
+        patch_filename = None
+        try:
+            git_patch = generate_git_patch()
+            if git_patch:
+                patch_filename = "git_diff.patch"
+        except Exception as e:
+            logger.warning(f"Failed to generate git patch: {e}")
+            # Continue without patch
+
+        # Add patch info to git metadata
+        git_info["has_uncommitted_changes"] = git_patch is not None
+        git_info["patch_file"] = (
+            f"artifacts/{patch_filename}" if patch_filename else None
+        )
 
         # Capture environment information
         environment_info = capture_full_environment()
@@ -502,6 +517,17 @@ class ExperimentManager:
             "script_args": script_args if script_args else [],
             "cli_args": cli_args if cli_args else {},
         }
+
+        # Save patch as artifact if it exists
+        if git_patch and patch_filename:
+            try:
+                self.storage.save_text_artifact(
+                    experiment_id, patch_filename, git_patch
+                )
+            except Exception as e:
+                logger.warning(f"Failed to save git patch artifact: {e}")
+                # Update metadata to reflect failure
+                metadata["git"]["patch_file"] = None
 
         return metadata
 

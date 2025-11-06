@@ -522,7 +522,6 @@ class MockHelpers:
             Dictionary of common git-related mocks
         """
         return {
-            "validate_clean_working_directory": Mock(return_value=None),
             "get_git_commit_hash": Mock(return_value="abc123def456"),
             "get_git_branch": Mock(return_value="main"),
             "is_git_repo": Mock(return_value=True),

@@ -155,9 +155,7 @@ def orchestrate_kfold(
 
     # Execute all folds
     print(f"Executing {n_folds} folds...")
-    results = yanex.run_multiple(
-        experiments, parallel=parallel_workers, allow_dirty=True
-    )
+    results = yanex.run_multiple(experiments, parallel=parallel_workers)
 
     # Analyze results
     print(f"\n{'=' * 60}")

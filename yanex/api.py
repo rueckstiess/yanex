@@ -751,7 +751,6 @@ def create_experiment(
     config: dict[str, Any] | None = None,
     tags: list[str] | None = None,
     description: str | None = None,
-    allow_dirty: bool = False,
 ) -> ExperimentContext:
     """Create a new experiment.
 
@@ -761,7 +760,6 @@ def create_experiment(
         config: Optional experiment configuration
         tags: Optional list of tags
         description: Optional experiment description
-        allow_dirty: Allow running with uncommitted changes (default: False)
 
     Returns:
         ExperimentContext for the new experiment
@@ -785,7 +783,6 @@ def create_experiment(
         config=config or {},
         tags=tags or [],
         description=description,
-        allow_dirty=allow_dirty,
     )
     return ExperimentContext(experiment_id)
 

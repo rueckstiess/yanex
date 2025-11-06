@@ -93,7 +93,6 @@ class ExperimentResult:
 def run_multiple(
     experiments: list[ExperimentSpec],
     parallel: int | None = None,
-    allow_dirty: bool = False,
     verbose: bool = False,
 ) -> list[ExperimentResult]:
     """
@@ -105,7 +104,6 @@ def run_multiple(
     Args:
         experiments: List of ExperimentSpec objects defining what to run
         parallel: Number of parallel workers (None=sequential, 0=auto-detect CPUs)
-        allow_dirty: Allow running with uncommitted git changes
         verbose: Show detailed execution output
 
     Returns:
@@ -150,21 +148,19 @@ def run_multiple(
 
     # Route to sequential or parallel execution
     if parallel is None:
-        return _run_sequential(experiments, allow_dirty, verbose)
+        return _run_sequential(experiments, verbose)
     else:
-        return _run_parallel(experiments, parallel, allow_dirty, verbose)
+        return _run_parallel(experiments, parallel, verbose)
 
 
 def _run_sequential(
     experiments: list[ExperimentSpec],
-    allow_dirty: bool,
     verbose: bool,
 ) -> list[ExperimentResult]:
     """Execute experiments one by one sequentially.
 
     Args:
         experiments: List of experiment specifications
-        allow_dirty: Allow running with uncommitted changes
         verbose: Show verbose output
 
     Returns:
@@ -191,7 +187,6 @@ def _run_sequential(
                 config=spec.config,
                 tags=spec.tags,
                 description=spec.description,
-                allow_dirty=allow_dirty,
                 script_args=spec.script_args,
                 cli_args=spec.cli_args,
             )
@@ -293,7 +288,6 @@ def _run_sequential(
 def _run_parallel(
     experiments: list[ExperimentSpec],
     max_workers: int,
-    allow_dirty: bool,
     verbose: bool,
 ) -> list[ExperimentResult]:
     """Execute experiments in parallel using process pool.
@@ -301,7 +295,6 @@ def _run_parallel(
     Args:
         experiments: List of experiment specifications
         max_workers: Maximum number of parallel workers (0=auto-detect)
-        allow_dirty: Allow running with uncommitted changes
         verbose: Show verbose output
 
     Returns:
@@ -323,9 +316,7 @@ def _run_parallel(
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # Submit all experiments
         future_to_spec = {
-            executor.submit(
-                _execute_single_experiment, spec, allow_dirty, verbose
-            ): spec
+            executor.submit(_execute_single_experiment, spec, verbose): spec
             for spec in experiments
         }
 
@@ -373,7 +364,6 @@ def _run_parallel(
 
 def _execute_single_experiment(
     spec: ExperimentSpec,
-    allow_dirty: bool,
     verbose: bool,
 ) -> ExperimentResult:
     """
@@ -383,7 +373,6 @@ def _execute_single_experiment(
 
     Args:
         spec: Experiment specification
-        allow_dirty: Allow uncommitted changes
         verbose: Show verbose output
 
     Returns:
@@ -400,7 +389,6 @@ def _execute_single_experiment(
             config=spec.config,
             tags=spec.tags,
             description=spec.description,
-            allow_dirty=allow_dirty,
             script_args=spec.script_args,
             cli_args=spec.cli_args,
         )

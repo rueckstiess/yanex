@@ -534,7 +534,6 @@ class TestResolveConfig:
                 "name": "test-experiment",
                 "tag": ["ml", "testing"],
                 "description": "Test description",
-                "ignore_dirty": True,
                 "dry_run": False,
                 "stage": False,
             },
@@ -553,7 +552,6 @@ class TestResolveConfig:
             "name": "test-experiment",
             "tag": ["ml", "testing"],
             "description": "Test description",
-            "ignore_dirty": True,
             "dry_run": False,
             "stage": False,
         }

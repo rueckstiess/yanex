@@ -73,7 +73,7 @@ print(f"Executed with lr={yanex.get_param('learning_rate')}")
         ]
 
         # Run sequentially (parallel=None)
-        results = yanex.run_multiple(experiments, parallel=None, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=None)
 
         # Verify results
         assert len(results) == 3
@@ -127,9 +127,7 @@ print(f"Finished with lr={lr}")
         ]
 
         # Run with 2 parallel workers
-        results = yanex.run_multiple(
-            experiments, parallel=2, allow_dirty=True, verbose=False
-        )
+        results = yanex.run_multiple(experiments, parallel=2, verbose=False)
 
         # Verify results
         assert len(results) == 4
@@ -162,7 +160,7 @@ print("Executed")
         ]
 
         # Run with parallel=0 (auto-detect)
-        results = yanex.run_multiple(experiments, parallel=0, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=0)
 
         # Should complete successfully
         assert len(results) == 2
@@ -193,7 +191,7 @@ print(f"Success with value={value}")
         ]
 
         # Run sequentially
-        results = yanex.run_multiple(experiments, parallel=None, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=None)
 
         # Verify results
         assert len(results) == 4
@@ -243,7 +241,7 @@ print(f"Success with value={value}")
         """Test run_multiple validates inputs."""
         # Test: empty experiments list
         with pytest.raises(ValueError, match="experiments list cannot be empty"):
-            yanex.run_multiple([], allow_dirty=True)
+            yanex.run_multiple([])
 
         # Test: invalid spec in list
         script_path = tmp_path / "script.py"
@@ -255,7 +253,7 @@ print(f"Success with value={value}")
         ]
 
         with pytest.raises(ValueError, match="Invalid ExperimentSpec at index 1"):
-            yanex.run_multiple(invalid_experiments, allow_dirty=True)
+            yanex.run_multiple(invalid_experiments)
 
     def test_cli_context_allowed(self, tmp_path):
         """Test that run_multiple works from CLI context (orchestrator pattern)."""
@@ -276,7 +274,7 @@ print("Test")
         ]
 
         # Should work fine - orchestrator pattern allows nested execution
-        results = yanex.run_multiple(experiments, allow_dirty=True)
+        results = yanex.run_multiple(experiments)
 
         # Verify child experiment succeeded
         assert len(results) == 1
@@ -320,7 +318,7 @@ print(f"lr={lr} data={args.data_exp} fold={args.fold}")
         ]
 
         # Run sequentially
-        results = yanex.run_multiple(experiments, parallel=None, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=None)
 
         # Verify results
         assert len(results) == 2
@@ -365,7 +363,7 @@ print(f"Fold {args.fold} with lr={lr}")
         ]
 
         # Run in parallel
-        results = yanex.run_multiple(experiments, parallel=2, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=2)
 
         # Verify all completed
         assert len(results) == 3
@@ -388,7 +386,7 @@ print("Done")
             ExperimentSpec(script_path=script_path, config={}, name="timed"),
         ]
 
-        results = yanex.run_multiple(experiments, parallel=None, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=None)
 
         assert len(results) == 1
         result = results[0]
@@ -419,7 +417,7 @@ print("Test")
             ),
         ]
 
-        results = yanex.run_multiple(experiments, parallel=None, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=None)
 
         assert len(results) == 1
         assert results[0].status == "completed"
@@ -458,7 +456,7 @@ print(f"Odd value {value} succeeded")
         ]
 
         # Run in parallel
-        results = yanex.run_multiple(experiments, parallel=3, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=3)
 
         # Verify results
         assert len(results) == 6
@@ -512,7 +510,7 @@ assert isinstance(use_cuda, bool)
             ),
         ]
 
-        results = yanex.run_multiple(experiments, parallel=None, allow_dirty=True)
+        results = yanex.run_multiple(experiments, parallel=None)
 
         assert len(results) == 1
         assert results[0].status == "completed"
@@ -565,7 +563,7 @@ else:
             ),
         ]
 
-        results = yanex.run_multiple(orchestration_exp, parallel=None, allow_dirty=True)
+        results = yanex.run_multiple(orchestration_exp, parallel=None)
         assert len(results) == 1
         assert results[0].status == "completed"
 
@@ -580,7 +578,7 @@ else:
             for i in range(3)
         ]
 
-        results = yanex.run_multiple(execution_exps, parallel=2, allow_dirty=True)
+        results = yanex.run_multiple(execution_exps, parallel=2)
 
         # All folds should complete
         assert len(results) == 3

@@ -56,7 +56,6 @@ def main():
         },
         tags=["example", "basic", "training"],
         description="Basic training example to demonstrate yanex functionality",
-        allow_dirty=True,  # Allow logging from dirty git state
     ):
         print(f"Started experiment: {yanex.get_experiment_id()}")
 

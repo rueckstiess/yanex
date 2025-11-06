@@ -49,15 +49,11 @@ class TestExperimentFilter:
             pass  # Ignore all cleanup errors
 
     @pytest.fixture
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
-    def sample_experiments(
-        self, mock_capture_env, mock_git_info, mock_validate_git, filter_obj
-    ):
+    def sample_experiments(self, mock_capture_env, mock_git_info, filter_obj):
         """Create sample experiments for testing."""
         # Setup mocks
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
@@ -472,15 +468,13 @@ class TestExperimentFilter:
         assert len(result) == 1
         assert result[0]["id"] == exp2
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
     def test_script_pattern_missing_script_path(
-        self, mock_capture_env, mock_git_info, mock_validate_git, filter_obj
+        self, mock_capture_env, mock_git_info, filter_obj
     ):
         """Test script filtering handles experiments without script_path."""
         # Setup mocks
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 

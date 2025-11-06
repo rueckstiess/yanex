@@ -69,6 +69,72 @@ def validate_clean_working_directory(repo: Repo | None = None) -> None:
         raise GitError(f"Git operation failed: {e}") from e
 
 
+def has_uncommitted_changes(repo: Repo | None = None) -> bool:
+    """Check if working directory has uncommitted changes.
+
+    Checks for both staged and unstaged changes in tracked files only.
+    Untracked files are not considered uncommitted changes.
+
+    Args:
+        repo: Git repository instance. If None, detects from cwd.
+
+    Returns:
+        True if uncommitted changes exist, False if clean.
+
+    Raises:
+        GitError: If git operations fail
+    """
+    if repo is None:
+        repo = get_git_repo()
+
+    try:
+        # Check if any tracked files have changes (staged or unstaged)
+        # This excludes untracked files
+        return repo.is_dirty()
+    except git.GitError as e:
+        raise GitError(f"Failed to check git status: {e}") from e
+
+
+def generate_git_patch(repo: Repo | None = None) -> str | None:
+    """Generate patch of all uncommitted changes (staged + unstaged).
+
+    Captures differences between HEAD and working directory, including
+    both staged and unstaged changes for tracked files only. Untracked
+    files are excluded.
+
+    Args:
+        repo: Git repository instance. If None, detects from cwd.
+
+    Returns:
+        Patch string if changes exist, None if working directory is clean.
+        Returns None (not empty string) for clean state.
+
+    Raises:
+        GitError: If git operations fail
+    """
+    if repo is None:
+        repo = get_git_repo()
+
+    try:
+        # Check if any changes exist (optimize for common clean case)
+        if not has_uncommitted_changes(repo):
+            return None
+
+        # Generate diff between HEAD and working directory
+        # This captures both staged and unstaged changes
+        # Binary files are handled automatically by git ("Binary files differ")
+        patch = repo.git.diff("HEAD")
+
+        # Return None for clean state (shouldn't happen due to check above, but be safe)
+        if not patch or not patch.strip():
+            return None
+
+        return patch
+
+    except git.GitError as e:
+        raise GitError(f"Failed to generate git patch: {e}") from e
+
+
 def get_current_commit_info(repo: Repo | None = None) -> dict[str, str]:
     """
     Get current git commit information.

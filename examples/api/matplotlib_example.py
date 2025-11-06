@@ -98,7 +98,6 @@ def main():
         },
         tags=["example", "plotting", "visualization"],
         description="Example demonstrating matplotlib figure logging",
-        allow_dirty=True,  # Allow logging from dirty git state
     ):
         exp_id = yanex.get_experiment_id()
         print(f"Started experiment: {exp_id}")

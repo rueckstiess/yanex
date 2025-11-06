@@ -11,12 +11,13 @@ import pytest
 from tests.test_utils import TestFileHelpers
 from yanex.core.git_utils import (
     ensure_git_available,
+    generate_git_patch,
     get_current_commit_info,
     get_git_repo,
     get_repository_info,
-    validate_clean_working_directory,
+    has_uncommitted_changes,
 )
-from yanex.utils.exceptions import DirtyWorkingDirectoryError, GitError
+from yanex.utils.exceptions import GitError
 
 
 class TestGetGitRepo:
@@ -80,112 +81,199 @@ class TestGetGitRepo:
                 get_git_repo(temp_dir)
 
 
-class TestValidateCleanWorkingDirectory:
-    """Test validate_clean_working_directory function."""
+class TestHasUncommittedChanges:
+    """Test has_uncommitted_changes function."""
 
     def test_clean_working_directory(self, clean_git_repo):
-        """Test validation passes for clean working directory."""
-        # Should not raise any exception
-        validate_clean_working_directory(clean_git_repo)
+        """Test returns False for clean working directory."""
+        result = has_uncommitted_changes(clean_git_repo)
+        assert result is False
 
-    @pytest.mark.parametrize(
-        "file_content,expected_status",
-        [
-            ("modified content", "Modified"),
-            ("different text", "Modified"),
-            ("", "Modified"),
-        ],
-    )
-    def test_dirty_working_directory_modified_files(
-        self, git_repo, file_content, expected_status
-    ):
-        """Test validation fails for modified files with various content changes."""
+    def test_modified_file(self, git_repo):
+        """Test returns True for modified file."""
         # Modify a file
         test_file = Path(git_repo.working_dir) / "test.txt"
-        test_file.write_text(file_content)
+        test_file.write_text("modified content")
 
-        with pytest.raises(DirtyWorkingDirectoryError) as exc_info:
-            validate_clean_working_directory(git_repo)
+        result = has_uncommitted_changes(git_repo)
+        assert result is True
 
-        assert f"{expected_status}: test.txt" in str(exc_info.value)
-        assert "test.txt" in exc_info.value.changes[0]
-
-    def test_dirty_working_directory_staged_files(self, clean_git_repo):
-        """Test validation fails for staged files."""
+    def test_staged_file(self, clean_git_repo):
+        """Test returns True for staged file."""
         # Add and stage a file
         staged_file = Path(clean_git_repo.working_dir) / "staged.txt"
         TestFileHelpers.create_test_file(staged_file, "staged content")
         clean_git_repo.index.add([str(staged_file)])
 
-        with pytest.raises(DirtyWorkingDirectoryError) as exc_info:
-            validate_clean_working_directory(clean_git_repo)
+        result = has_uncommitted_changes(clean_git_repo)
+        assert result is True
 
-        assert "Staged: staged.txt" in str(exc_info.value)
+    def test_untracked_file(self, clean_git_repo):
+        """Test returns False for untracked file (not counted as uncommitted)."""
+        # Create untracked file
+        untracked_file = Path(clean_git_repo.working_dir) / "untracked.txt"
+        TestFileHelpers.create_test_file(untracked_file, "untracked content")
 
-    @pytest.mark.parametrize(
-        "mock_repo_state,expected_exception",
-        [
-            ({"is_dirty": True, "changes": ["M test.txt"]}, DirtyWorkingDirectoryError),
-            ({"is_dirty": False, "changes": []}, None),
-        ],
-    )
-    def test_validate_with_none_repo(self, mock_repo_state, expected_exception):
-        """Test validation with None repo (uses current directory)."""
+        result = has_uncommitted_changes(clean_git_repo)
+        assert result is False
+
+    def test_with_none_repo(self):
+        """Test with None repo (uses current directory)."""
         with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
             mock_repo = Mock()
-            mock_repo.is_dirty.return_value = mock_repo_state["is_dirty"]
-
-            if mock_repo_state["is_dirty"]:
-                # Mock git status parsing for changes
-                mock_diff = Mock()
-                mock_diff.a_path = "test.txt"
-                mock_diff.change_type = "M"
-                mock_repo.index.diff.return_value = [mock_diff]
-                mock_repo.head.commit.diff.return_value = [mock_diff]
-                mock_repo.untracked_files = []
-
+            mock_repo.is_dirty.return_value = True
             mock_get_repo.return_value = mock_repo
 
-            if expected_exception:
-                with pytest.raises(expected_exception):
-                    validate_clean_working_directory(None)
-            else:
-                validate_clean_working_directory(None)
-
+            result = has_uncommitted_changes(None)
+            assert result is True
             mock_get_repo.assert_called_once()
 
-    @pytest.mark.parametrize(
-        "git_error_type,expected_message",
-        [
-            (git.GitError("Test git error"), "Git operation failed"),
-            (git.GitCommandError("git", 1, "stderr", "stdout"), "Git operation failed"),
-        ],
-    )
-    def test_git_error_handling(self, clean_git_repo, git_error_type, expected_message):
+    def test_git_error_handling(self, clean_git_repo):
         """Test that GitError is raised when git operations fail."""
         with patch.object(clean_git_repo, "is_dirty") as mock_is_dirty:
-            mock_is_dirty.side_effect = git_error_type
+            mock_is_dirty.side_effect = git.GitError("Test git error")
 
-            with pytest.raises(GitError, match=expected_message):
-                validate_clean_working_directory(clean_git_repo)
+            with pytest.raises(GitError, match="Failed to check git status"):
+                has_uncommitted_changes(clean_git_repo)
 
-    def test_validate_with_multiple_changes(self, clean_git_repo):
-        """Test validation with multiple types of changes."""
+
+class TestGenerateGitPatch:
+    """Test generate_git_patch function."""
+
+    def test_clean_working_directory(self, clean_git_repo):
+        """Test returns None for clean working directory."""
+        result = generate_git_patch(clean_git_repo)
+        assert result is None
+
+    def test_modified_file(self, git_repo):
+        """Test generates patch for modified file."""
+        # Modify a file
+        test_file = Path(git_repo.working_dir) / "test.txt"
+        test_file.write_text("modified content")
+
+        result = generate_git_patch(git_repo)
+
+        assert result is not None
+        assert isinstance(result, str)
+        assert "diff --git" in result
+        assert "test.txt" in result
+        assert "+modified content" in result
+
+    def test_staged_file(self, clean_git_repo):
+        """Test generates patch for staged file."""
+        # Add and stage a file
+        staged_file = Path(clean_git_repo.working_dir) / "staged.txt"
+        TestFileHelpers.create_test_file(staged_file, "staged content")
+        clean_git_repo.index.add([str(staged_file)])
+
+        result = generate_git_patch(clean_git_repo)
+
+        assert result is not None
+        assert isinstance(result, str)
+        assert "diff --git" in result
+        assert "staged.txt" in result
+
+    def test_staged_and_unstaged(self, clean_git_repo):
+        """Test patch includes both staged and unstaged changes."""
         repo_path = Path(clean_git_repo.working_dir)
 
-        # Create and modify multiple files
-        TestFileHelpers.create_test_file(repo_path / "modified.txt", "modified")
-        TestFileHelpers.create_test_file(repo_path / "staged.txt", "staged")
-        TestFileHelpers.create_test_file(repo_path / "untracked.txt", "untracked")
+        # Create and commit a file first
+        existing_file = repo_path / "existing.txt"
+        TestFileHelpers.create_test_file(existing_file, "original content")
+        clean_git_repo.index.add([str(existing_file)])
+        clean_git_repo.index.commit("Add existing file")
 
-        # Stage one file
-        clean_git_repo.index.add([str(repo_path / "staged.txt")])
+        # Modify and stage the file
+        existing_file.write_text("staged changes")
+        clean_git_repo.index.add([str(existing_file)])
 
-        with pytest.raises(DirtyWorkingDirectoryError) as exc_info:
-            validate_clean_working_directory(clean_git_repo)
+        # Modify again without staging (unstaged changes)
+        existing_file.write_text("staged changes\nunstaged changes")
 
-        # Should contain information about changes
-        assert len(exc_info.value.changes) > 0
+        result = generate_git_patch(clean_git_repo)
+
+        assert result is not None
+        # Should include the file with both staged and unstaged changes
+        assert "existing.txt" in result
+
+    def test_untracked_files_excluded(self, clean_git_repo):
+        """Test that untracked files are NOT included in patch."""
+        # Create untracked file
+        untracked_file = Path(clean_git_repo.working_dir) / "untracked.txt"
+        TestFileHelpers.create_test_file(untracked_file, "untracked content")
+
+        result = generate_git_patch(clean_git_repo)
+
+        # Should be None since untracked files don't count as dirty
+        assert result is None
+
+    def test_binary_file_handling(self, clean_git_repo):
+        """Test that binary files are noted in patch."""
+        # Create a binary file (simple bytes)
+        binary_file = Path(clean_git_repo.working_dir) / "binary.bin"
+        binary_file.write_bytes(b"\x00\x01\x02\x03\xff\xfe")
+        clean_git_repo.index.add([str(binary_file)])
+        clean_git_repo.index.commit("Add binary file")
+
+        # Modify binary file
+        binary_file.write_bytes(b"\x00\x01\x02\x03\xff\xfe\xfd")
+
+        result = generate_git_patch(clean_git_repo)
+
+        assert result is not None
+        # Git notes binary files with a message
+        assert "binary.bin" in result
+
+    def test_multiple_file_changes(self, clean_git_repo):
+        """Test patch with multiple changed files."""
+        repo_path = Path(clean_git_repo.working_dir)
+
+        # Create multiple files
+        for i in range(3):
+            file_path = repo_path / f"file{i}.txt"
+            TestFileHelpers.create_test_file(file_path, f"content {i}")
+            clean_git_repo.index.add([str(file_path)])
+
+        clean_git_repo.index.commit("Add test files")
+
+        # Modify all files
+        for i in range(3):
+            file_path = repo_path / f"file{i}.txt"
+            file_path.write_text(f"modified content {i}")
+
+        result = generate_git_patch(clean_git_repo)
+
+        assert result is not None
+        for i in range(3):
+            assert f"file{i}.txt" in result
+
+    def test_with_none_repo(self):
+        """Test with None repo (uses current directory)."""
+        with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+            mock_repo = Mock()
+            mock_repo.is_dirty.return_value = True
+            mock_repo.git.diff.return_value = "diff --git a/test.txt b/test.txt"
+            mock_get_repo.return_value = mock_repo
+
+            result = generate_git_patch(None)
+
+            assert result is not None
+            assert "diff --git" in result
+            mock_get_repo.assert_called_once()
+
+    def test_patch_format_is_valid(self, git_repo):
+        """Test that generated patch has valid format."""
+        # Modify a file
+        test_file = Path(git_repo.working_dir) / "test.txt"
+        test_file.write_text("new content")
+
+        result = generate_git_patch(git_repo)
+
+        assert result is not None
+        # Valid patch should start with diff --git
+        assert result.startswith("diff --git")
+        # Should have @ markers for hunks
+        assert "@@" in result
 
 
 class TestGetCurrentCommitInfo:
