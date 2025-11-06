@@ -114,6 +114,12 @@ def _open_in_file_explorer(path: str):
     """
     Open a folder in the system file explorer.
 
+    Security Notes:
+    - Paths are passed as list arguments to subprocess.run (not shell=True),
+      which prevents shell injection attacks
+    - Paths come from internal storage system, not arbitrary user input
+    - No shell metacharacter interpretation occurs with list-based arguments
+
     Args:
         path: Path to the folder to open
 
@@ -124,13 +130,27 @@ def _open_in_file_explorer(path: str):
 
     try:
         if system == "Darwin":  # macOS
-            subprocess.run(["open", path], check=True)
+            # Using list arguments (not shell=True) prevents command injection
+            subprocess.run(["open", path], check=True, capture_output=True, text=True)
         elif system == "Windows":
             # Use os.startfile on Windows (more reliable)
             import os
 
+            # os.startfile is not available on all platforms, only Windows
+            if not hasattr(os, "startfile"):
+                raise Exception("os.startfile is not available on this platform")
+
             os.startfile(path)  # type: ignore
         else:  # Linux and other Unix-like systems
-            subprocess.run(["xdg-open", path], check=True)
+            # Using list arguments (not shell=True) prevents command injection
+            subprocess.run(
+                ["xdg-open", path], check=True, capture_output=True, text=True
+            )
+    except subprocess.CalledProcessError as e:
+        # Include stderr output if available for better debugging
+        error_msg = f"Failed to open file explorer: {e}"
+        if e.stderr:
+            error_msg += f"\n{e.stderr}"
+        raise Exception(error_msg) from e
     except Exception as e:
         raise Exception(f"Failed to open file explorer: {e}") from e

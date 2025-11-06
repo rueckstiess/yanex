@@ -2,6 +2,7 @@
 Tests for yanex CLI open command functionality.
 """
 
+import subprocess
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -328,7 +329,9 @@ class TestOpenInFileExplorer:
             patch("yanex.cli.commands.open.subprocess.run") as mock_run,
         ):
             _open_in_file_explorer("/tmp/test")
-            mock_run.assert_called_once_with(expected_command, check=True)
+            mock_run.assert_called_once_with(
+                expected_command, check=True, capture_output=True, text=True
+            )
 
     def test_open_in_file_explorer_windows(self):
         """Test opening file explorer on Windows."""
@@ -375,3 +378,89 @@ class TestOpenInFileExplorer:
                 _open_in_file_explorer("/tmp/test")
 
             assert "Failed to open file explorer" in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "system,special_path",
+        [
+            ("Darwin", "/tmp/path with spaces/test"),
+            ("Darwin", "/tmp/path'with'quotes/test"),
+            ("Darwin", '/tmp/path"with"doublequotes/test'),
+            ("Darwin", "/tmp/path;with;semicolons/test"),
+            ("Darwin", "/tmp/path$with$dollar/test"),
+            ("Darwin", "/tmp/path&with&ampersand/test"),
+            ("Linux", "/tmp/path with spaces/test"),
+            ("Linux", "/tmp/path'with'quotes/test"),
+            ("Linux", '/tmp/path"with"doublequotes/test'),
+            ("Linux", "/tmp/path;with;semicolons/test"),
+            ("Linux", "/tmp/path$with$dollar/test"),
+            ("Linux", "/tmp/path&with&ampersand/test"),
+        ],
+    )
+    def test_open_in_file_explorer_special_characters(self, system, special_path):
+        """Test that special characters in paths are handled safely.
+
+        This test verifies that paths with shell metacharacters do not cause
+        command injection because we use list arguments (not shell=True).
+        """
+        with (
+            patch("yanex.cli.commands.open.platform.system", return_value=system),
+            patch("yanex.cli.commands.open.subprocess.run") as mock_run,
+        ):
+            _open_in_file_explorer(special_path)
+
+            # Verify the path was passed as-is without shell interpretation
+            command = "open" if system == "Darwin" else "xdg-open"
+            mock_run.assert_called_once_with(
+                [command, special_path], check=True, capture_output=True, text=True
+            )
+
+    def test_open_in_file_explorer_windows_special_characters(self):
+        """Test Windows handles special characters in paths correctly."""
+        import os
+
+        special_path = r"C:\Program Files\My Folder\test"
+
+        with (
+            patch("yanex.cli.commands.open.platform.system", return_value="Windows"),
+            patch.object(os, "startfile", create=True) as mock_startfile,
+        ):
+            _open_in_file_explorer(special_path)
+            # Verify the path was passed as-is
+            mock_startfile.assert_called_once_with(special_path)
+
+    def test_open_in_file_explorer_windows_no_startfile(self):
+        """Test error handling when os.startfile is not available."""
+        # Mock hasattr to return False for 'startfile'
+        def mock_hasattr(obj, name):
+            if name == "startfile":
+                return False
+            return hasattr(obj, name)
+
+        with (
+            patch("yanex.cli.commands.open.platform.system", return_value="Windows"),
+            patch("yanex.cli.commands.open.hasattr", side_effect=mock_hasattr),
+        ):
+            with pytest.raises(Exception) as exc_info:
+                _open_in_file_explorer("/tmp/test")
+
+            assert "os.startfile is not available" in str(exc_info.value)
+
+    def test_open_in_file_explorer_subprocess_error_with_stderr(self):
+        """Test that subprocess errors include stderr output."""
+        error_output = "xdg-open: no method available for opening '/tmp/test'"
+
+        with (
+            patch("yanex.cli.commands.open.platform.system", return_value="Linux"),
+            patch(
+                "yanex.cli.commands.open.subprocess.run",
+                side_effect=subprocess.CalledProcessError(
+                    1, "xdg-open", stderr=error_output
+                ),
+            ),
+        ):
+            with pytest.raises(Exception) as exc_info:
+                _open_in_file_explorer("/tmp/test")
+
+            # Verify the error includes stderr output
+            assert "Failed to open file explorer" in str(exc_info.value)
+            assert error_output in str(exc_info.value)
