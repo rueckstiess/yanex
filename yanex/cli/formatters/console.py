@@ -67,6 +67,7 @@ class ExperimentTableFormatter:
 
         # Add columns
         table.add_column("ID", style="dim", width=8)
+        table.add_column("Script", style="cyan", width=15)
         table.add_column("Name", min_width=12, max_width=25)
         table.add_column("Status", width=12)
         table.add_column("Duration", width=10, justify="right")
@@ -77,6 +78,7 @@ class ExperimentTableFormatter:
         for exp in experiments:
             table.add_row(
                 self._format_id(exp.get("id", "")),
+                self._format_script(exp.get("script_path")),
                 self._format_name(exp.get("name")),
                 self._format_status(exp.get("status", "unknown")),
                 self._format_duration(exp),
@@ -149,6 +151,26 @@ class ExperimentTableFormatter:
             name = name[:25] + "..."
 
         return Text(name)
+
+    def _format_script(self, script_path: str | None) -> Text:
+        """
+        Format script name from full path.
+
+        Extracts filename with extension and truncates if needed.
+        """
+        from pathlib import Path
+
+        if not script_path:
+            return Text("-", style="dim")
+
+        script_name = Path(script_path).name  # Full filename: "train.py"
+
+        # Truncate if too long (keep extension visible)
+        if len(script_name) > 15:
+            # Keep first chars and extension: "very_lo....py" (15 chars total)
+            script_name = script_name[:9] + "..." + script_name[-3:]
+
+        return Text(script_name, style="cyan")
 
     def _format_status(self, status: str) -> Text:
         """Format status with color and symbol."""

@@ -364,3 +364,146 @@ class TestExperimentFilter:
         # Status validation is case-sensitive and should raise error for invalid case
         with pytest.raises(ValueError, match="Invalid status"):
             filter_obj.filter_experiments(status="COMPLETED")
+
+    def test_script_pattern_exact_match_with_extension(
+        self, filter_obj, sample_experiments
+    ):
+        """Test script filtering with exact match including .py extension."""
+        exp1, exp2, exp3, exp4, exp5 = sample_experiments
+
+        # Filter by train.py (should match exp1 and exp2)
+        result = filter_obj.filter_experiments(script_pattern="train.py")
+        assert len(result) == 2
+        result_ids = {exp["id"] for exp in result}
+        assert result_ids == {exp1, exp2}
+
+        # Filter by hyperparam.py (should match exp3)
+        result = filter_obj.filter_experiments(script_pattern="hyperparam.py")
+        assert len(result) == 1
+        assert result[0]["id"] == exp3
+
+    def test_script_pattern_exact_match_without_extension(
+        self, filter_obj, sample_experiments
+    ):
+        """Test script filtering with exact match without .py extension."""
+        exp1, exp2, exp3, exp4, exp5 = sample_experiments
+
+        # Filter by "train" (should match train.py - exp1 and exp2)
+        result = filter_obj.filter_experiments(script_pattern="train")
+        assert len(result) == 2
+        result_ids = {exp["id"] for exp in result}
+        assert result_ids == {exp1, exp2}
+
+        # Filter by "hyperparam" (should match hyperparam.py - exp3)
+        result = filter_obj.filter_experiments(script_pattern="hyperparam")
+        assert len(result) == 1
+        assert result[0]["id"] == exp3
+
+    def test_script_pattern_glob_patterns(self, filter_obj, sample_experiments):
+        """Test script filtering with glob patterns."""
+        exp1, exp2, exp3, exp4, exp5 = sample_experiments
+
+        # Pattern matching "train*" should match train.py
+        result = filter_obj.filter_experiments(script_pattern="train*")
+        assert len(result) == 2
+        result_ids = {exp["id"] for exp in result}
+        assert result_ids == {exp1, exp2}
+
+        # Pattern matching "*param*" should match hyperparam.py
+        result = filter_obj.filter_experiments(script_pattern="*param*")
+        assert len(result) == 1
+        assert result[0]["id"] == exp3
+
+        # Pattern matching "*.py" should match all experiments
+        result = filter_obj.filter_experiments(script_pattern="*.py")
+        assert len(result) == 5
+
+        # Pattern matching nothing
+        result = filter_obj.filter_experiments(script_pattern="nonexistent.py")
+        assert len(result) == 0
+
+    def test_script_pattern_case_insensitivity(self, filter_obj, sample_experiments):
+        """Test script filtering is case insensitive."""
+        exp1, exp2, exp3, exp4, exp5 = sample_experiments
+
+        # All case variations should match
+        result1 = filter_obj.filter_experiments(script_pattern="train.py")
+        result2 = filter_obj.filter_experiments(script_pattern="TRAIN.PY")
+        result3 = filter_obj.filter_experiments(script_pattern="Train.Py")
+        result4 = filter_obj.filter_experiments(script_pattern="train")
+        result5 = filter_obj.filter_experiments(script_pattern="TRAIN")
+
+        assert (
+            len(result1)
+            == len(result2)
+            == len(result3)
+            == len(result4)
+            == len(result5)
+            == 2
+        )
+
+        # All should return the same experiments
+        ids1 = {exp["id"] for exp in result1}
+        ids2 = {exp["id"] for exp in result2}
+        assert ids1 == ids2 == {exp1, exp2}
+
+    def test_script_pattern_combined_with_other_filters(
+        self, filter_obj, sample_experiments
+    ):
+        """Test script filtering combined with other filter types."""
+        exp1, exp2, exp3, exp4, exp5 = sample_experiments
+
+        # Combine script and status filters
+        result = filter_obj.filter_experiments(
+            script_pattern="train.py", status="completed"
+        )
+        assert len(result) == 1
+        assert result[0]["id"] == exp1
+
+        # Combine script and tags filters
+        result = filter_obj.filter_experiments(script_pattern="train*", tags=["rnn"])
+        assert len(result) == 1
+        assert result[0]["id"] == exp2
+
+        # Combine script, status, and name filters
+        result = filter_obj.filter_experiments(
+            script_pattern="train.py", status="failed", name="*_run_2"
+        )
+        assert len(result) == 1
+        assert result[0]["id"] == exp2
+
+    @patch("yanex.core.manager.validate_clean_working_directory")
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_script_pattern_missing_script_path(
+        self, mock_capture_env, mock_git_info, mock_validate_git, filter_obj
+    ):
+        """Test script filtering handles experiments without script_path."""
+        # Setup mocks
+        mock_validate_git.return_value = None
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create an experiment without script_path by manipulating metadata
+        manager = filter_obj.manager
+
+        # Create a normal experiment first
+        exp_id = manager.create_experiment(
+            script_path=Path("test.py"),
+            name="test_no_script",
+            config={},
+            tags=["unit-tests"],
+        )
+
+        # Manually remove script_path from metadata to simulate old experiments
+        metadata = manager.storage.load_metadata(exp_id)
+        metadata.pop("script_path", None)
+        manager.storage.save_metadata(exp_id, metadata)
+
+        # Filter by script pattern - should not match experiment without script_path
+        result = filter_obj.filter_experiments(script_pattern="test.py")
+        result_ids = {exp["id"] for exp in result}
+        assert exp_id not in result_ids
+
+        # Clean up
+        manager.storage.delete_experiment(exp_id)

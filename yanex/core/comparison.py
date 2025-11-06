@@ -234,8 +234,11 @@ class ExperimentComparisonData:
         results = exp_data.get("results", {})
 
         # Fixed columns
+        from pathlib import Path
+
         row = {
             "id": exp_data["id"],
+            "script": Path(exp_data.get("script_path", "")).name or "-",
             "name": exp_data.get("name") or "[unnamed]",
             "started": self._format_datetime(exp_data.get("started_at")),
             "duration": self._calculate_duration(

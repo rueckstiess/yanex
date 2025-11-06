@@ -27,6 +27,7 @@ def list_experiments(
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
+    script_pattern: str | None,
     started_after: str | None,
     started_before: str | None,
     ended_after: str | None,
@@ -87,6 +88,8 @@ def list_experiments(
                 click.echo(f"  Status: {status}")
             if name_pattern:
                 click.echo(f"  Name pattern: {name_pattern}")
+            if script_pattern:
+                click.echo(f"  Script pattern: {script_pattern}")
             if tags:
                 click.echo(f"  Tags: {', '.join(tags)}")
             if started_after:
@@ -109,6 +112,7 @@ def list_experiments(
             status=status,
             name=name_pattern,
             tags=list(tags) if tags else None,
+            script_pattern=script_pattern,
             started_after=started_after_dt,
             started_before=started_before_dt,
             ended_after=ended_after_dt,
@@ -143,6 +147,7 @@ def list_experiments(
                 status,
                 name_pattern,
                 tags,
+                script_pattern,
                 started_after,
                 started_before,
                 ended_after,
@@ -160,6 +165,7 @@ def list_experiments(
                 status,
                 name_pattern,
                 tags,
+                script_pattern,
                 started_after,
                 started_before,
                 ended_after,
@@ -199,6 +205,7 @@ def _show_filter_suggestions(
     status: str | None,
     name_pattern: str | None,
     tags: list[str],
+    script_pattern: str | None,
     started_after: str | None,
     started_before: str | None,
     ended_after: str | None,
@@ -212,6 +219,7 @@ def _show_filter_suggestions(
             status,
             name_pattern,
             tags,
+            script_pattern,
             started_after,
             started_before,
             ended_after,
