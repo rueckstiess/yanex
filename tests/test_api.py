@@ -1075,17 +1075,16 @@ class TestGetCliArgs:
     """Test get_cli_args() function."""
 
     def test_get_cli_args_standalone_mode(self):
-        """Test get_cli_args() in standalone mode returns empty list."""
+        """Test get_cli_args() in standalone mode returns empty dict."""
         # Ensure no active context
         yanex._clear_current_experiment_id()
 
         cli_args = yanex.get_cli_args()
-        assert cli_args == []
+        assert cli_args == {}
 
     def test_get_cli_args_from_environment(self, tmp_path, monkeypatch):
         """Test get_cli_args() reads from environment variable in CLI mode."""
         import json
-        import os
 
         # Create a test experiment
         manager = create_isolated_manager(tmp_path)
@@ -1097,7 +1096,12 @@ class TestGetCliArgs:
         experiment_id = manager.create_experiment(
             script_path=script,
             config={},
-            cli_args=["run", "test.py", "--parallel", "3", "--param", "lr=0.01"],
+            cli_args={
+                "script": "test.py",
+                "parallel": 3,
+                "param": ["lr=0.01"],
+                "tag": [],
+            },
             allow_dirty=True,
         )
 
@@ -1106,7 +1110,9 @@ class TestGetCliArgs:
         monkeypatch.setenv("YANEX_CLI_ACTIVE", "1")
         monkeypatch.setenv(
             "YANEX_CLI_ARGS",
-            json.dumps(["run", "test.py", "--parallel", "3", "--param", "lr=0.01"]),
+            json.dumps(
+                {"script": "test.py", "parallel": 3, "param": ["lr=0.01"], "tag": []}
+            ),
         )
 
         # Clear thread-local storage to force environment read
@@ -1114,7 +1120,10 @@ class TestGetCliArgs:
 
         # Now get_cli_args() should read from environment
         cli_args = yanex.get_cli_args()
-        assert cli_args == ["run", "test.py", "--parallel", "3", "--param", "lr=0.01"]
+        assert cli_args["parallel"] == 3
+        assert cli_args["param"] == ["lr=0.01"]
+        assert cli_args["script"] == "test.py"
+        assert cli_args["tag"] == []
 
         # Clean up
         monkeypatch.delenv("YANEX_EXPERIMENT_ID", raising=False)
@@ -1136,7 +1145,7 @@ class TestGetCliArgs:
         experiment_id = manager.create_experiment(
             script_path=script,
             config={},
-            cli_args=["run", "test.py", "--parallel", "5"],
+            cli_args={"script": "test.py", "parallel": 5, "tag": ["ml"]},
             allow_dirty=True,
         )
 
@@ -1146,13 +1155,15 @@ class TestGetCliArgs:
         try:
             # Should read from metadata
             cli_args = yanex.get_cli_args()
-            assert cli_args == ["run", "test.py", "--parallel", "5"]
+            assert cli_args["parallel"] == 5
+            assert cli_args["script"] == "test.py"
+            assert cli_args["tag"] == ["ml"]
         finally:
             yanex._clear_current_experiment_id()
             monkeypatch.delenv("YANEX_EXPERIMENTS_DIR", raising=False)
 
     def test_get_cli_args_empty_when_not_set(self, tmp_path):
-        """Test get_cli_args() returns empty list when CLI args not set."""
+        """Test get_cli_args() returns empty dict when CLI args not set."""
         manager = create_isolated_manager(tmp_path)
 
         # Create test script
@@ -1170,15 +1181,14 @@ class TestGetCliArgs:
         yanex._set_current_experiment_id(experiment_id)
 
         try:
-            # Should return empty list
+            # Should return empty dict
             cli_args = yanex.get_cli_args()
-            assert cli_args == []
+            assert cli_args == {}
         finally:
             yanex._clear_current_experiment_id()
 
     def test_get_cli_args_handles_invalid_json(self, tmp_path, monkeypatch):
         """Test get_cli_args() handles invalid JSON gracefully."""
-        import os
 
         # Create a test experiment
         manager = create_isolated_manager(tmp_path)
@@ -1201,9 +1211,9 @@ class TestGetCliArgs:
         # Clear thread-local storage to force environment read
         yanex._clear_current_experiment_id()
 
-        # Should return empty list on JSON error
+        # Should return empty dict on JSON error
         cli_args = yanex.get_cli_args()
-        assert cli_args == []
+        assert cli_args == {}
 
         # Clean up
         monkeypatch.delenv("YANEX_EXPERIMENT_ID", raising=False)

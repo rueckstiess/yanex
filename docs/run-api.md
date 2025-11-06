@@ -143,39 +143,58 @@ dropout = yanex.get_param('dropout')  # Warning if missing
 
 #### `yanex.get_cli_args()`
 
-Get the complete CLI arguments used to run the experiment via `yanex run`.
+Get parsed CLI arguments used to run the experiment via `yanex run`.
 
-This is useful for orchestrator scripts that spawn child experiments and need to
-pass through CLI flags (like `--parallel`) that were provided by the user.
+Returns a dictionary with yanex CLI flags for easy access. This is useful for
+orchestrator scripts that spawn child experiments and need to pass through CLI
+flags (like `--parallel`) that were provided by the user.
 
 ```python
 # Example: Orchestrator script that respects --parallel flag
 import yanex
 
-# Get CLI args used to invoke this script
+# Get parsed CLI args as dictionary
 cli_args = yanex.get_cli_args()
-# e.g., ['run', 'train.py', '--parallel', '3', '--param', 'lr=0.01']
+# e.g., {'script': 'train.py', 'parallel': 3, 'param': ['lr=0.01'], 'tag': []}
 
-# Extract --parallel value if present
-parallel_workers = None
-if '--parallel' in cli_args:
-    parallel_idx = cli_args.index('--parallel')
-    parallel_workers = int(cli_args[parallel_idx + 1])
+# Clean access with defaults
+parallel_workers = cli_args.get('parallel', 1)
+tags = cli_args.get('tag', [])
 
-# Use it when spawning child experiments
+# Use when spawning child experiments
 results = yanex.run_multiple(experiments, parallel=parallel_workers)
 ```
 
 **Returns:**
-- `list[str]`: CLI arguments (empty list in standalone mode)
+- `dict[str, Any]`: Dictionary with parsed CLI flags (empty dict in standalone mode)
+  - Keys: `script`, `config`, `clone_from`, `param`, `name`, `tag`, `description`,
+    `dry_run`, `ignore_dirty`, `stage`, `staged`, `parallel`
+  - Note: `script_args` are NOT included - they're passed separately to your script
 
 **Usage:**
 ```bash
 # When run this way:
-yanex run orchestrator.py --parallel 3 --param lr=0.01
+yanex run orchestrator.py --parallel 3 --tag ml --param lr=0.01
 
 # Inside orchestrator.py, get_cli_args() returns:
-# ['run', 'orchestrator.py', '--parallel', '3', '--param', 'lr=0.01']
+# {
+#     'script': 'orchestrator.py',
+#     'parallel': 3,
+#     'tag': ['ml'],
+#     'param': ['lr=0.01'],
+#     ...
+# }
+```
+
+**Before/After:**
+```python
+# OLD (manual parsing - no longer needed):
+if '--parallel' in cli_args:
+    idx = cli_args.index('--parallel')
+    parallel = int(cli_args[idx + 1])
+
+# NEW (clean dict access):
+parallel = cli_args.get('parallel', 1)
 ```
 
 See [examples/api/kfold_training.py](../examples/api/kfold_training.py) for a complete example.

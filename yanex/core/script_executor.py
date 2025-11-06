@@ -114,7 +114,7 @@ class ScriptExecutor:
         # Add CLI arguments to environment (for yanex.get_cli_args())
         try:
             metadata = self.manager.get_experiment_metadata(experiment_id)
-            cli_args = metadata.get("cli_args", [])
+            cli_args = metadata.get("cli_args", {})
             if cli_args:
                 env["YANEX_CLI_ARGS"] = json.dumps(cli_args)
         except Exception:

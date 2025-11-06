@@ -385,7 +385,7 @@ class ExperimentManager:
         allow_dirty: bool = False,
         stage_only: bool = False,
         script_args: list[str] | None = None,
-        cli_args: list[str] | None = None,
+        cli_args: dict[str, Any] | None = None,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -398,7 +398,7 @@ class ExperimentManager:
             allow_dirty: Allow running with uncommitted changes
             stage_only: If True, create experiment with "staged" status for later execution
             script_args: Arguments to pass through to the script via sys.argv
-            cli_args: Complete CLI arguments used to run the experiment (including yanex flags)
+            cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
 
         Returns:
             Experiment ID
@@ -458,7 +458,7 @@ class ExperimentManager:
         description: str | None,
         stage_only: bool = False,
         script_args: list[str] | None = None,
-        cli_args: list[str] | None = None,
+        cli_args: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build complete experiment metadata.
 
@@ -470,7 +470,7 @@ class ExperimentManager:
             description: Optional experiment description
             stage_only: If True, create with "staged" status
             script_args: Arguments to pass through to the script via sys.argv
-            cli_args: Complete CLI arguments used to run the experiment (including yanex flags)
+            cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
 
         Returns:
             Complete metadata dictionary
@@ -500,7 +500,7 @@ class ExperimentManager:
             "git": git_info,
             "environment": environment_info,
             "script_args": script_args if script_args else [],
-            "cli_args": cli_args if cli_args else [],
+            "cli_args": cli_args if cli_args else {},
         }
 
         return metadata

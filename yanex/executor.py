@@ -7,7 +7,6 @@ for parameter sweep execution.
 """
 
 import multiprocessing
-import os
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -35,7 +34,7 @@ class ExperimentSpec:
         name: Optional experiment name
         tags: List of tags for organization
         description: Optional experiment description
-        cli_args: Complete CLI arguments used to run the experiment (for CLI context)
+        cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
     """
 
     # Subprocess execution (primary mode)
@@ -50,7 +49,7 @@ class ExperimentSpec:
     name: str | None = None
     tags: list[str] = field(default_factory=list)
     description: str | None = None
-    cli_args: list[str] = field(default_factory=list)
+    cli_args: dict[str, Any] = field(default_factory=dict)
 
     def validate(self) -> None:
         """Validate that exactly one execution mode is specified.

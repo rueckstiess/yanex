@@ -2,7 +2,6 @@
 Run command implementation for yanex CLI.
 """
 
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -143,9 +142,21 @@ def run(
     # Capture script-specific arguments (unknown to yanex)
     script_args = list(ctx.args) if ctx.args else []
 
-    # Capture complete CLI arguments for yanex.get_cli_args()
-    # sys.argv[1:] gives us everything after 'yanex'
-    cli_args = sys.argv[1:] if len(sys.argv) > 1 else []
+    # Build parsed CLI arguments dictionary for yanex.get_cli_args()
+    cli_args = {
+        "script": str(script) if script else None,
+        "config": str(config) if config else None,
+        "clone_from": clone_from,
+        "param": list(param),
+        "name": name,
+        "tag": list(tag),
+        "description": description,
+        "dry_run": dry_run,
+        "ignore_dirty": ignore_dirty,
+        "stage": stage,
+        "staged": staged,
+        "parallel": parallel,
+    }
 
     # Handle mutually exclusive flags
     if stage and staged:

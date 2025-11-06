@@ -124,14 +124,9 @@ def orchestrate_kfold(
     # If parallel_workers not specified, try to get it from CLI args
     if parallel_workers is None:
         cli_args = yanex.get_cli_args()
-        if "--parallel" in cli_args:
-            try:
-                parallel_idx = cli_args.index("--parallel")
-                if parallel_idx + 1 < len(cli_args):
-                    parallel_workers = int(cli_args[parallel_idx + 1])
-                    print(f"Using --parallel={parallel_workers} from CLI args")
-            except (ValueError, IndexError):
-                pass  # Use default (sequential)
+        parallel_workers = cli_args.get("parallel")
+        if parallel_workers is not None:
+            print(f"Using --parallel={parallel_workers} from CLI args")
 
     print(f"\n{'=' * 60}")
     print(f"ORCHESTRATION MODE: Spawning {n_folds}-fold cross-validation")
