@@ -217,7 +217,7 @@ def update_experiments(
 
         try:
             filter_obj.manager.storage.update_experiment_metadata(
-                experiment_id, updates, archived=archived
+                experiment_id, updates, include_archived=archived
             )
             reporter.report_success(experiment_id, exp_name)
         except Exception as e:
