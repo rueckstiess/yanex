@@ -77,6 +77,13 @@ def experiment_filter_options(
             help="Filter by experiment status",
         )(func)
 
+        func = click.option(
+            "--script",
+            "-c",
+            "script_pattern",
+            help="Filter by script name using glob patterns (case insensitive, e.g., 'train.py', '*prep*'). Extensions are optional.",
+        )(func)
+
         # Conditional options
         if include_ids:
             func = click.option(
@@ -173,6 +180,14 @@ def validate_filter_arguments(
     # Pass through any additional keyword arguments
     for key, value in kwargs.items():
         if value is not None:
+            # Validate script_pattern doesn't contain directory separators
+            if key == "script_pattern" and isinstance(value, str):
+                if "/" in value or "\\" in value:
+                    click.echo(
+                        "Warning: Script patterns should not include path separators. "
+                        "Use filename patterns only (e.g., 'train.py', '*prep*').",
+                        err=True,
+                    )
             normalized[key] = value
 
     return normalized
@@ -244,6 +259,9 @@ def format_filter_summary(filter_args: dict[str, Any]) -> str:
 
     if "name_pattern" in filter_args:
         parts.append(f"Name pattern: '{filter_args['name_pattern']}'")
+
+    if "script_pattern" in filter_args:
+        parts.append(f"Script pattern: '{filter_args['script_pattern']}'")
 
     if "tags" in filter_args:
         parts.append(f"Tags: {', '.join(filter_args['tags'])}")

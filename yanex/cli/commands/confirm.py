@@ -216,6 +216,7 @@ def find_experiments_by_filters(
     status: str = None,
     name: str = None,
     tags: list[str] = None,
+    script_pattern: str = None,
     started_after=None,
     started_before=None,
     ended_after=None,
@@ -230,6 +231,7 @@ def find_experiments_by_filters(
         status: Filter by status
         name: Filter by name pattern
         tags: Filter by tags
+        script_pattern: Filter by script name pattern
         started_after: Filter by start time
         started_before: Filter by start time
         ended_after: Filter by end time
@@ -243,6 +245,7 @@ def find_experiments_by_filters(
         status=status,
         name=name,
         tags=tags,
+        script_pattern=script_pattern,
         started_after=started_after,
         started_before=started_before,
         ended_after=ended_after,

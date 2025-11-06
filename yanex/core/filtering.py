@@ -41,6 +41,7 @@ class ExperimentFilter:
         status: str | list[str] | None = None,
         name: str | None = None,
         tags: list[str] | None = None,
+        script_pattern: str | None = None,
         started_after: str | datetime | None = None,
         started_before: str | datetime | None = None,
         ended_after: str | datetime | None = None,
@@ -59,6 +60,7 @@ class ExperimentFilter:
             status: Single status or list of statuses to match (OR logic within list)
             name: Glob pattern for name matching
             tags: List of tags - experiments must have ALL specified tags (AND logic)
+            script_pattern: Glob pattern for script name matching (with or without .py extension)
             started_after: Filter experiments started after this time
             started_before: Filter experiments started before this time
             ended_after: Filter experiments ended after this time
@@ -81,6 +83,7 @@ class ExperimentFilter:
             status=status,
             name_pattern=name,
             tags=tags,
+            script_pattern=script_pattern,
             started_after=started_after,
             started_before=started_before,
             ended_after=ended_after,
@@ -113,6 +116,7 @@ class ExperimentFilter:
         status: str | list[str] | None,
         name_pattern: str | None,
         tags: list[str] | None,
+        script_pattern: str | None,
         started_after: str | datetime | None,
         started_before: str | datetime | None,
         ended_after: str | datetime | None,
@@ -153,6 +157,12 @@ class ExperimentFilter:
             if not isinstance(name_pattern, str):
                 raise ValueError("name_pattern must be a string")
             normalized["name_pattern"] = name_pattern
+
+        # Normalize script pattern
+        if script_pattern is not None:
+            if not isinstance(script_pattern, str):
+                raise ValueError("script_pattern must be a string")
+            normalized["script_pattern"] = script_pattern
 
         # Normalize tags
         if tags is not None:
@@ -215,6 +225,14 @@ class ExperimentFilter:
                 exp
                 for exp in filtered
                 if self._matches_name_pattern(exp, filters["name_pattern"])
+            ]
+
+        # Apply script pattern filter
+        if "script_pattern" in filters:
+            filtered = [
+                exp
+                for exp in filtered
+                if self._matches_script_pattern(exp, filters["script_pattern"])
             ]
 
         # Apply tags filter (AND logic - must have ALL tags)
@@ -337,6 +355,36 @@ class ExperimentFilter:
             # Handle unnamed experiments - convert to searchable form
             name = "[unnamed]"
         return fnmatch.fnmatch(name.lower(), pattern.lower())
+
+    def _matches_script_pattern(self, experiment: dict[str, Any], pattern: str) -> bool:
+        """
+        Check if script name matches glob pattern.
+
+        Matches against both the full filename (e.g., 'train.py') and stem (e.g., 'train').
+        This allows users to filter with or without the .py extension.
+        Returns False if no script_path in experiment metadata.
+
+        Args:
+            experiment: Experiment metadata dictionary
+            pattern: Glob pattern to match against
+
+        Returns:
+            True if script matches pattern, False otherwise
+        """
+        script_path = experiment.get("script_path", "")
+        if not script_path:
+            return False
+
+        # Create Path object once for performance
+        script_path_obj = Path(script_path)
+        script_name = script_path_obj.name  # Full filename: "train.py"
+        script_stem = script_path_obj.stem  # Stem only: "train"
+
+        # Match against both full name and stem for flexibility
+        pattern_lower = pattern.lower()
+        return fnmatch.fnmatch(script_name.lower(), pattern_lower) or fnmatch.fnmatch(
+            script_stem.lower(), pattern_lower
+        )
 
     def _has_all_tags(
         self, experiment: dict[str, Any], required_tags: list[str]
