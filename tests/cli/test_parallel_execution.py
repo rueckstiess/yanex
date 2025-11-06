@@ -9,21 +9,18 @@ from yanex.cli.main import cli
 class TestParallelExecution:
     """Test parallel experiment execution functionality."""
 
-    def test_parallel_flag_requires_staged_or_sweep(self, tmp_path, cli_runner):
-        """Test that --parallel requires --staged or parameter sweep (v0.6.0)."""
+    def test_parallel_flag_allowed_with_single_experiment(self, tmp_path, cli_runner):
+        """Test that --parallel is allowed with single experiments (orchestrator pattern)."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "test_script.py", "simple"
         )
 
-        # Single experiment without sweep should error
+        # Single experiment with --parallel should succeed (flag captured in cli_args)
         result = cli_runner.invoke(
             cli, ["run", str(script_path), "--parallel", "2", "--ignore-dirty"]
         )
-        assert result.exit_code != 0
-        assert (
-            "--parallel can only be used with parameter sweeps or --staged"
-            in result.output
-        )
+        assert result.exit_code == 0
+        assert "Experiment completed successfully" in result.output
 
     def test_parallel_negative_value_rejected(self, tmp_path, cli_runner):
         """Test that negative --parallel values are rejected."""

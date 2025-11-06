@@ -78,6 +78,11 @@ class ScriptExecutor:
             )
             raise
 
+        except click.Abort:
+            # click.Abort is intentional (from _handle_execution_result)
+            # Error message already stored in metadata, just re-raise
+            raise
+
         except Exception as e:
             self.manager.fail_experiment(experiment_id, f"Unexpected error: {str(e)}")
             self.console.print(f"[red]✗ Experiment failed: {experiment_id}[/]")
@@ -105,6 +110,16 @@ class ScriptExecutor:
             env[f"YANEX_PARAM_{key}"] = (
                 json.dumps(value) if not isinstance(value, str) else value
             )
+
+        # Add CLI arguments to environment (for yanex.get_cli_args())
+        try:
+            metadata = self.manager.get_experiment_metadata(experiment_id)
+            cli_args = metadata.get("cli_args", {})
+            if cli_args:
+                env["YANEX_CLI_ARGS"] = json.dumps(cli_args)
+        except Exception:
+            # If we can't get CLI args, continue without them
+            pass
 
         return env
 

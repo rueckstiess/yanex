@@ -226,6 +226,178 @@ Parameter sweeps can now execute immediately without staging:
   - Direct sweep execution avoids "staged" status to prevent interference
   - PID tracking added for debugging and process monitoring
 
+### CLI Argument Access in Scripts
+
+**New API**: `yanex.get_cli_args()` provides scripts access to CLI arguments used to invoke them.
+
+**Use Case**: Orchestrator scripts that spawn child experiments can access CLI flags (like `--parallel`) without special-casing each flag.
+
+**Example**:
+```python
+import yanex
+
+# Get CLI args used to run this script
+cli_args = yanex.get_cli_args()
+# Returns: ['run', 'orchestrator.py', '--parallel', '3']
+
+# Extract --parallel value
+parallel_workers = None
+if '--parallel' in cli_args:
+    idx = cli_args.index('--parallel')
+    parallel_workers = int(cli_args[idx + 1])
+
+# Use when spawning children
+results = yanex.run_multiple(experiments, parallel=parallel_workers)
+```
+
+**Usage**:
+```bash
+# Run orchestrator with parallelism
+yanex run orchestrator.py --parallel 3
+
+# Orchestrator can access --parallel via get_cli_args()
+# No need to special-case each CLI flag!
+```
+
+**Implementation**: CLI args stored in experiment metadata and available via `YANEX_CLI_ARGS` environment variable.
+
+### Programmatic Batch Execution API
+- **New in v0.5.0**: Python API for running multiple experiments programmatically
+- **Core module**: `yanex/executor.py` provides batch execution infrastructure
+- **Shared architecture**: CLI internally uses the same executor for sweeps
+- **Use cases**: K-fold cross-validation, grid search, ensemble training, batch processing
+
+#### Key Components
+
+**ExperimentSpec** - Specification for a single experiment:
+```python
+from pathlib import Path
+import yanex
+
+spec = yanex.ExperimentSpec(
+    script_path=Path("train.py"),           # Script to execute
+    config={"learning_rate": 0.01},         # Parameters
+    script_args=["--data-exp", "abc123"],   # Script-specific arguments
+    name="experiment-1",                     # Optional name
+    tags=["ml", "training"],                 # Optional tags
+    description="Training run 1"             # Optional description
+)
+```
+
+**yanex.run_multiple()** - Execute multiple experiments:
+```python
+results = yanex.run_multiple(
+    experiments=[spec1, spec2, spec3],  # List of ExperimentSpec objects
+    parallel=4,                          # Workers (None=sequential, 0=auto)
+    allow_dirty=False,                   # Allow uncommitted changes
+    verbose=False                        # Show detailed output
+)
+```
+
+**ExperimentResult** - Result of experiment execution:
+```python
+result = results[0]
+# Properties: experiment_id, status, error_message, duration, name
+if result.status == "completed":
+    print(f"Success: {result.experiment_id}")
+else:
+    print(f"Failed: {result.error_message}")
+```
+
+#### Orchestration/Execution Pattern
+
+For k-fold cross-validation and similar workflows, use a sentinel parameter to detect mode:
+
+```python
+# train.py - Acts as both orchestrator and executor
+import yanex
+from pathlib import Path
+
+# Detect mode using sentinel parameter
+fold_idx = yanex.get_param('_fold_idx', default=None)
+
+if fold_idx is None:
+    # ORCHESTRATION MODE: Spawn experiments for each fold
+    experiments = [
+        yanex.ExperimentSpec(
+            script_path=Path(__file__),
+            config={'_fold_idx': i, 'learning_rate': 0.01},
+            name=f'fold-{i}'
+        )
+        for i in range(5)
+    ]
+    results = yanex.run_multiple(experiments, parallel=5, allow_dirty=True)
+else:
+    # EXECUTION MODE: Train single fold
+    print(f"Training fold {fold_idx}")
+    # ... training code ...
+    yanex.log_metrics({'fold': fold_idx, 'accuracy': 0.95})
+```
+
+**Why this works:**
+- Script runs without yanex tracking when called directly: `python train.py`
+- Orchestrator creates experiments with `_fold_idx` set
+- Each spawned experiment runs with yanex tracking enabled
+- Experiment context prevents nested `run_multiple()` calls (raises `ExperimentContextError`)
+
+#### Examples
+
+**K-fold cross-validation:**
+```bash
+# Run the orchestration script
+python examples/api/kfold_training.py --folds 5 --parallel 5
+```
+
+**Hyperparameter grid search:**
+```python
+experiments = [
+    yanex.ExperimentSpec(
+        script_path=Path("train.py"),
+        config={"learning_rate": lr, "batch_size": bs},
+        name=f"grid-lr{lr}-bs{bs}"
+    )
+    for lr in [0.001, 0.01, 0.1]
+    for bs in [16, 32, 64]
+]
+results = yanex.run_multiple(experiments, parallel=4, allow_dirty=True)
+```
+
+**Ensemble training with different seeds:**
+```python
+experiments = [
+    yanex.ExperimentSpec(
+        script_path=Path("train.py"),
+        config={"random_seed": seed, "learning_rate": 0.001},
+        name=f"ensemble-{seed}",
+        tags=["ensemble"]
+    )
+    for seed in range(10)
+]
+results = yanex.run_multiple(experiments, parallel=10, allow_dirty=True)
+```
+
+#### Error Handling
+
+- Individual experiment failures don't abort the batch
+- Each experiment marked as `failed` with error message
+- Batch continues to completion regardless of failures
+- Results include both successful and failed experiments
+
+```python
+results = yanex.run_multiple(experiments, parallel=4, allow_dirty=True)
+
+completed = [r for r in results if r.status == "completed"]
+failed = [r for r in results if r.status == "failed"]
+
+print(f"Completed: {len(completed)}/{len(experiments)}")
+for fail in failed:
+    print(f"Failed {fail.name}: {fail.error_message}")
+```
+
+#### Code Elimination
+
+This feature eliminated ~222 lines of duplicate code from the CLI by refactoring sweep execution to use the shared `run_multiple()` function. The CLI now builds `ExperimentSpec` objects and delegates to the executor.
+
 ## Ruff Linting Memories
 
 - Don't add whitespace to empty lines to pass ruff's rule W293. 

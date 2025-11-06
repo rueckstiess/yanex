@@ -1069,3 +1069,153 @@ class TestExecuteBashScript:
         default_stderr = artifacts_dir / "script_stderr.txt"
         assert not default_stdout.exists()
         assert not default_stderr.exists()
+
+
+class TestGetCliArgs:
+    """Test get_cli_args() function."""
+
+    def test_get_cli_args_standalone_mode(self):
+        """Test get_cli_args() in standalone mode returns empty dict."""
+        # Ensure no active context
+        yanex._clear_current_experiment_id()
+
+        cli_args = yanex.get_cli_args()
+        assert cli_args == {}
+
+    def test_get_cli_args_from_environment(self, tmp_path, monkeypatch):
+        """Test get_cli_args() reads from environment variable in CLI mode."""
+        import json
+
+        # Create a test experiment
+        manager = create_isolated_manager(tmp_path)
+
+        # Create test script
+        script = tmp_path / "test.py"
+        script.write_text("print('test')")
+
+        experiment_id = manager.create_experiment(
+            script_path=script,
+            config={},
+            cli_args={
+                "script": "test.py",
+                "parallel": 3,
+                "param": ["lr=0.01"],
+                "tag": [],
+            },
+            allow_dirty=True,
+        )
+
+        # Simulate CLI mode by setting environment variables
+        monkeypatch.setenv("YANEX_EXPERIMENT_ID", experiment_id)
+        monkeypatch.setenv("YANEX_CLI_ACTIVE", "1")
+        monkeypatch.setenv(
+            "YANEX_CLI_ARGS",
+            json.dumps(
+                {"script": "test.py", "parallel": 3, "param": ["lr=0.01"], "tag": []}
+            ),
+        )
+
+        # Clear thread-local storage to force environment read
+        yanex._clear_current_experiment_id()
+
+        # Now get_cli_args() should read from environment
+        cli_args = yanex.get_cli_args()
+        assert cli_args["parallel"] == 3
+        assert cli_args["param"] == ["lr=0.01"]
+        assert cli_args["script"] == "test.py"
+        assert cli_args["tag"] == []
+
+        # Clean up
+        monkeypatch.delenv("YANEX_EXPERIMENT_ID", raising=False)
+        monkeypatch.delenv("YANEX_CLI_ACTIVE", raising=False)
+        monkeypatch.delenv("YANEX_CLI_ARGS", raising=False)
+
+    def test_get_cli_args_from_metadata(self, tmp_path, monkeypatch):
+        """Test get_cli_args() reads from metadata in direct API mode."""
+        # Point _get_experiment_manager to use our test directory
+        monkeypatch.setenv("YANEX_EXPERIMENTS_DIR", str(tmp_path))
+
+        manager = create_isolated_manager(tmp_path)
+
+        # Create test script
+        script = tmp_path / "test.py"
+        script.write_text("print('test')")
+
+        # Create experiment with CLI args
+        experiment_id = manager.create_experiment(
+            script_path=script,
+            config={},
+            cli_args={"script": "test.py", "parallel": 5, "tag": ["ml"]},
+            allow_dirty=True,
+        )
+
+        # Set thread-local context (direct API mode)
+        yanex._set_current_experiment_id(experiment_id)
+
+        try:
+            # Should read from metadata
+            cli_args = yanex.get_cli_args()
+            assert cli_args["parallel"] == 5
+            assert cli_args["script"] == "test.py"
+            assert cli_args["tag"] == ["ml"]
+        finally:
+            yanex._clear_current_experiment_id()
+            monkeypatch.delenv("YANEX_EXPERIMENTS_DIR", raising=False)
+
+    def test_get_cli_args_empty_when_not_set(self, tmp_path):
+        """Test get_cli_args() returns empty dict when CLI args not set."""
+        manager = create_isolated_manager(tmp_path)
+
+        # Create test script
+        script = tmp_path / "test.py"
+        script.write_text("print('test')")
+
+        # Create experiment without CLI args
+        experiment_id = manager.create_experiment(
+            script_path=script,
+            config={},
+            allow_dirty=True,
+        )
+
+        # Set thread-local context
+        yanex._set_current_experiment_id(experiment_id)
+
+        try:
+            # Should return empty dict
+            cli_args = yanex.get_cli_args()
+            assert cli_args == {}
+        finally:
+            yanex._clear_current_experiment_id()
+
+    def test_get_cli_args_handles_invalid_json(self, tmp_path, monkeypatch):
+        """Test get_cli_args() handles invalid JSON gracefully."""
+
+        # Create a test experiment
+        manager = create_isolated_manager(tmp_path)
+
+        # Create test script
+        script = tmp_path / "test.py"
+        script.write_text("print('test')")
+
+        experiment_id = manager.create_experiment(
+            script_path=script,
+            config={},
+            allow_dirty=True,
+        )
+
+        # Simulate CLI mode with invalid JSON
+        monkeypatch.setenv("YANEX_EXPERIMENT_ID", experiment_id)
+        monkeypatch.setenv("YANEX_CLI_ACTIVE", "1")
+        monkeypatch.setenv("YANEX_CLI_ARGS", "{invalid json}")
+
+        # Clear thread-local storage to force environment read
+        yanex._clear_current_experiment_id()
+
+        # Should return empty dict on JSON error
+        cli_args = yanex.get_cli_args()
+        assert cli_args == {}
+
+        # Clean up
+        monkeypatch.delenv("YANEX_EXPERIMENT_ID", raising=False)
+        monkeypatch.delenv("YANEX_CLI_ACTIVE", raising=False)
+        monkeypatch.delenv("YANEX_CLI_ARGS", raising=False)

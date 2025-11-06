@@ -64,7 +64,7 @@ class TestDirectSweepExecution:
             )
             assert result.exit_code == 0
             assert "Parameter sweep detected: running 3 experiments" in result.output
-            assert "Executing with 2 parallel workers" in result.output
+            assert "Running 3 experiments with 2 parallel workers" in result.output
             assert "Sweep execution completed" in result.output
         finally:
             if old_yanex_dir:
@@ -98,7 +98,7 @@ class TestDirectSweepExecution:
             assert result.exit_code == 0
             assert "Parameter sweep detected" in result.output
             # Check that parallel workers message appears (with some number of workers)
-            assert "Executing with" in result.output
+            assert "Running 2 experiments with" in result.output
             assert "parallel workers" in result.output
         finally:
             if old_yanex_dir:
@@ -106,8 +106,8 @@ class TestDirectSweepExecution:
             elif "YANEX_EXPERIMENTS_DIR" in os.environ:
                 del os.environ["YANEX_EXPERIMENTS_DIR"]
 
-    def test_parallel_flag_rejects_single_experiment(self, tmp_path, cli_runner):
-        """Test that --parallel errors with non-sweep single experiments."""
+    def test_parallel_flag_allowed_single_experiment(self, tmp_path, cli_runner):
+        """Test that --parallel is allowed with single experiments (orchestrator pattern)."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "single.py", "simple"
         )
@@ -122,11 +122,8 @@ class TestDirectSweepExecution:
                 "--ignore-dirty",
             ],
         )
-        assert result.exit_code != 0
-        assert (
-            "--parallel can only be used with parameter sweeps or --staged"
-            in result.output
-        )
+        assert result.exit_code == 0
+        assert "Experiment completed successfully" in result.output
 
     def test_parallel_with_stage_rejects(self, tmp_path, cli_runner):
         """Test that --stage + --parallel is rejected."""
