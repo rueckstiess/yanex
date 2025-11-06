@@ -257,8 +257,8 @@ print(f"Success with value={value}")
         with pytest.raises(ValueError, match="Invalid ExperimentSpec at index 1"):
             yanex.run_multiple(invalid_experiments, allow_dirty=True)
 
-    def test_cli_context_prevention(self, tmp_path):
-        """Test that run_multiple cannot be called from CLI context."""
+    def test_cli_context_allowed(self, tmp_path):
+        """Test that run_multiple works from CLI context (orchestrator pattern)."""
         script_content = """
 print("Test")
 """
@@ -268,20 +268,19 @@ print("Test")
         experiments_dir = tmp_path / "experiments"
         os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
 
-        # Simulate CLI context
+        # Simulate CLI context (e.g., orchestrator run via 'yanex run')
         os.environ["YANEX_CLI_ACTIVE"] = "1"
 
         experiments = [
             ExperimentSpec(script_path=script_path, config={"param": 1}),
         ]
 
-        # Should raise ExperimentContextError
-        from yanex.utils.exceptions import ExperimentContextError
+        # Should work fine - orchestrator pattern allows nested execution
+        results = yanex.run_multiple(experiments, allow_dirty=True)
 
-        with pytest.raises(
-            ExperimentContextError, match="Cannot use yanex.run_multiple"
-        ):
-            yanex.run_multiple(experiments, allow_dirty=True)
+        # Verify child experiment succeeded
+        assert len(results) == 1
+        assert results[0].status == "completed"
 
     def test_script_args_passthrough(self, tmp_path):
         """Test that script_args are passed through to subprocess."""

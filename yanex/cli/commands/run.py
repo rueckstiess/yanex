@@ -240,19 +240,6 @@ def run(
         # Validate sweep requirements
         validate_sweep_requirements(experiment_config, resolved_stage)
 
-        # Validate parallel flag with non-sweep single experiments
-        if (
-            parallel is not None
-            and not staged
-            and not resolved_stage
-            and not has_sweep_parameters(experiment_config)
-        ):
-            click.echo(
-                "Error: --parallel can only be used with parameter sweeps or --staged",
-                err=True,
-            )
-            raise click.Abort()
-
         if resolved_dry_run:
             click.echo("✓ Configuration validation passed")
             click.echo("Dry run completed - experiment would be created with:")

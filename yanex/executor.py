@@ -113,7 +113,6 @@ def run_multiple(
 
     Raises:
         ValueError: If experiments list is empty or specs are invalid
-        ExperimentContextError: If called from within CLI context
 
     Example:
         >>> import yanex
@@ -142,15 +141,6 @@ def run_multiple(
     if not experiments:
         raise ValueError("experiments list cannot be empty")
 
-    # Check we're not in CLI context
-    if _is_cli_context():
-        from .utils.exceptions import ExperimentContextError
-
-        raise ExperimentContextError(
-            "Cannot use yanex.run_multiple() from within 'yanex run' context. "
-            "Use this API when running scripts directly: python script.py"
-        )
-
     # Validate all specs
     for i, spec in enumerate(experiments):
         try:
@@ -163,15 +153,6 @@ def run_multiple(
         return _run_sequential(experiments, allow_dirty, verbose)
     else:
         return _run_parallel(experiments, parallel, allow_dirty, verbose)
-
-
-def _is_cli_context() -> bool:
-    """Check if currently running in a yanex CLI-managed experiment.
-
-    Returns:
-        True if YANEX_CLI_ACTIVE environment variable is set
-    """
-    return bool(os.environ.get("YANEX_CLI_ACTIVE"))
 
 
 def _run_sequential(

@@ -106,8 +106,8 @@ class TestDirectSweepExecution:
             elif "YANEX_EXPERIMENTS_DIR" in os.environ:
                 del os.environ["YANEX_EXPERIMENTS_DIR"]
 
-    def test_parallel_flag_rejects_single_experiment(self, tmp_path, cli_runner):
-        """Test that --parallel errors with non-sweep single experiments."""
+    def test_parallel_flag_allowed_single_experiment(self, tmp_path, cli_runner):
+        """Test that --parallel is allowed with single experiments (orchestrator pattern)."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "single.py", "simple"
         )
@@ -122,11 +122,8 @@ class TestDirectSweepExecution:
                 "--ignore-dirty",
             ],
         )
-        assert result.exit_code != 0
-        assert (
-            "--parallel can only be used with parameter sweeps or --staged"
-            in result.output
-        )
+        assert result.exit_code == 0
+        assert "Experiment completed successfully" in result.output
 
     def test_parallel_with_stage_rejects(self, tmp_path, cli_runner):
         """Test that --stage + --parallel is rejected."""
