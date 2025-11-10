@@ -44,7 +44,6 @@ class TestCloneFrom:
                     str(config_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -108,7 +107,6 @@ class TestCloneFrom:
                     str(config_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -177,7 +175,6 @@ class TestCloneFrom:
                     str(original_config_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -253,7 +250,6 @@ class TestCloneFrom:
                     str(original_config_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -332,7 +328,6 @@ class TestCloneFrom:
                     str(config_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -426,7 +421,6 @@ class TestCloneFrom:
                     str(original_config_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -448,7 +442,6 @@ class TestCloneFrom:
                     "learning_rate=0.05",
                     "--name",
                     "cloned-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -509,7 +502,6 @@ class TestCloneFrom:
                     str(original_config_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -531,7 +523,6 @@ class TestCloneFrom:
                     "optimizer.learning_rate=0.01",
                     "--name",
                     "cloned-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -583,7 +574,6 @@ class TestCloneFrom:
                     str(script_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -643,7 +633,6 @@ class TestCloneFrom:
                     str(config_path),
                     "--name",
                     "original-experiment",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -663,7 +652,6 @@ class TestCloneFrom:
                     "--clone-from",
                     original_id,
                     "--dry-run",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0

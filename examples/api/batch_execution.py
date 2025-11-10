@@ -68,7 +68,7 @@ def example_1_hyperparameter_grid():
     print("\nNote: This example requires 'train_simple.py' - see below for creation")
 
     # Uncomment to actually run:
-    # results = yanex.run_multiple(experiments, parallel=2, allow_dirty=True)
+    # results = yanex.run_multiple(experiments, parallel=2)
     # print_results_summary(results)
 
 
@@ -113,7 +113,7 @@ def example_2_random_search():
     print("  - hidden_size: choice [64, 128, 256, 512]")
 
     # Uncomment to actually run:
-    # results = yanex.run_multiple(experiments, parallel=4, allow_dirty=True)
+    # results = yanex.run_multiple(experiments, parallel=4)
     # print_results_summary(results)
 
 
@@ -148,7 +148,7 @@ def example_3_multiple_datasets():
     print("\nThis demonstrates passing dataset paths as script arguments")
 
     # Uncomment to actually run:
-    # results = yanex.run_multiple(experiments, parallel=2, allow_dirty=True)
+    # results = yanex.run_multiple(experiments, parallel=2)
     # print_results_summary(results)
 
 
@@ -187,7 +187,7 @@ def example_4_ensemble_training():
     print("\nModels can be combined later for ensemble predictions")
 
     # Uncomment to actually run:
-    # results = yanex.run_multiple(experiments, parallel=n_models, allow_dirty=True)
+    # results = yanex.run_multiple(experiments, parallel=n_models)
     # print_results_summary(results)
 
 

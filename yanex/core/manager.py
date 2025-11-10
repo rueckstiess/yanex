@@ -5,14 +5,22 @@ Handles experiment lifecycle management, ID generation, and coordinates
 between all core components (git, config, storage, environment).
 """
 
+import logging
 import secrets
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import git
+
 from ..utils.validation import validate_experiment_name, validate_tags
 from .environment import capture_full_environment
-from .git_utils import get_current_commit_info, validate_clean_working_directory
+from .git_utils import (
+    check_patch_size,
+    generate_git_patch,
+    get_current_commit_info,
+    scan_patch_for_secrets,
+)
 from .storage import ExperimentStorage
 
 
@@ -382,7 +390,6 @@ class ExperimentManager:
         config: dict[str, Any] | None = None,
         tags: list[str] | None = None,
         description: str | None = None,
-        allow_dirty: bool = False,
         stage_only: bool = False,
         script_args: list[str] | None = None,
         cli_args: dict[str, Any] | None = None,
@@ -395,7 +402,6 @@ class ExperimentManager:
             config: Configuration dictionary
             tags: List of tags for the experiment
             description: Optional experiment description
-            allow_dirty: Allow running with uncommitted changes
             stage_only: If True, create experiment with "staged" status for later execution
             script_args: Arguments to pass through to the script via sys.argv
             cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
@@ -404,13 +410,9 @@ class ExperimentManager:
             Experiment ID
 
         Raises:
-            DirtyWorkingDirectoryError: If git working directory is not clean and allow_dirty=False
             ValidationError: If input parameters are invalid
             StorageError: If experiment creation fails
         """
-        # Validate git working directory is clean (unless explicitly allowed)
-        if not allow_dirty:
-            validate_clean_working_directory()
 
         # Set defaults
         if config is None:
@@ -475,11 +477,85 @@ class ExperimentManager:
         Returns:
             Complete metadata dictionary
         """
+        logger = logging.getLogger(__name__)
+
         # Get current timestamp
         timestamp = datetime.utcnow().isoformat()
 
         # Capture git information
         git_info = get_current_commit_info()
+
+        # Capture git patch if uncommitted changes exist
+        git_patch = None
+        patch_filename = None
+        patch_size_info = None
+        secret_scan_results = None
+
+        try:
+            git_patch = generate_git_patch()
+            if git_patch:
+                patch_filename = "git_diff.patch"
+
+                # Check patch size
+                patch_size_info = check_patch_size(git_patch, max_size_mb=1.0)
+                if patch_size_info["exceeds_limit"]:
+                    logger.warning(
+                        f"Git patch size ({patch_size_info['size_mb']} MB) exceeds "
+                        f"recommended limit of 1.0 MB. Large patches may impact "
+                        f"performance and storage."
+                    )
+
+                # Scan for potential secrets
+                secret_scan_results = scan_patch_for_secrets(git_patch)
+                if secret_scan_results["has_secrets"]:
+                    findings = secret_scan_results["findings"]
+                    logger.warning(
+                        f"Potential secrets detected in git patch! "
+                        f"Found {len(findings)} potential secret(s). "
+                        f"Review patch content before sharing or committing."
+                    )
+                    # Log details about findings
+                    for finding in findings:
+                        logger.warning(
+                            f"  - {finding['type']} in {finding['filename']} "
+                            f"at line {finding['line']}"
+                        )
+
+        except git.GitError as e:
+            logger.warning(f"Git operation failed while generating patch: {e}")
+            # Continue without patch
+        except OSError as e:
+            logger.warning(f"File system error while generating patch: {e}")
+            # Continue without patch
+        except (ValueError, KeyError, AttributeError) as e:
+            logger.warning(f"Failed to process patch data: {type(e).__name__}: {e}")
+            # Continue without patch
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error while generating patch: {type(e).__name__}: {e}"
+            )
+            # Continue without patch
+
+        # Add patch info to git metadata
+        git_info["has_uncommitted_changes"] = git_patch is not None
+        git_info["patch_file"] = (
+            f"artifacts/{patch_filename}" if patch_filename else None
+        )
+
+        # Add security and size metadata if patch exists
+        if git_patch:
+            git_info["patch_size_bytes"] = (
+                patch_size_info["size_bytes"] if patch_size_info else None
+            )
+            git_info["patch_size_mb"] = (
+                patch_size_info["size_mb"] if patch_size_info else None
+            )
+            git_info["patch_has_secrets"] = (
+                secret_scan_results["has_secrets"] if secret_scan_results else False
+            )
+            git_info["patch_secret_count"] = (
+                len(secret_scan_results["findings"]) if secret_scan_results else 0
+            )
 
         # Capture environment information
         environment_info = capture_full_environment()
@@ -502,6 +578,17 @@ class ExperimentManager:
             "script_args": script_args if script_args else [],
             "cli_args": cli_args if cli_args else {},
         }
+
+        # Save patch as artifact if it exists
+        if git_patch and patch_filename:
+            try:
+                self.storage.save_text_artifact(
+                    experiment_id, patch_filename, git_patch
+                )
+            except Exception as e:
+                logger.warning(f"Failed to save git patch artifact: {e}")
+                # Update metadata to reflect failure
+                metadata["git"]["patch_file"] = None
 
         return metadata
 

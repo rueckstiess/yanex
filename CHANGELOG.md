@@ -8,12 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Automatic Git Patch Capture**: Yanex now automatically captures and stores uncommitted changes as patch files
+  - Generates `git diff HEAD` patch when uncommitted changes are detected (staged or unstaged)
+  - Saves patches as `artifacts/git_diff.patch` in experiment directory
+  - New metadata fields: `has_uncommitted_changes` (bool) and `patch_file` (string | null)
+  - Only tracks files already in the repository (excludes untracked files)
+  - Ensures full reproducibility even when working with uncommitted code
+  - Graceful error handling - warnings on patch generation failure, experiments continue
 
 ### Changed
+- **Removed Clean Git State Enforcement**: Experiments no longer require a clean working directory
+  - Removed git state validation before experiment execution
+  - Uncommitted changes are now captured automatically as patches instead of blocking execution
+  - Improves developer workflow by allowing experimentation without forced commits
+  - Removed `allow_dirty` parameter from `ExperimentManager.create_experiment()` and `yanex.create_experiment()`
+  - Removed `allow_dirty` parameter from `yanex.run_multiple()` batch execution API
+  - Removed `validate_clean_working_directory()` function from `yanex.core.git_utils`
 
 ### Fixed
 
 ### Deprecated
+- **`--ignore-dirty` flag**: This CLI flag is now deprecated and will be removed in a future version
+  - No longer needed since clean git state is not enforced
+  - Displays deprecation warning when used
+  - Config file support for `ignore_dirty` removed entirely
 
 ## [0.4.0] - 2025-07-18
 

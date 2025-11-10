@@ -27,7 +27,6 @@ class TestDirectSweepExecution:
                     str(script_path),
                     "--param",
                     "mode=list(on,off)",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -59,7 +58,6 @@ class TestDirectSweepExecution:
                     "value=list(1,2,3)",
                     "--parallel",
                     "2",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -92,7 +90,6 @@ class TestDirectSweepExecution:
                     "x=list(1,2)",
                     "--parallel",
                     "0",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -119,7 +116,6 @@ class TestDirectSweepExecution:
                 str(script_path),
                 "--parallel",
                 "2",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -139,7 +135,6 @@ class TestDirectSweepExecution:
                 "--stage",
                 "--parallel",
                 "2",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code != 0
@@ -164,7 +159,6 @@ class TestDirectSweepExecution:
                     str(script_path),
                     "--param",
                     "x=list(1,2)",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -199,7 +193,6 @@ class TestDirectSweepExecution:
                     "--param",
                     "staged=list(a,b)",
                     "--stage",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -213,7 +206,6 @@ class TestDirectSweepExecution:
                     str(script_path),
                     "--param",
                     "direct=list(x,y)",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -249,7 +241,6 @@ class TestDirectSweepExecution:
                     "--param",
                     "x=list(1,2,3)",
                     "--stage",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -259,77 +250,6 @@ class TestDirectSweepExecution:
             result = cli_runner.invoke(cli, ["run", "--staged", "--parallel", "2"])
             assert result.exit_code == 0
             assert "Executing with 2 parallel workers" in result.output
-
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
-
-    def test_sweep_fails_early_on_dirty_git(self, tmp_path, cli_runner, clean_git_repo):
-        """Test that sweep fails immediately on dirty git, not after creating experiments."""
-        from pathlib import Path
-
-        # Get the working directory from the repo
-        repo_path = Path(clean_git_repo.working_dir)
-
-        # Create and commit a script in the git repo
-        script_path = repo_path / "sweep_script.py"
-        script_path.write_text(
-            """
-import yanex
-param_value = yanex.get_param('x', default=1)
-print(f"Param: {param_value}")
-"""
-        )
-        clean_git_repo.index.add([str(script_path)])
-        clean_git_repo.index.commit("Add sweep script")
-
-        # Make git repo dirty by modifying the tracked file
-        script_path.write_text(
-            """
-import yanex
-param_value = yanex.get_param('x', default=1)
-print(f"Param: {param_value}")
-# This is a modification
-"""
-        )
-
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
-
-        try:
-            # Run sweep WITHOUT --ignore-dirty
-            result = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "x=list(1,2,3)",
-                ],
-            )
-
-            # Should fail immediately with non-zero exit code
-            assert result.exit_code != 0, (
-                f"Expected non-zero exit code, got {result.exit_code}"
-            )
-
-            # Should see error about git working directory not being clean
-            assert "not clean" in result.output.lower(), (
-                f"Expected 'not clean' error message, got: {result.output}"
-            )
-
-            # Verify NO experiments were created (should fail before creating any)
-            from yanex.core.manager import ExperimentManager
-
-            manager = ExperimentManager(experiments_dir=tmp_path)
-            experiments = manager.list_experiments()
-            # Expect 0 experiments (fails before creating any)
-            assert len(experiments) == 0, (
-                f"Expected 0 experiments, got {len(experiments)} (should fail before creating any)"
-            )
 
         finally:
             if old_yanex_dir:

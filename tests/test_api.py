@@ -647,15 +647,11 @@ class TestExperimentCreation:
         self.manager = create_isolated_manager()
 
     @patch("yanex.api._get_experiment_manager")
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
-    def test_create_experiment(
-        self, mock_capture_env, mock_git_info, mock_validate_git, mock_get_manager
-    ):
+    def test_create_experiment(self, mock_capture_env, mock_git_info, mock_get_manager):
         """Test create_experiment function."""
         # Setup mocks using utilities
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
@@ -1102,7 +1098,6 @@ class TestGetCliArgs:
                 "param": ["lr=0.01"],
                 "tag": [],
             },
-            allow_dirty=True,
         )
 
         # Simulate CLI mode by setting environment variables
@@ -1146,7 +1141,6 @@ class TestGetCliArgs:
             script_path=script,
             config={},
             cli_args={"script": "test.py", "parallel": 5, "tag": ["ml"]},
-            allow_dirty=True,
         )
 
         # Set thread-local context (direct API mode)
@@ -1174,7 +1168,6 @@ class TestGetCliArgs:
         experiment_id = manager.create_experiment(
             script_path=script,
             config={},
-            allow_dirty=True,
         )
 
         # Set thread-local context
@@ -1200,7 +1193,6 @@ class TestGetCliArgs:
         experiment_id = manager.create_experiment(
             script_path=script,
             config={},
-            allow_dirty=True,
         )
 
         # Simulate CLI mode with invalid JSON

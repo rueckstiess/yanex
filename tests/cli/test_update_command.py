@@ -320,3 +320,94 @@ class TestUpdateCommand:
         assert result.exit_code == 0
         assert "No regular experiments found to update" in result.output
         # Should not prompt for confirmation due to --force flag
+
+
+class TestUpdateCommandIntegration:
+    """Integration tests for update command with real experiments."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = create_cli_runner()
+
+    def test_update_experiment_tags_integration(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test updating experiment tags with real experiment."""
+        # Create an experiment
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "test-exp",
+                "--tag",
+                "initial",
+            ],
+        )
+        assert result.exit_code == 0
+
+        # Extract experiment ID from output (format: "✓ Experiment completed successfully: exp_id")
+        exp_id = None
+        for line in result.output.split("\n"):
+            if (
+                "Experiment completed successfully:" in line
+                or "Experiment staged:" in line
+            ):
+                exp_id = line.split(":")[-1].strip()
+                break
+
+        assert exp_id is not None, (
+            f"Could not find experiment ID in output:\n{result.output}"
+        )
+
+        # Update the experiment to add a tag
+        result = self.runner.invoke(
+            cli, ["update", exp_id, "--add-tag", "updated", "--force"]
+        )
+
+        assert result.exit_code == 0
+        assert "Successfully updated 1 experiment" in result.output
+
+        # Verify the tag was added
+        result = self.runner.invoke(cli, ["show", exp_id])
+        assert result.exit_code == 0
+        assert "updated" in result.output
+        assert "initial" in result.output
+
+    def test_update_experiment_name_integration(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test updating experiment name with real experiment."""
+        # Create an experiment
+        result = self.runner.invoke(
+            cli, ["run", str(sample_experiment_script), "--name", "old-name"]
+        )
+        assert result.exit_code == 0
+
+        # Extract experiment ID (format: "✓ Experiment completed successfully: exp_id")
+        exp_id = None
+        for line in result.output.split("\n"):
+            if (
+                "Experiment completed successfully:" in line
+                or "Experiment staged:" in line
+            ):
+                exp_id = line.split(":")[-1].strip()
+                break
+
+        assert exp_id is not None, (
+            f"Could not find experiment ID in output:\n{result.output}"
+        )
+
+        # Update the name
+        result = self.runner.invoke(
+            cli, ["update", exp_id, "--set-name", "new-name", "--force"]
+        )
+
+        assert result.exit_code == 0
+        assert "Successfully updated 1 experiment" in result.output
+
+        # Verify the name was changed
+        result = self.runner.invoke(cli, ["show", exp_id])
+        assert result.exit_code == 0
+        assert "new-name" in result.output

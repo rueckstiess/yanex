@@ -39,7 +39,6 @@ print("ARGS:", json.dumps(sys.argv))
                 [
                     "run",
                     str(script_path),
-                    "--ignore-dirty",
                     "--data-exp",
                     "abc123",
                     "--fold",
@@ -92,7 +91,6 @@ print(f"Verbose: {args.verbose}")
                 [
                     "run",
                     str(script_path),
-                    "--ignore-dirty",
                     "--data-exp",
                     "xyz789",
                     "--fold",
@@ -143,7 +141,6 @@ print(f"Yanex param learning_rate: {learning_rate}")
                 [
                     "run",
                     str(script_path),
-                    "--ignore-dirty",
                     "-p",
                     "learning_rate=0.01",
                     "--data-exp",
@@ -184,7 +181,6 @@ print("Script executed")
                 [
                     "run",
                     str(script_path),
-                    "--ignore-dirty",
                     "--name",
                     "test-with-args",
                     "--data-exp",
@@ -235,7 +231,6 @@ print("ARGS:", json.dumps(sys.argv[1:]))  # Skip script name
                 [
                     "run",
                     str(script_path),
-                    "--ignore-dirty",
                     "--stage",
                     "--data-exp",
                     "abc123",
@@ -286,7 +281,6 @@ print(f"LR={lr} DATA={args.data_exp}")
                 [
                     "run",
                     str(script_path),
-                    "--ignore-dirty",
                     "-p",
                     "learning_rate=list(0.01,0.02)",
                     "--data-exp",
@@ -362,7 +356,6 @@ print("Script executed")
                     "--verbose",
                     "run",
                     str(script_path),
-                    "--ignore-dirty",
                     "--data-exp",
                     "abc123",
                 ],

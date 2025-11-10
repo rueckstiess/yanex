@@ -41,7 +41,6 @@ def main():
         config={"max_retries": 3, "timeout_seconds": 1.0, "algorithm": "monte_carlo"},
         tags=["example", "manual", "control"],
         description="Example showing manual experiment control",
-        allow_dirty=True,  # Allow logging from dirty git state
     ):
         exp_id = yanex.get_experiment_id()
         print(f"Started experiment: {exp_id}")
@@ -127,7 +126,6 @@ def cancellation_example():
         config={"countdown_seconds": 5},
         tags=["example", "cancellation"],
         description="Example showing experiment cancellation",
-        allow_dirty=True,  # Allow logging from dirty git state
     ):
         exp_id = yanex.get_experiment_id()
         print(f"Started experiment: {exp_id}")

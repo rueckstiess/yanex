@@ -53,7 +53,7 @@ This ensures reproducibility and easy comparison of results.
 - `--tag TAG`: Add tag (can be used multiple times)
 
 #### Git Options
-- `--ignore-dirty`: Allow execution with uncommitted changes
+- `--ignore-dirty`: *(Deprecated)* This flag is no longer needed and will be removed in a future version
 
 #### Staging
 - `--stage`: Stage the experiment for later execution
@@ -326,33 +326,96 @@ Yanex automatically records:
 - Branch name
 - Working directory status (clean/dirty)
 - Remote repository URL
+- **Uncommitted changes patch** (automatically captured when present)
 
-### Clean State Enforcement
+### Handling Uncommitted Changes
 
-By default, Yanex requires a clean Git state (no uncommitted changes) to ensure reproducibility. If your working directory is dirty, it will raise an error.
+Yanex no longer enforces a clean git state. Instead, it automatically captures and stores any uncommitted changes as a git patch file, ensuring full reproducibility even when working with uncommitted code.
 
-You can override this with the `--ignore-dirty` flag, but this is not recommended for production runs.
+**What happens when you have uncommitted changes:**
+1. Yanex detects uncommitted changes (staged or unstaged)
+2. Automatically generates a patch file: `git diff HEAD`
+3. **Scans the patch for potential secrets** (API keys, tokens, credentials)
+4. **Validates patch size** (warns if larger than 1MB)
+5. Saves the patch as `artifacts/git_diff.patch` in the experiment directory
+6. Stores metadata flags: `has_uncommitted_changes` and `patch_file` location
 
 ```bash
-# Requires clean Git state (no uncommitted changes)
+# Works seamlessly with uncommitted changes
 yanex run script.py
 
-# Allow dirty state (not recommended for production)
-yanex run script.py --ignore-dirty
+# Patch is automatically captured and stored
+# Check experiment metadata to see if a patch was saved
+yanex show <experiment_id>
 ```
+
+**Patch Contents:**
+- Includes both staged and unstaged changes
+- Only tracks files already in the repository (excludes untracked files)
+- Can be applied later to reproduce the exact code state
+
+**Security and Performance Checks:**
+
+Yanex automatically scans git patches for potential security issues:
+
+- **Secret Detection**: Uses the `detect-secrets` library to scan for API keys, tokens, credentials, and other sensitive data
+- **Patch Size Validation**: Warns if patches exceed 1MB to prevent performance issues
+- **Automatic Warnings**: Security findings are logged during experiment creation
+
+```bash
+# Example warning output when secrets are detected
+⚠️ Potential secrets detected in git patch! Found 2 potential secret(s).
+  - Base64 High Entropy String in config.py at line 42
+  - Secret Keyword in credentials.txt at line 156
+```
+
+**Note**: Line numbers refer to the actual line numbers in your source files (after applying the uncommitted changes), making it easy to locate and review the flagged content.
+
+**Security Metadata:**
+
+The following security information is stored in experiment metadata:
+- `patch_has_secrets`: Boolean indicating if potential secrets were detected
+- `patch_secret_count`: Number of potential secrets found
+- `patch_size_bytes`: Patch size in bytes
+- `patch_size_mb`: Patch size in megabytes
+
+```bash
+# View security information
+yanex show <experiment_id>
+```
+
+**Important Security Notes:**
+- Secret detection may produce false positives - review findings carefully
+- If secrets are detected, review your patch before sharing experiments
+- Consider committing sensitive changes separately or using environment variables
+- The `detect-secrets` library is automatically installed with yanex
 
 ### Best Practices
 
+While Yanex now handles uncommitted changes gracefully, committing your code before experiments is still recommended for:
+- Clean version history
+- Better collaboration
+- Simplified code reviews
+
 ```bash
-# 1. Commit your changes first
+# Recommended: Commit changes before experiments
 git add .
 git commit -m "Update model architecture"
-
-# 2. Run experiment
 yanex run train.py --tag "new-architecture"
 
-# 3. Experiment is now fully reproducible
+# Also supported: Run with uncommitted changes
+# Yanex automatically captures the changes as a patch
+yanex run train.py --tag "experimental-changes"
 ```
+
+### Reproducing Experiments with Patches
+
+If an experiment was run with uncommitted changes, you can reproduce it by:
+1. Checking out the recorded commit: `git checkout <commit_hash>`
+2. Applying the saved patch: `git apply <experiment_dir>/artifacts/git_diff.patch`
+3. Running the experiment again
+
+*(Note: Future versions will include a `yanex reproduce` command to automate this process)*
 
 
 ---

@@ -16,7 +16,6 @@ from tests.test_utils import (
 )
 from yanex.core.manager import ExperimentManager
 from yanex.utils.exceptions import (
-    DirtyWorkingDirectoryError,
     ExperimentNotFoundError,
     ValidationError,
 )
@@ -271,15 +270,13 @@ class TestRunningExperimentsQuery:
 class TestExperimentCreation:
     """Test experiment creation functionality - major improvements with utilities."""
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
     def test_create_experiment_basic(
-        self, mock_capture_env, mock_git_info, mock_validate_git, isolated_manager
+        self, mock_capture_env, mock_git_info, isolated_manager
     ):
         """Test basic experiment creation."""
         # NEW: Use mock helpers for consistent setup
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
@@ -305,15 +302,13 @@ class TestExperimentCreation:
         assert "git" in metadata
         assert "environment" in metadata
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
     def test_create_experiment_with_options(
-        self, mock_capture_env, mock_git_info, mock_validate_git, isolated_manager
+        self, mock_capture_env, mock_git_info, isolated_manager
     ):
         """Test experiment creation with all options."""
         # Setup mocks
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
@@ -341,22 +336,12 @@ class TestExperimentCreation:
         saved_config = isolated_manager.storage.load_config(experiment_id)
         assert saved_config == config
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_create_experiment_dirty_git(self, mock_validate_git, isolated_manager):
-        """Test experiment creation fails with dirty git working directory."""
-        mock_validate_git.side_effect = DirtyWorkingDirectoryError(["modified.py"])
-
-        with pytest.raises(DirtyWorkingDirectoryError):
-            isolated_manager.create_experiment(Path(__file__), tags=["unit-tests"])
-
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
     def test_create_experiment_invalid_name(
-        self, mock_capture_env, mock_git_info, mock_validate_git, isolated_manager
+        self, mock_capture_env, mock_git_info, isolated_manager
     ):
         """Test experiment creation fails with invalid name."""
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
@@ -366,14 +351,12 @@ class TestExperimentCreation:
                 Path(__file__), name="invalid@name#with$symbols", tags=["unit-tests"]
             )
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
     def test_create_experiment_duplicate_name(
-        self, mock_capture_env, mock_git_info, mock_validate_git, isolated_manager
+        self, mock_capture_env, mock_git_info, isolated_manager
     ):
         """Test experiment creation allows duplicate names for grouping."""
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
@@ -395,14 +378,12 @@ class TestExperimentCreation:
         assert exp1_metadata["name"] == name
         assert exp2_metadata["name"] == name
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
     def test_create_experiment_invalid_tags(
-        self, mock_capture_env, mock_git_info, mock_validate_git, isolated_manager
+        self, mock_capture_env, mock_git_info, isolated_manager
     ):
         """Test experiment creation fails with invalid tags."""
-        mock_validate_git.return_value = None
         mock_git_info.return_value = {"commit": "abc123"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
 
@@ -490,7 +471,11 @@ class TestExperimentFinding:
         assert metadata["started_at"] is None
         assert metadata["completed_at"] is None
         assert metadata["duration"] is None
-        assert metadata["git"] == {"commit": "abc123", "branch": "main"}
+        # Git metadata now includes has_uncommitted_changes and patch_file
+        assert metadata["git"]["commit"] == "abc123"
+        assert metadata["git"]["branch"] == "main"
+        assert "has_uncommitted_changes" in metadata["git"]
+        assert "patch_file" in metadata["git"]
         assert metadata["environment"] == {"python_version": "3.11.0"}
 
 
@@ -815,8 +800,7 @@ class TestExperimentListing:
 class TestStagingFunctionality:
     """Test staging functionality - improved with utilities."""
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_create_experiment_staged(self, mock_validate_git, isolated_manager):
+    def test_create_experiment_staged(self, isolated_manager):
         """Test creating experiment with stage_only=True creates staged status."""
         script_path = Path(__file__)
 
@@ -831,10 +815,7 @@ class TestStagingFunctionality:
         assert metadata["started_at"] is None
         assert metadata["completed_at"] is None
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_create_experiment_staged_skips_concurrency_check(
-        self, mock_validate_git, isolated_manager
-    ):
+    def test_create_experiment_staged_skips_concurrency_check(self, isolated_manager):
         """Test staged experiments skip concurrency check."""
         script_path = Path(__file__)
 
@@ -854,10 +835,7 @@ class TestStagingFunctionality:
         assert isolated_manager.get_experiment_status(staged_id) == "staged"
         assert running_id != staged_id
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_execute_staged_experiment_success(
-        self, mock_validate_git, isolated_manager
-    ):
+    def test_execute_staged_experiment_success(self, isolated_manager):
         """Test executing a staged experiment transitions to running state."""
         script_path = Path(__file__)
 
@@ -875,18 +853,12 @@ class TestStagingFunctionality:
         assert metadata["status"] == "running"
         assert metadata["started_at"] is not None
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_execute_staged_experiment_not_found(
-        self, mock_validate_git, isolated_manager
-    ):
+    def test_execute_staged_experiment_not_found(self, isolated_manager):
         """Test executing non-existent staged experiment raises error."""
         with pytest.raises(ExperimentNotFoundError):
             isolated_manager.execute_staged_experiment("nonexistent")
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_execute_staged_experiment_wrong_status(
-        self, mock_validate_git, isolated_manager
-    ):
+    def test_execute_staged_experiment_wrong_status(self, isolated_manager):
         """Test executing non-staged experiment raises error."""
         script_path = Path(__file__)
 
@@ -903,14 +875,12 @@ class TestStagingFunctionality:
         assert "Expected status 'staged'" in str(exc_info.value)
         assert "got 'created'" in str(exc_info.value)
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_get_staged_experiments_empty(self, mock_validate_git, isolated_manager):
+    def test_get_staged_experiments_empty(self, isolated_manager):
         """Test get_staged_experiments returns empty list when no staged experiments."""
         staged = isolated_manager.get_staged_experiments()
         assert staged == []
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_get_staged_experiments_multiple(self, mock_validate_git, isolated_manager):
+    def test_get_staged_experiments_multiple(self, isolated_manager):
         """Test get_staged_experiments returns only staged experiments."""
         script_path = Path(__file__)
 
@@ -937,10 +907,7 @@ class TestStagingFunctionality:
         assert staged2_id in staged
         assert regular_id not in staged
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_get_staged_experiments_ignores_corrupted(
-        self, mock_validate_git, isolated_manager
-    ):
+    def test_get_staged_experiments_ignores_corrupted(self, isolated_manager):
         """Test get_staged_experiments ignores experiments with corrupted metadata."""
         script_path = Path(__file__)
 
@@ -960,8 +927,7 @@ class TestStagingFunctionality:
         staged = isolated_manager.get_staged_experiments()
         assert staged == [staged_id]
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_staged_experiment_full_workflow(self, mock_validate_git, isolated_manager):
+    def test_staged_experiment_full_workflow(self, isolated_manager):
         """Test complete workflow: create staged -> execute -> complete."""
         script_path = Path(__file__)
 
@@ -1002,10 +968,7 @@ class TestStagingFunctionality:
         assert metadata["completed_at"] is not None
         assert metadata["duration"] is not None
 
-    @patch("yanex.core.manager.validate_clean_working_directory")
-    def test_staged_experiment_with_all_options(
-        self, mock_validate_git, isolated_manager
-    ):
+    def test_staged_experiment_with_all_options(self, isolated_manager):
         """Test staged experiment creation with all options."""
         script_path = Path(__file__)
 
@@ -1015,7 +978,6 @@ class TestStagingFunctionality:
             config={"lr": 0.01, "epochs": 100},
             tags=["staging", "test", "unit-tests"],
             description="Test staged experiment with all options",
-            allow_dirty=True,
             stage_only=True,
         )
 

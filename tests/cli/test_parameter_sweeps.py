@@ -48,7 +48,6 @@ class TestCLIParameterSweeps:
                 "lr=range(0.01, 0.03, 0.01)",
                 "--stage",
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -74,7 +73,6 @@ class TestCLIParameterSweeps:
                     "--param",
                     "lr=range(0.01, 0.03, 0.01)",
                     "--stage",
-                    "--ignore-dirty",
                     "--name",
                     "sweep-test",
                 ],
@@ -113,7 +111,6 @@ class TestCLIParameterSweeps:
                     "--param",
                     "batch_size=list(16, 32)",
                     "--stage",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -154,7 +151,6 @@ class TestCLIParameterSweeps:
                     "--param",
                     "model_type=resnet",  # regular parameter
                     "--stage",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -193,7 +189,6 @@ class TestCLIParameterSweeps:
                     "--param",
                     "training.epochs=100",
                     "--stage",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -227,7 +222,6 @@ class TestCLIParameterSweeps:
                 "--param",
                 "batch_size=32",
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -261,7 +255,6 @@ class TestCLIParameterSweeps:
                 invalid_param,
                 "--stage",
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code != 0
@@ -291,7 +284,6 @@ class TestCLIParameterSweeps:
                     "--param",
                     "batch_size=32",
                     "--stage",
-                    "--ignore-dirty",
                     "--name",
                     "test-model",
                 ],
@@ -331,7 +323,6 @@ class TestCLIParameterSweeps:
                     "--param",
                     "lr=range(1e-4, 3e-4, 1e-4)",
                     "--stage",
-                    "--ignore-dirty",
                 ],
             )
             assert result.exit_code == 0
@@ -384,7 +375,6 @@ class TestCLIParameterSweeps:
                 "run",
                 str(script_path),
                 "--stage",
-                "--ignore-dirty",
             ]
 
             for param in sweep_params:
@@ -428,7 +418,6 @@ class TestCLIParameterSweeps:
                 param_spec,
                 "--stage",
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -468,7 +457,6 @@ class TestCLIParameterSweeps:
                 "lr=range(0.001, 0.003, 0.001)",  # Override lr with sweep
                 "--stage",
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -500,7 +488,6 @@ class TestCLIParameterSweeps:
                 "--config",
                 str(config_path),
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -532,7 +519,6 @@ class TestCLIParameterSweeps:
                 "--config",
                 str(config_path),
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -565,7 +551,6 @@ class TestCLIParameterSweeps:
                 "--config",
                 str(config_path),
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         # Should parse all sweeps successfully regardless of whitespace
@@ -597,7 +582,6 @@ class TestCLIParameterSweeps:
                 "--config",
                 str(config_path),
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -629,7 +613,6 @@ class TestCLIParameterSweeps:
                 "--param",
                 "epochs=100",  # Override sweep with single value
                 "--dry-run",
-                "--ignore-dirty",
             ],
         )
         assert result.exit_code == 0
@@ -655,7 +638,6 @@ class TestCLIParameterSweeps:
                     "--param",
                     "lr=list(0.01, 0.02)",
                     "--stage",
-                    "--ignore-dirty",
                     "--name",
                     "first-sweep",
                 ],
@@ -672,7 +654,6 @@ class TestCLIParameterSweeps:
                     "--param",
                     "batch_size=list(16, 32, 64)",
                     "--stage",
-                    "--ignore-dirty",
                     "--name",
                     "second-sweep",
                 ],
