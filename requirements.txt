@@ -8,3 +8,4 @@ textual>=0.45.0
 fastapi>=0.100.0
 uvicorn>=0.20.0
 httpx>=0.24.0
+detect-secrets>=1.5.0

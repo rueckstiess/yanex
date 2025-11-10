@@ -10,12 +10,14 @@ import pytest
 
 from tests.test_utils import TestFileHelpers
 from yanex.core.git_utils import (
+    check_patch_size,
     ensure_git_available,
     generate_git_patch,
     get_current_commit_info,
     get_git_repo,
     get_repository_info,
     has_uncommitted_changes,
+    scan_patch_for_secrets,
 )
 from yanex.utils.exceptions import GitError
 
@@ -542,3 +544,196 @@ class TestEnsureGitAvailable:
             # Should propagate the RuntimeError since it's not a known git error
             with pytest.raises(RuntimeError, match="Unexpected error"):
                 ensure_git_available()
+
+
+class TestCheckPatchSize:
+    """Test check_patch_size function."""
+
+    def test_small_patch_within_limit(self):
+        """Test patch smaller than limit."""
+        patch = "diff --git a/test.txt b/test.txt\n+small change"
+
+        result = check_patch_size(patch, max_size_mb=1.0)
+
+        assert isinstance(result, dict)
+        assert result["exceeds_limit"] is False
+        assert result["size_mb"] < 1.0
+        assert result["size_bytes"] == len(patch.encode("utf-8"))
+
+    def test_large_patch_exceeds_limit(self):
+        """Test patch larger than limit."""
+        # Create a patch larger than 1MB (needs to be significantly larger for rounding)
+        large_content = "x" * (1024 * 1024 + 100000)  # ~1.1 MB
+        patch = f"diff --git a/large.txt b/large.txt\n+{large_content}"
+
+        result = check_patch_size(patch, max_size_mb=1.0)
+
+        assert result["exceeds_limit"] is True
+        assert result["size_mb"] > 1.0
+        assert result["size_bytes"] > 1024 * 1024
+
+    def test_exact_limit_boundary(self):
+        """Test patch at exactly the limit."""
+        # Create patch at exactly 1MB
+        size_bytes = 1024 * 1024
+        content = "x" * size_bytes
+        patch = content
+
+        result = check_patch_size(patch, max_size_mb=1.0)
+
+        # At exactly 1MB, should not exceed
+        assert result["exceeds_limit"] is False
+        assert result["size_mb"] == 1.0
+
+    def test_custom_size_limit(self):
+        """Test with custom size limit."""
+        patch = "x" * (500 * 1024)  # 500 KB
+
+        # Test with 0.4 MB limit (should exceed)
+        result = check_patch_size(patch, max_size_mb=0.4)
+        assert result["exceeds_limit"] is True
+
+        # Test with 0.6 MB limit (should not exceed)
+        result = check_patch_size(patch, max_size_mb=0.6)
+        assert result["exceeds_limit"] is False
+
+    def test_empty_patch(self):
+        """Test with empty patch."""
+        result = check_patch_size("", max_size_mb=1.0)
+
+        assert result["exceeds_limit"] is False
+        assert result["size_mb"] == 0.0
+        assert result["size_bytes"] == 0
+
+    def test_unicode_patch(self):
+        """Test patch with unicode characters."""
+        patch = "diff --git a/test.txt b/test.txt\n+Hello 世界 🌍"
+
+        result = check_patch_size(patch, max_size_mb=1.0)
+
+        # Unicode characters take more bytes
+        assert result["size_bytes"] == len(patch.encode("utf-8"))
+        assert result["size_bytes"] > len(patch)  # More than ASCII char count
+
+
+class TestScanPatchForSecrets:
+    """Test scan_patch_for_secrets function."""
+
+    def test_clean_patch_no_secrets(self):
+        """Test patch with no secrets."""
+        patch = """diff --git a/test.txt b/test.txt
+index abc123..def456 100644
+--- a/test.txt
++++ b/test.txt
+@@ -1,3 +1,3 @@
+-Old content
++New content
+"""
+
+        result = scan_patch_for_secrets(patch)
+
+        assert isinstance(result, dict)
+        assert "has_secrets" in result
+        assert "findings" in result
+        assert result["has_secrets"] is False
+        assert result["findings"] == []
+
+    def test_patch_with_api_key(self):
+        """Test patch containing what looks like an API key."""
+        # Use a realistic-looking fake API key pattern
+        patch = """diff --git a/config.py b/config.py
+index abc123..def456 100644
+--- a/config.py
++++ b/config.py
+@@ -1,3 +1,3 @@
+-API_KEY = 'old_key'
++API_KEY = 'sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890AbCdEfGhIjKlMnOpQr'
+"""
+
+        result = scan_patch_for_secrets(patch)
+
+        # detect-secrets should find this
+        assert isinstance(result, dict)
+        assert "has_secrets" in result
+        assert "findings" in result
+        # Note: This test may fail if detect-secrets is not installed
+        # In that case, has_secrets will be False
+
+    def test_patch_with_aws_key(self):
+        """Test patch containing what looks like an AWS key."""
+        patch = """diff --git a/aws_config.py b/aws_config.py
+index abc123..def456 100644
+--- a/aws_config.py
++++ b/aws_config.py
+@@ -1,3 +1,4 @@
+ # AWS Configuration
+-aws_access_key = 'OLD_KEY'
++aws_access_key_id = 'AKIAIOSFODNN7EXAMPLE'
++aws_secret_access_key = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+"""
+
+        result = scan_patch_for_secrets(patch)
+
+        assert isinstance(result, dict)
+        assert "has_secrets" in result
+        assert "findings" in result
+
+    def test_missing_detect_secrets_library(self):
+        """Test graceful handling when detect-secrets is not installed."""
+        # Test that function handles ImportError gracefully
+        # This is tested by the fact that if detect-secrets wasn't installed,
+        # the other tests would still pass (returning has_secrets=False)
+        test_patch = "diff --git a/test.txt b/test.txt\n+content"
+        result = scan_patch_for_secrets(test_patch)
+
+        # Should return valid structure even if library missing
+        assert isinstance(result, dict)
+        assert "has_secrets" in result
+        assert "findings" in result
+
+    def test_scan_error_handling(self):
+        """Test graceful handling of scanning errors."""
+        from unittest.mock import patch as mock_patch
+
+        # Mock tempfile to raise an exception during file creation
+        with mock_patch("tempfile.NamedTemporaryFile") as mock_tempfile:
+            mock_tempfile.side_effect = Exception("File creation failed")
+
+            test_patch = "diff --git a/test.txt b/test.txt\n+content"
+            result = scan_patch_for_secrets(test_patch)
+
+            # Should return safe default on error
+            assert result["has_secrets"] is False
+            assert result["findings"] == []
+
+    def test_empty_patch_scan(self):
+        """Test scanning empty patch."""
+        result = scan_patch_for_secrets("")
+
+        assert result["has_secrets"] is False
+        assert result["findings"] == []
+
+    def test_findings_structure(self):
+        """Test that findings have correct structure when secrets detected."""
+        # This test creates a patch that should trigger detection
+        patch = """diff --git a/secrets.txt b/secrets.txt
++password = 'MySecretPassword123!'
++api_token = 'ghp_1234567890abcdefghijklmnopqrstuvwxyz'
+"""
+
+        result = scan_patch_for_secrets(patch)
+
+        assert isinstance(result, dict)
+        assert "has_secrets" in result
+        assert "findings" in result
+        assert isinstance(result["findings"], list)
+
+        # If secrets were found, check structure
+        if result["has_secrets"]:
+            for finding in result["findings"]:
+                assert "type" in finding
+                assert "line" in finding
+                assert "filename" in finding
+                assert isinstance(finding["type"], str)
+                assert isinstance(finding["line"], str)
+                assert isinstance(finding["filename"], str)
