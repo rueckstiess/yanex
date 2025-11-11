@@ -35,6 +35,8 @@ class ExperimentSpec:
         tags: List of tags for organization
         description: Optional experiment description
         cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
+        dependencies: Declared dependency slots (slot -> script or {script, required})
+        depends_on: Resolved dependencies (slot -> experiment_id)
     """
 
     # Subprocess execution (primary mode)
@@ -50,6 +52,10 @@ class ExperimentSpec:
     tags: list[str] = field(default_factory=list)
     description: str | None = None
     cli_args: dict[str, Any] = field(default_factory=dict)
+
+    # Dependencies
+    dependencies: dict[str, Any] = field(default_factory=dict)
+    depends_on: dict[str, str] = field(default_factory=dict)
 
     def validate(self) -> None:
         """Validate that exactly one execution mode is specified.
@@ -190,6 +196,46 @@ def _run_sequential(
                 script_args=spec.script_args,
                 cli_args=spec.cli_args,
             )
+
+            # Handle dependencies if provided
+            if spec.dependencies and spec.depends_on:
+                from .core.dependency_validator import DependencyValidator
+
+                # Validate dependencies
+                validator = DependencyValidator(manager.storage, manager)
+                validation_result = validator.validate_dependencies(
+                    experiment_id=experiment_id,
+                    declared_slots=spec.dependencies,
+                    resolved_deps=spec.depends_on,
+                    check_cycles=True,
+                )
+
+                # Build dependencies data structure
+                deps_data = {
+                    "version": "1.0",
+                    "declared_slots": spec.dependencies,
+                    "resolved_dependencies": spec.depends_on,
+                    "validation": validation_result,
+                    "depended_by": [],
+                }
+
+                # Save dependencies
+                manager.storage.save_dependencies(experiment_id, deps_data)
+
+                # Update reverse indexes
+                for slot_name, dep_id in spec.depends_on.items():
+                    manager.storage.add_dependent(
+                        dep_id, experiment_id, slot_name, include_archived=True
+                    )
+
+                # Update metadata with dependencies_summary
+                metadata = manager.storage.load_metadata(experiment_id)
+                metadata["dependencies_summary"] = {
+                    "has_dependencies": True,
+                    "dependency_count": len(spec.depends_on),
+                    "dependency_slots": list(spec.depends_on.keys()),
+                }
+                manager.storage.save_metadata(experiment_id, metadata)
 
             # Start experiment
             manager.start_experiment(experiment_id)
@@ -392,6 +438,46 @@ def _execute_single_experiment(
             script_args=spec.script_args,
             cli_args=spec.cli_args,
         )
+
+        # Handle dependencies if provided
+        if spec.dependencies and spec.depends_on:
+            from .core.dependency_validator import DependencyValidator
+
+            # Validate dependencies
+            validator = DependencyValidator(manager.storage, manager)
+            validation_result = validator.validate_dependencies(
+                experiment_id=experiment_id,
+                declared_slots=spec.dependencies,
+                resolved_deps=spec.depends_on,
+                check_cycles=True,
+            )
+
+            # Build dependencies data structure
+            deps_data = {
+                "version": "1.0",
+                "declared_slots": spec.dependencies,
+                "resolved_dependencies": spec.depends_on,
+                "validation": validation_result,
+                "depended_by": [],
+            }
+
+            # Save dependencies
+            manager.storage.save_dependencies(experiment_id, deps_data)
+
+            # Update reverse indexes
+            for slot_name, dep_id in spec.depends_on.items():
+                manager.storage.add_dependent(
+                    dep_id, experiment_id, slot_name, include_archived=True
+                )
+
+            # Update metadata with dependencies_summary
+            metadata = manager.storage.load_metadata(experiment_id)
+            metadata["dependencies_summary"] = {
+                "has_dependencies": True,
+                "dependency_count": len(spec.depends_on),
+                "dependency_slots": list(spec.depends_on.keys()),
+            }
+            manager.storage.save_metadata(experiment_id, metadata)
 
         # Start experiment
         manager.start_experiment(experiment_id)

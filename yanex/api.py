@@ -751,6 +751,8 @@ def create_experiment(
     config: dict[str, Any] | None = None,
     tags: list[str] | None = None,
     description: str | None = None,
+    dependencies: dict[str, Any] | None = None,
+    depends_on: dict[str, str] | None = None,
 ) -> ExperimentContext:
     """Create a new experiment.
 
@@ -760,12 +762,15 @@ def create_experiment(
         config: Optional experiment configuration
         tags: Optional list of tags
         description: Optional experiment description
+        dependencies: Declared dependency slots (slot -> script or {script, required})
+        depends_on: Resolved dependencies (slot -> experiment_id)
 
     Returns:
         ExperimentContext for the new experiment
 
     Raises:
         ExperimentContextError: If experiment creation fails or if called in CLI context
+        DependencyError: If dependency validation fails
     """
     # Check for CLI context conflict
     if _is_cli_context():
@@ -784,6 +789,47 @@ def create_experiment(
         tags=tags or [],
         description=description,
     )
+
+    # Handle dependencies if provided
+    if dependencies and depends_on:
+        from .core.dependency_validator import DependencyValidator
+
+        # Validate dependencies
+        validator = DependencyValidator(manager.storage, manager)
+        validation_result = validator.validate_dependencies(
+            experiment_id=experiment_id,
+            declared_slots=dependencies,
+            resolved_deps=depends_on,
+            check_cycles=True,
+        )
+
+        # Build dependencies data structure
+        deps_data = {
+            "version": "1.0",
+            "declared_slots": dependencies,
+            "resolved_dependencies": depends_on,
+            "validation": validation_result,
+            "depended_by": [],
+        }
+
+        # Save dependencies
+        manager.storage.save_dependencies(experiment_id, deps_data)
+
+        # Update reverse indexes (bidirectional tracking)
+        for slot_name, dep_id in depends_on.items():
+            manager.storage.add_dependent(
+                dep_id, experiment_id, slot_name, include_archived=True
+            )
+
+        # Update metadata with dependencies_summary
+        metadata = manager.storage.load_metadata(experiment_id)
+        metadata["dependencies_summary"] = {
+            "has_dependencies": True,
+            "dependency_count": len(depends_on),
+            "dependency_slots": list(depends_on.keys()),
+        }
+        manager.storage.save_metadata(experiment_id, metadata)
+
     return ExperimentContext(experiment_id)
 
 
