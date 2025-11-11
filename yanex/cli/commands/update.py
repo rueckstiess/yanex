@@ -165,8 +165,15 @@ def update_experiments(
 
     if not experiments:
         location = "archived" if archived else "regular"
-        click.echo(f"No {location} experiments found to update.")
-        return
+        message = f"No {location} experiments found to update."
+
+        if experiment_identifiers:
+            # When using identifiers, not finding experiments is an error
+            raise click.ClickException(message)
+        else:
+            # When using filters, not finding experiments is just informational
+            click.echo(message)
+            return
 
     # Prepare update dictionary
     updates = {}

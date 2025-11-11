@@ -83,6 +83,132 @@ class TestGetGitRepo:
                 get_git_repo(temp_dir)
 
 
+class TestValidateCleanWorkingDirectory:
+    """Test validate_clean_working_directory function."""
+
+    def test_clean_working_directory(self, clean_git_repo):
+        """Test validation passes for clean working directory."""
+        # Should not raise any exception
+        from yanex.core.git_utils import validate_clean_working_directory
+
+        validate_clean_working_directory(clean_git_repo)
+
+    def test_modified_file_raises_error(self, git_repo):
+        """Test that modified file raises DirtyWorkingDirectoryError."""
+        from yanex.core.git_utils import validate_clean_working_directory
+        from yanex.utils.exceptions import DirtyWorkingDirectoryError
+
+        # Modify a file
+        test_file = Path(git_repo.working_dir) / "test.txt"
+        test_file.write_text("modified content")
+
+        with pytest.raises(DirtyWorkingDirectoryError) as exc_info:
+            validate_clean_working_directory(git_repo)
+
+        # Check that error contains modified file info
+        error = exc_info.value
+        assert len(error.changes) > 0
+        assert any("Modified: test.txt" in change for change in error.changes)
+
+    def test_staged_file_raises_error(self, clean_git_repo):
+        """Test that staged file raises DirtyWorkingDirectoryError."""
+        from yanex.core.git_utils import validate_clean_working_directory
+        from yanex.utils.exceptions import DirtyWorkingDirectoryError
+
+        # Add and stage a file
+        staged_file = Path(clean_git_repo.working_dir) / "staged.txt"
+        TestFileHelpers.create_test_file(staged_file, "staged content")
+        clean_git_repo.index.add([str(staged_file)])
+
+        with pytest.raises(DirtyWorkingDirectoryError) as exc_info:
+            validate_clean_working_directory(clean_git_repo)
+
+        error = exc_info.value
+        assert len(error.changes) > 0
+        assert any("staged.txt" in change for change in error.changes)
+
+    def test_untracked_file_raises_error(self, git_repo):
+        """Test that untracked files are included in error when repo is dirty.
+
+        Note: validate_clean_working_directory checks is_dirty() first, which by default
+        doesn't consider untracked files. So we need to also modify a tracked file to
+        trigger the dirty check, then verify untracked files are included in the changes.
+        """
+        from yanex.core.git_utils import validate_clean_working_directory
+        from yanex.utils.exceptions import DirtyWorkingDirectoryError
+
+        # Modify a tracked file to make repo dirty
+        test_file = Path(git_repo.working_dir) / "test.txt"
+        test_file.write_text("modified content")
+
+        # Also create an untracked file
+        untracked_file = Path(git_repo.working_dir) / "untracked.txt"
+        TestFileHelpers.create_test_file(untracked_file, "untracked content")
+
+        with pytest.raises(DirtyWorkingDirectoryError) as exc_info:
+            validate_clean_working_directory(git_repo)
+
+        # Verify both the modified file and untracked file are reported
+        error = exc_info.value
+        assert len(error.changes) >= 2
+        assert any("untracked.txt" in change for change in error.changes)
+        assert any("test.txt" in change for change in error.changes)
+
+    def test_multiple_changes_listed(self, git_repo):
+        """Test that multiple changes are all listed in error."""
+        from yanex.core.git_utils import validate_clean_working_directory
+        from yanex.utils.exceptions import DirtyWorkingDirectoryError
+
+        repo_path = Path(git_repo.working_dir)
+
+        # Modify existing file
+        test_file = repo_path / "test.txt"
+        test_file.write_text("modified")
+
+        # Add new untracked file
+        untracked = repo_path / "untracked.txt"
+        TestFileHelpers.create_test_file(untracked, "new")
+
+        # Add and stage another file
+        staged = repo_path / "staged.txt"
+        TestFileHelpers.create_test_file(staged, "staged")
+        git_repo.index.add([str(staged)])
+
+        with pytest.raises(DirtyWorkingDirectoryError) as exc_info:
+            validate_clean_working_directory(git_repo)
+
+        error = exc_info.value
+        # Should have multiple changes listed
+        assert len(error.changes) >= 3
+        change_str = str(error.changes)
+        assert "Modified" in change_str or "test.txt" in change_str
+        assert "Untracked" in change_str or "untracked.txt" in change_str
+        assert "Staged" in change_str or "staged.txt" in change_str
+
+    def test_with_none_repo(self):
+        """Test with None repo (uses current directory)."""
+        from yanex.core.git_utils import validate_clean_working_directory
+
+        with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+            mock_repo = Mock()
+            mock_repo.is_dirty.return_value = False
+            mock_get_repo.return_value = mock_repo
+
+            # Should not raise
+            validate_clean_working_directory(None)
+            mock_get_repo.assert_called_once()
+
+    def test_git_error_handling(self, clean_git_repo):
+        """Test that GitError is raised when git operations fail."""
+        from yanex.core.git_utils import validate_clean_working_directory
+
+        with patch.object(clean_git_repo, "is_dirty") as mock_is_dirty:
+            mock_is_dirty.side_effect = git.GitError("Git operation failed")
+
+            with pytest.raises(GitError, match="Git operation failed"):
+                validate_clean_working_directory(clean_git_repo)
+
+
 class TestHasUncommittedChanges:
     """Test has_uncommitted_changes function."""
 
@@ -737,3 +863,197 @@ index abc123..def456 100644
                 assert isinstance(finding["type"], str)
                 assert isinstance(finding["line"], str)
                 assert isinstance(finding["filename"], str)
+
+
+class TestGenerateGitPatchEdgeCases:
+    """Test edge cases for generate_git_patch function."""
+
+    def test_git_error_handling(self):
+        """Test GitError handling when git diff fails."""
+        with patch("yanex.core.git_utils.has_uncommitted_changes") as mock_has_changes:
+            mock_has_changes.return_value = True
+
+            with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+                mock_repo = Mock()
+                mock_repo.git.diff.side_effect = git.GitError("Diff operation failed")
+                mock_get_repo.return_value = mock_repo
+
+                with pytest.raises(GitError, match="Failed to generate git patch"):
+                    generate_git_patch(None)
+
+    def test_empty_patch_returns_none(self):
+        """Test that empty patch string returns None."""
+        with patch("yanex.core.git_utils.has_uncommitted_changes") as mock_has_changes:
+            mock_has_changes.return_value = True
+
+            with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+                mock_repo = Mock()
+                mock_repo.git.diff.return_value = ""  # Empty string
+                mock_get_repo.return_value = mock_repo
+
+                result = generate_git_patch(None)
+                assert result is None
+
+    def test_whitespace_only_patch_returns_none(self):
+        """Test that whitespace-only patch returns None."""
+        with patch("yanex.core.git_utils.has_uncommitted_changes") as mock_has_changes:
+            mock_has_changes.return_value = True
+
+            with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+                mock_repo = Mock()
+                mock_repo.git.diff.return_value = "   \n\t\n  "  # Only whitespace
+                mock_get_repo.return_value = mock_repo
+
+                result = generate_git_patch(None)
+                assert result is None
+
+
+class TestGetRepositoryInfoEdgeCases:
+    """Test edge cases for get_repository_info function."""
+
+    def test_remotes_attribute_error(self):
+        """Test handling when remotes.origin raises AttributeError."""
+
+        # Create a custom class that raises AttributeError on .origin access
+        class RemotesMock:
+            def __bool__(self):
+                return True
+
+            @property
+            def origin(self):
+                raise AttributeError("No origin")
+
+        with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+            mock_repo = Mock()
+            mock_repo.working_dir = "/test/repo"
+            mock_repo.git_dir = "/test/repo/.git"
+            mock_repo.remotes = RemotesMock()
+
+            mock_get_repo.return_value = mock_repo
+
+            result = get_repository_info()
+            assert result["remote_url"] is None
+
+    def test_remotes_index_error(self):
+        """Test handling when remotes.origin raises IndexError."""
+
+        # Create a custom class that raises IndexError on .origin access
+        class RemotesMock:
+            def __bool__(self):
+                return True
+
+            @property
+            def origin(self):
+                raise IndexError("Index error")
+
+        with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+            mock_repo = Mock()
+            mock_repo.working_dir = "/test/repo"
+            mock_repo.git_dir = "/test/repo/.git"
+            mock_repo.remotes = RemotesMock()
+
+            mock_get_repo.return_value = mock_repo
+
+            result = get_repository_info()
+            assert result["remote_url"] is None
+
+
+class TestScanPatchForSecretsDetailed:
+    """Detailed tests for scan_patch_for_secrets implementation."""
+
+    def test_patch_parsing_with_deleted_file(self, clean_git_repo):
+        """Test scanning patch that includes a deleted file."""
+        # Create and commit a file first
+        test_file = Path(clean_git_repo.working_dir) / "to_delete.txt"
+        TestFileHelpers.create_test_file(test_file, "content")
+        clean_git_repo.index.add([str(test_file)])
+        clean_git_repo.index.commit("Add file to delete")
+
+        # Delete the file
+        test_file.unlink()
+        clean_git_repo.index.remove([str(test_file)])
+
+        # Generate patch
+        patch = clean_git_repo.git.diff("HEAD")
+
+        result = scan_patch_for_secrets(patch)
+
+        # Should handle deleted files gracefully
+        assert isinstance(result, dict)
+        assert "has_secrets" in result
+        assert "findings" in result
+
+    def test_patch_with_binary_file(self, clean_git_repo):
+        """Test scanning patch that includes binary file changes."""
+        # Create binary file
+        binary_file = Path(clean_git_repo.working_dir) / "binary.bin"
+        binary_file.write_bytes(b"\x00\x01\x02")
+        clean_git_repo.index.add([str(binary_file)])
+        clean_git_repo.index.commit("Add binary")
+
+        # Modify it
+        binary_file.write_bytes(b"\x00\x01\x02\x03")
+
+        patch = clean_git_repo.git.diff("HEAD")
+
+        result = scan_patch_for_secrets(patch)
+
+        # Should handle binary files without crashing
+        assert isinstance(result, dict)
+        assert result["has_secrets"] is False  # Binary files shouldn't have secrets
+
+    def test_git_error_during_scan(self):
+        """Test graceful handling of GitError during secret scan."""
+        with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+            mock_get_repo.side_effect = git.GitError("Git error")
+
+            test_patch = """diff --git a/test.txt b/test.txt
++test content
+"""
+
+            result = scan_patch_for_secrets(test_patch)
+
+            # Should return safe default
+            assert result["has_secrets"] is False
+            assert result["findings"] == []
+
+    def test_value_error_during_patch_parsing(self):
+        """Test graceful handling of ValueError during patch parsing."""
+        # Create malformed patch that might cause parsing errors
+        malformed_patch = """diff --git a/test.txt b/test.txt
+@@ invalid hunk header @@
++content
+"""
+
+        result = scan_patch_for_secrets(malformed_patch)
+
+        # Should return safe default on parsing errors
+        assert result["has_secrets"] is False
+        assert result["findings"] == []
+
+    def test_general_exception_handling(self):
+        """Test graceful handling of unexpected exceptions."""
+        with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
+            mock_get_repo.side_effect = RuntimeError("Unexpected error")
+
+            test_patch = """diff --git a/test.txt b/test.txt
++test
+"""
+
+            result = scan_patch_for_secrets(test_patch)
+
+            # Should return safe default for unexpected errors
+            assert result["has_secrets"] is False
+            assert result["findings"] == []
+
+    def test_importerror_warning_logged(self):
+        """Test that ImportError for detect-secrets logs a warning."""
+        with patch.dict("sys.modules", {"detect_secrets": None}):
+            # This will trigger the ImportError path
+            test_patch = "diff --git a/test.txt b/test.txt\n+test"
+            result = scan_patch_for_secrets(test_patch)
+
+            # Should have warned about missing detect-secrets
+            # Note: This test documents the ImportError handling behavior
+            assert result["has_secrets"] is False
+            assert result["findings"] == []

@@ -24,35 +24,25 @@ from yanex.utils.exceptions import (
 class TestExperimentManager:
     """Test ExperimentManager class - basic functionality."""
 
-    def teardown_method(self, method):
-        """Clean up experiments after each test method."""
-        try:
-            from yanex.core.filtering import ExperimentFilter
-            from yanex.core.manager import ExperimentManager
-
-            manager = ExperimentManager()
-            filter_obj = ExperimentFilter(manager=manager)
-            test_experiments = filter_obj.filter_experiments(
-                tags=["unit-tests"], limit=100
-            )
-
-            for exp in test_experiments:
-                try:
-                    if exp.get("status") == "running":
-                        manager.cancel_experiment(exp["id"], "Test cleanup")
-                    manager.delete_experiment(exp["id"])
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
     def test_init_default_directory(self):
         """Test manager initialization with default directory."""
-        manager = ExperimentManager()
+        # Temporarily remove YANEX_EXPERIMENTS_DIR to test true default behavior
+        import os
 
-        expected_dir = Path.home() / ".yanex" / "experiments"
-        assert manager.experiments_dir == expected_dir
-        assert manager.storage.experiments_dir == expected_dir
+        saved_env = os.environ.get("YANEX_EXPERIMENTS_DIR")
+        if "YANEX_EXPERIMENTS_DIR" in os.environ:
+            del os.environ["YANEX_EXPERIMENTS_DIR"]
+
+        try:
+            manager = ExperimentManager()
+
+            expected_dir = Path.home() / ".yanex" / "experiments"
+            assert manager.experiments_dir == expected_dir
+            assert manager.storage.experiments_dir == expected_dir
+        finally:
+            # Restore session-wide test isolation
+            if saved_env is not None:
+                os.environ["YANEX_EXPERIMENTS_DIR"] = saved_env
 
     def test_init_custom_directory(self, temp_dir):
         """Test manager initialization with custom directory."""

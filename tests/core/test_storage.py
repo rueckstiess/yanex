@@ -704,6 +704,350 @@ class TestArchiveExperiment:
             assert not storage.experiment_exists(exp_id)
 
 
+class TestUnarchiveExperiment:
+    """Test experiment unarchiving."""
+
+    def test_unarchive_experiment_default_location(self, temp_dir):
+        """Test unarchiving experiment from default location."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "abc12345"
+
+        # Create and archive experiment first
+        storage.create_experiment_directory(experiment_id)
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=experiment_id, status="completed"
+        )
+        storage.save_metadata(experiment_id, metadata)
+        storage.archive_experiment(experiment_id)
+
+        # Verify it's archived
+        assert not storage.experiment_exists(experiment_id)
+
+        # Unarchive it
+        unarchive_path = storage.unarchive_experiment(experiment_id)
+
+        # Verify it's back
+        expected_path = temp_dir / experiment_id
+        assert unarchive_path == expected_path
+        assert storage.experiment_exists(experiment_id)
+        TestAssertions.assert_experiment_directory_structure(unarchive_path)
+
+    def test_unarchive_experiment_custom_location(self, temp_dir):
+        """Test unarchiving experiment from custom location."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "xyz98765"
+        archive_dir = temp_dir / "custom_archive"
+
+        # Create and archive to custom location
+        storage.create_experiment_directory(experiment_id)
+        storage.archive_experiment(experiment_id, archive_dir)
+
+        # Unarchive from custom location
+        unarchive_path = storage.unarchive_experiment(experiment_id, archive_dir)
+
+        assert storage.experiment_exists(experiment_id)
+        assert unarchive_path == temp_dir / experiment_id
+
+    def test_unarchive_experiment_not_found(self, temp_dir):
+        """Test unarchiving non-existent experiment."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "notexist"
+
+        with pytest.raises(StorageError, match="Archived experiment not found"):
+            storage.unarchive_experiment(experiment_id)
+
+    def test_unarchive_experiment_already_exists(self, temp_dir):
+        """Test unarchiving when active experiment already exists."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "abc12345"
+
+        # Create and archive experiment
+        storage.create_experiment_directory(experiment_id)
+        archive_dir = temp_dir / "archive"
+        storage.archive_experiment(experiment_id, archive_dir)
+
+        # Create new experiment with same ID
+        storage.create_experiment_directory(experiment_id)
+
+        # Try to unarchive - should fail
+        with pytest.raises(StorageError, match="Experiment directory already exists"):
+            storage.unarchive_experiment(experiment_id, archive_dir)
+
+
+class TestDeleteExperiment:
+    """Test experiment deletion."""
+
+    def test_delete_experiment(self, temp_dir):
+        """Test deleting active experiment."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "abc12345"
+
+        # Create experiment
+        storage.create_experiment_directory(experiment_id)
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=experiment_id
+        )
+        storage.save_metadata(experiment_id, metadata)
+
+        # Verify it exists
+        assert storage.experiment_exists(experiment_id)
+
+        # Delete it
+        storage.delete_experiment(experiment_id)
+
+        # Verify it's gone
+        assert not storage.experiment_exists(experiment_id)
+
+    def test_delete_experiment_with_artifacts(self, temp_dir):
+        """Test deleting experiment with artifacts."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "xyz98765"
+
+        # Create experiment with artifacts
+        exp_dir = storage.create_experiment_directory(experiment_id)
+        artifacts_dir = exp_dir / "artifacts"
+        artifacts_dir.mkdir(exist_ok=True)
+        (artifacts_dir / "model.pkl").write_text("model data")
+        (artifacts_dir / "plot.png").write_text("plot data")
+
+        # Delete experiment
+        storage.delete_experiment(experiment_id)
+
+        # Verify entire directory is gone
+        assert not exp_dir.exists()
+
+    def test_delete_multiple_experiments(self, temp_dir):
+        """Test deleting multiple experiments."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_ids = ["exp00001", "exp00002", "exp00003"]
+
+        # Create multiple experiments
+        TestFileHelpers.create_multiple_experiment_directories(storage, experiment_ids)
+
+        # Delete all
+        for exp_id in experiment_ids:
+            storage.delete_experiment(exp_id)
+
+        # Verify all gone
+        for exp_id in experiment_ids:
+            assert not storage.experiment_exists(exp_id)
+
+
+class TestDeleteArchivedExperiment:
+    """Test archived experiment deletion."""
+
+    def test_delete_archived_experiment_default_location(self, temp_dir):
+        """Test deleting archived experiment from default location."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "abc12345"
+
+        # Create and archive experiment
+        storage.create_experiment_directory(experiment_id)
+        storage.archive_experiment(experiment_id)
+
+        # Verify it's archived
+        archive_path = temp_dir / "archived" / experiment_id
+        assert archive_path.exists()
+
+        # Delete archived experiment
+        storage.delete_archived_experiment(experiment_id)
+
+        # Verify it's gone
+        assert not archive_path.exists()
+
+    def test_delete_archived_experiment_custom_location(self, temp_dir):
+        """Test deleting archived experiment from custom location."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "xyz98765"
+        archive_dir = temp_dir / "custom_archive"
+
+        # Create and archive to custom location
+        storage.create_experiment_directory(experiment_id)
+        storage.archive_experiment(experiment_id, archive_dir)
+
+        # Delete from custom location
+        storage.delete_archived_experiment(experiment_id, archive_dir)
+
+        # Verify it's gone
+        archive_path = archive_dir / experiment_id
+        assert not archive_path.exists()
+
+    def test_delete_archived_experiment_not_found(self, temp_dir):
+        """Test deleting non-existent archived experiment."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "notexist"
+
+        with pytest.raises(StorageError, match="Archived experiment not found"):
+            storage.delete_archived_experiment(experiment_id)
+
+    def test_delete_archived_experiment_with_artifacts(self, temp_dir):
+        """Test deleting archived experiment with artifacts."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "abc12345"
+
+        # Create experiment with artifacts
+        exp_dir = storage.create_experiment_directory(experiment_id)
+        artifacts_dir = exp_dir / "artifacts"
+        artifacts_dir.mkdir(exist_ok=True)
+        (artifacts_dir / "data.json").write_text("data")
+
+        # Archive it
+        archive_path = storage.archive_experiment(experiment_id)
+
+        # Delete archived experiment
+        storage.delete_archived_experiment(experiment_id)
+
+        # Verify entire archive is gone including artifacts
+        assert not archive_path.exists()
+
+
+class TestListArchivedExperiments:
+    """Test listing archived experiments."""
+
+    def test_list_archived_experiments_empty(self, temp_dir):
+        """Test listing when no experiments are archived."""
+        storage = ExperimentStorage(temp_dir)
+
+        archived = storage.list_archived_experiments()
+
+        assert archived == []
+
+    def test_list_archived_experiments_default_location(self, temp_dir):
+        """Test listing archived experiments in default location."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_ids = ["exp00001", "exp00002", "exp00003"]
+
+        # Create and archive experiments
+        TestFileHelpers.create_multiple_experiment_directories(storage, experiment_ids)
+        for exp_id in experiment_ids:
+            storage.archive_experiment(exp_id)
+
+        # List archived
+        archived = storage.list_archived_experiments()
+
+        assert sorted(archived) == sorted(experiment_ids)
+
+    def test_list_archived_experiments_custom_location(self, temp_dir):
+        """Test listing archived experiments in custom location."""
+        storage = ExperimentStorage(temp_dir)
+        archive_dir = temp_dir / "custom_archive"
+        experiment_ids = ["exp00001", "exp00002"]
+
+        # Create and archive to custom location
+        TestFileHelpers.create_multiple_experiment_directories(storage, experiment_ids)
+        for exp_id in experiment_ids:
+            storage.archive_experiment(exp_id, archive_dir)
+
+        # List from custom location
+        archived = storage.list_archived_experiments(archive_dir)
+
+        assert sorted(archived) == sorted(experiment_ids)
+
+    def test_list_archived_experiments_filters_non_experiment_dirs(self, temp_dir):
+        """Test that list filters out non-experiment directories."""
+        storage = ExperimentStorage(temp_dir)
+        archive_dir = temp_dir / "archived"
+        archive_dir.mkdir(parents=True)
+
+        # Create valid experiment directory
+        (archive_dir / "exp00001").mkdir()
+
+        # Create invalid directories (wrong length or files)
+        (archive_dir / "toolong123").mkdir()  # 10 chars
+        (archive_dir / "short").mkdir()  # 5 chars
+        (archive_dir / "file.txt").write_text("not a directory")
+
+        # List should only return valid experiment ID
+        archived = storage.list_archived_experiments()
+
+        assert archived == ["exp00001"]
+
+
+class TestArchivedExperimentExists:
+    """Test checking archived experiment existence."""
+
+    def test_archived_experiment_exists_true(self, temp_dir):
+        """Test checking existence of archived experiment."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "abc12345"
+
+        # Create and archive experiment
+        storage.create_experiment_directory(experiment_id)
+        storage.archive_experiment(experiment_id)
+
+        # Check it exists
+        assert storage.archived_experiment_exists(experiment_id) is True
+
+    def test_archived_experiment_exists_false(self, temp_dir):
+        """Test checking non-existent archived experiment."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "notexist"
+
+        assert storage.archived_experiment_exists(experiment_id) is False
+
+    def test_archived_experiment_exists_custom_location(self, temp_dir):
+        """Test checking existence in custom location."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "xyz98765"
+        archive_dir = temp_dir / "custom_archive"
+
+        # Create and archive to custom location
+        storage.create_experiment_directory(experiment_id)
+        storage.archive_experiment(experiment_id, archive_dir)
+
+        # Check in custom location
+        assert storage.archived_experiment_exists(experiment_id, archive_dir) is True
+
+        # Should not exist in default location
+        assert storage.archived_experiment_exists(experiment_id) is False
+
+
+class TestGetArchivedExperimentDirectory:
+    """Test getting archived experiment directory."""
+
+    def test_get_archived_experiment_directory_default(self, temp_dir):
+        """Test getting archived experiment directory from default location."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "abc12345"
+
+        # Create and archive experiment
+        storage.create_experiment_directory(experiment_id)
+        archive_path = storage.archive_experiment(experiment_id)
+
+        # Get directory
+        result_path = storage.get_archived_experiment_directory(experiment_id)
+
+        assert result_path == archive_path
+        assert result_path == temp_dir / "archived" / experiment_id
+
+    def test_get_archived_experiment_directory_custom(self, temp_dir):
+        """Test getting archived experiment directory from custom location."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "xyz98765"
+        archive_dir = temp_dir / "custom_archive"
+
+        # Create and archive to custom location
+        storage.create_experiment_directory(experiment_id)
+        archive_path = storage.archive_experiment(experiment_id, archive_dir)
+
+        # Get directory from custom location
+        result_path = storage.get_archived_experiment_directory(
+            experiment_id, archive_dir
+        )
+
+        assert result_path == archive_path
+
+    def test_get_archived_experiment_directory_not_found(self, temp_dir):
+        """Test getting non-existent archived experiment directory."""
+        storage = ExperimentStorage(temp_dir)
+        experiment_id = "notexist"
+
+        with pytest.raises(
+            StorageError, match="Archived experiment directory not found"
+        ):
+            storage.get_archived_experiment_directory(experiment_id)
+
+
 class TestStorageIntegrationScenarios:
     """Test integrated storage scenarios - new utility-enabled tests."""
 
