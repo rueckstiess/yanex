@@ -57,11 +57,13 @@ Enable yanex to:
 Dependencies are represented as **named slots** that must be fulfilled with experiment IDs:
 
 ```yaml
-# evaluate.py config
+# shared_config.yaml - module with multiple scripts
 yanex:
-  dependencies:
-    dataprep: dataprep.py
-    training: train.py
+  scripts:
+    - name: "evaluate.py"
+      dependencies:
+        dataprep: dataprep.py
+        training: train.py
 ```
 
 **Rationale:**
@@ -247,6 +249,424 @@ yanex run compare.py -d model1=tr1,tr2 -d model2=tr3,tr4
 - Natural extension of existing parameter sweep mechanism
 - Solves "evaluate all trained models" use case
 - Consistent behavior with `--param key=value1,value2,value3`
+
+## Use Cases
+
+This section describes common workflow patterns that benefit from dependency tracking, covering both machine learning and general experimentation scenarios.
+
+### Machine Learning Workflows
+
+#### 1. Basic Pipeline: Data → Train → Evaluate
+
+The canonical ML workflow with data preparation, model training, and evaluation:
+
+```yaml
+# ml_pipeline_config.yaml
+yanex:
+  scripts:
+    - name: "dataprep.py"
+    - name: "train.py"
+      dependencies:
+        dataprep: dataprep.py
+    - name: "evaluate.py"
+      dependencies:
+        dataprep: dataprep.py
+        model: train.py
+```
+
+```bash
+# Execute pipeline
+yanex run dataprep.py --config ml_pipeline_config.yaml
+# → dp1
+
+yanex run train.py -d dataprep=dp1 --config ml_pipeline_config.yaml
+# → tr1
+
+yanex run evaluate.py -d dataprep=dp1 -d model=tr1 --config ml_pipeline_config.yaml
+# → eval1
+```
+
+#### 2. Hyperparameter Tuning (Grid Search)
+
+Train multiple models with different hyperparameters, evaluate each:
+
+```bash
+# 1. Prepare data once
+yanex run dataprep.py
+# → dp1
+
+# 2. Train with parameter sweep (creates 9 experiments)
+yanex run train.py -d dataprep=dp1 \
+  --param "lr=0.001,0.01,0.1" \
+  --param "batch_size=16,32,64"
+# → tr1, tr2, tr3, ..., tr9
+
+# 3. Evaluate all models (dependency sweep)
+yanex run evaluate.py \
+  -d dataprep=dp1 \
+  -d model=$(yanex id --script train.py --status completed --format csv)
+# → eval1, eval2, eval3, ..., eval9
+
+# 4. Find best model
+yanex list --script evaluate.py | sort-by accuracy | head -1
+```
+
+#### 3. K-Fold Cross-Validation
+
+Split data into K folds, train on each:
+
+```yaml
+# cross_validation_config.yaml
+yanex:
+  scripts:
+    - name: "create_folds.py"  # Creates K train/test splits
+    - name: "train_fold.py"
+      dependencies:
+        folds: create_folds.py
+    - name: "aggregate_results.py"
+      dependencies:
+        training_runs: train_fold.py
+```
+
+```bash
+# 1. Create 5-fold splits
+yanex run create_folds.py --param "k=5"
+# → folds1 (creates fold_0.parquet, fold_1.parquet, ..., fold_4.parquet)
+
+# 2. Train on each fold
+for i in {0..4}; do
+  yanex run train_fold.py -d folds=folds1 --param "fold_idx=$i"
+done
+# → fold0_tr, fold1_tr, fold2_tr, fold3_tr, fold4_tr
+
+# 3. Aggregate results from all folds
+yanex run aggregate_results.py \
+  -d training_runs=$(yanex id --script train_fold.py --depends-on folds1 --format csv)
+# → aggr1 (computes mean/std of metrics across folds)
+```
+
+#### 4. Ensemble Methods
+
+Train multiple models and combine predictions:
+
+```yaml
+# ensemble_config.yaml
+yanex:
+  scripts:
+    - name: "dataprep.py"
+    - name: "train_model_a.py"  # Random Forest
+      dependencies:
+        data: dataprep.py
+    - name: "train_model_b.py"  # Gradient Boosting
+      dependencies:
+        data: dataprep.py
+    - name: "train_model_c.py"  # Neural Network
+      dependencies:
+        data: dataprep.py
+    - name: "ensemble.py"  # Combine predictions
+      dependencies:
+        data: dataprep.py
+        model_a: train_model_a.py
+        model_b: train_model_b.py
+        model_c: train_model_c.py
+```
+
+```bash
+# Run all base models in parallel
+yanex run train_model_a.py -d data=dp1 &
+yanex run train_model_b.py -d data=dp1 &
+yanex run train_model_c.py -d data=dp1 &
+wait
+
+# Combine with ensemble
+yanex run ensemble.py -d data=dp1 -d model_a=ma1 -d model_b=mb1 -d model_c=mc1
+```
+
+#### 5. A/B Testing Different Preprocessing
+
+Compare different feature engineering approaches:
+
+```yaml
+# ab_test_config.yaml
+yanex:
+  scripts:
+    - name: "preprocess_baseline.py"
+    - name: "preprocess_variant.py"
+    - name: "train.py"
+      dependencies:
+        data: preprocess_baseline.py  # or preprocess_variant.py
+    - name: "compare.py"
+      dependencies:
+        baseline: train.py
+        variant: train.py
+```
+
+```bash
+# Baseline approach
+yanex run preprocess_baseline.py
+yanex run train.py -d data=prep_base --name "Baseline"
+# → train_base
+
+# Variant approach
+yanex run preprocess_variant.py
+yanex run train.py -d data=prep_var --name "Variant"
+# → train_var
+
+# Compare
+yanex run compare.py -d baseline=train_base -d variant=train_var
+```
+
+#### 6. Transfer Learning: Pretrain → Finetune
+
+Pretrain on large dataset, finetune on specific task:
+
+```yaml
+# transfer_learning_config.yaml
+yanex:
+  scripts:
+    - name: "pretrain.py"
+    - name: "finetune.py"
+      dependencies:
+        pretrained_model: pretrain.py
+        task_data: prepare_task_data.py
+```
+
+```bash
+# Pretrain once (expensive)
+yanex run pretrain.py --param "epochs=100"
+# → pretrain1
+
+# Finetune for multiple tasks
+yanex run finetune.py -d pretrained_model=pretrain1 -d task_data=task1
+yanex run finetune.py -d pretrained_model=pretrain1 -d task_data=task2
+yanex run finetune.py -d pretrained_model=pretrain1 -d task_data=task3
+```
+
+#### 7. Best-of-N Runs (Handle Randomness)
+
+Run same experiment N times with different seeds, pick best:
+
+```bash
+# 1. Run dataprep
+yanex run dataprep.py
+# → dp1
+
+# 2. Train 10 times with different random seeds
+for seed in {1..10}; do
+  yanex run train.py -d dataprep=dp1 --param "random_seed=$seed"
+done
+# → tr1, tr2, ..., tr10
+
+# 3. Evaluate all
+yanex run evaluate.py \
+  -d dataprep=dp1 \
+  -d model=$(yanex id --script train.py --depends-on dp1 --format csv)
+# → eval1, eval2, ..., eval10
+
+# 4. Find best run
+yanex list --script evaluate.py | grep -E "accuracy" | sort -k3 -n | tail -1
+```
+
+### Scientific Computing Workflows
+
+#### 8. Parameter Space Exploration
+
+Simulate physical system across parameter ranges:
+
+```yaml
+# simulation_config.yaml
+yanex:
+  scripts:
+    - name: "simulate.py"
+    - name: "analyze.py"
+      dependencies:
+        simulation: simulate.py
+    - name: "visualize.py"
+      dependencies:
+        analysis: analyze.py
+```
+
+```bash
+# Sweep temperature and pressure
+yanex run simulate.py \
+  --param "temperature=273,300,350,400" \
+  --param "pressure=1.0,1.5,2.0"
+# → 12 simulations
+
+# Analyze each simulation
+yanex run analyze.py \
+  -d simulation=$(yanex id --script simulate.py --status completed --format csv)
+
+# Create summary visualization
+yanex run visualize.py \
+  -d analysis=$(yanex id --script analyze.py --format csv)
+```
+
+#### 9. Bioinformatics Pipeline
+
+Sequence processing pipeline:
+
+```yaml
+# bioinformatics_config.yaml
+yanex:
+  scripts:
+    - name: "quality_control.py"
+    - name: "alignment.py"
+      dependencies:
+        qc_data: quality_control.py
+    - name: "variant_calling.py"
+      dependencies:
+        aligned: alignment.py
+    - name: "annotation.py"
+      dependencies:
+        variants: variant_calling.py
+```
+
+```bash
+# Process sample through pipeline
+yanex run quality_control.py --param "sample_id=SAMPLE_001"
+yanex run alignment.py -d qc_data=qc1
+yanex run variant_calling.py -d aligned=align1
+yanex run annotation.py -d variants=var1
+```
+
+### Data Engineering Workflows
+
+#### 10. ETL Pipeline
+
+Extract, transform, load workflow:
+
+```yaml
+# etl_config.yaml
+yanex:
+  scripts:
+    - name: "extract.py"  # Pull from multiple sources
+    - name: "clean.py"
+      dependencies:
+        raw_data: extract.py
+    - name: "transform.py"
+      dependencies:
+        clean_data: clean.py
+    - name: "aggregate.py"
+      dependencies:
+        transformed: transform.py
+    - name: "load.py"
+      dependencies:
+        aggregated: aggregate.py
+```
+
+#### 11. Report Generation
+
+Multi-stage report creation:
+
+```yaml
+# report_config.yaml
+yanex:
+  scripts:
+    - name: "fetch_data.py"
+    - name: "compute_metrics.py"
+      dependencies:
+        data: fetch_data.py
+    - name: "generate_figures.py"
+      dependencies:
+        metrics: compute_metrics.py
+    - name: "compile_report.py"
+      dependencies:
+        figures: generate_figures.py
+        metrics: compute_metrics.py
+```
+
+```bash
+# Generate monthly report
+yanex run fetch_data.py --param "month=2025-01"
+yanex run compute_metrics.py -d data=fetch1
+yanex run generate_figures.py -d metrics=metrics1
+yanex run compile_report.py -d figures=fig1 -d metrics=metrics1
+```
+
+### Software Development Workflows
+
+#### 12. Build → Test → Deploy
+
+Software testing pipeline:
+
+```yaml
+# ci_pipeline_config.yaml
+yanex:
+  scripts:
+    - name: "build.py"
+    - name: "unit_test.py"
+      dependencies:
+        build: build.py
+    - name: "integration_test.py"
+      dependencies:
+        build: build.py
+    - name: "performance_test.py"
+      dependencies:
+        build: build.py
+    - name: "deploy.py"
+      dependencies:
+        build: build.py
+        unit_tests: unit_test.py
+        integration_tests: integration_test.py
+```
+
+#### 13. Benchmark Comparison
+
+Compare performance across implementations:
+
+```yaml
+# benchmark_config.yaml
+yanex:
+  scripts:
+    - name: "generate_test_data.py"
+    - name: "benchmark_impl_a.py"
+      dependencies:
+        test_data: generate_test_data.py
+    - name: "benchmark_impl_b.py"
+      dependencies:
+        test_data: generate_test_data.py
+    - name: "compare_results.py"
+      dependencies:
+        bench_a: benchmark_impl_a.py
+        bench_b: benchmark_impl_b.py
+```
+
+### Content Creation Workflows
+
+#### 14. Content Generation Pipeline
+
+Iterative content creation:
+
+```yaml
+# content_pipeline_config.yaml
+yanex:
+  scripts:
+    - name: "generate_draft.py"
+    - name: "review.py"
+      dependencies:
+        draft: generate_draft.py
+    - name: "revise.py"
+      dependencies:
+        draft: generate_draft.py
+        feedback: review.py
+    - name: "finalize.py"
+      dependencies:
+        revised: revise.py
+```
+
+### Key Patterns
+
+Across all these use cases, several patterns emerge:
+
+1. **Linear chains**: A → B → C (basic pipeline)
+2. **Fan-out**: A → [B, C, D] (parallel processing of same input)
+3. **Fan-in**: [A, B, C] → D (combine multiple inputs)
+4. **Diamond**: A → [B, C] → D (parallel middle stage)
+5. **Iterative refinement**: A → B → C → B' → C' (rerun with improvements)
+6. **Comparison**: A → [B1, B2] → Compare (A/B testing)
+
+The dependency system handles all these patterns naturally through named slots and dependency sweeps.
 
 ## Implementation Details
 
@@ -2896,6 +3316,263 @@ def test_delete_with_cascade(temp_dir):
    - `examples/dependencies/evaluate.py`
    - `examples/dependencies/shared_config.yaml` - demonstrates `yanex.scripts[]` with dependencies for all three scripts
 
+## Implementation Clarifications
+
+This section addresses implementation details that may not be immediately obvious from the design decisions.
+
+### 1. Script Not in Config But `-d` Flags Provided
+
+**Scenario:** User runs `yanex run my_script.py -d dep1=abc123` but `my_script.py` is not in the config's `yanex.scripts[]` array.
+
+**Behavior:**
+- The `-d` flags are accepted and stored as metadata
+- No validation against declared slots (since there are none)
+- Script runs normally with dependencies recorded
+- This allows ad-hoc dependency tracking without config declaration
+
+**Use case:** Quick experiments where you want to track dependencies but haven't formalized the config yet.
+
+**Validation:** Only when config declares dependencies are they validated for completeness.
+
+### 2. Schema Versioning Strategy
+
+**Current:** `dependencies.json` has `"version": "1.0"`
+
+**Future upgrades:**
+- Version field is checked when loading dependencies
+- If version < current, auto-migrate during load
+- If version > current, error with "please upgrade yanex"
+- Migration functions: `migrate_v1_to_v2()`, etc.
+- Store original version in `_original_version` field during migration
+
+**Phase 1:** Single version (1.0), no migration needed
+
+### 3. Optional Dependencies (Phase 4)
+
+**MVP (Phase 1):** All dependencies are required by default
+
+**Phase 4 enhancement:**
+```yaml
+yanex:
+  scripts:
+    - name: "evaluate.py"
+      dependencies:
+        model: train.py  # required (default)
+        baseline:
+          script: baseline.py
+          required: false  # optional
+```
+
+**Behavior:**
+- Required dependencies: Error if not fulfilled
+- Optional dependencies: Allowed to be unfulfilled, script must handle `None`
+- Python API: `yanex.get_dependencies()` returns `None` for unfulfilled optional deps
+
+### 4. Slot Name Validation and Typo Handling
+
+**Strict matching:** Slot names in `-d` flags must exactly match declared slots in config
+
+**Typo detection:**
+```python
+# If user provides -d datprep=abc123 but config has "dataprep"
+declared_slots = ["dataprep", "training"]
+provided_slots = ["datprep", "training"]
+
+# Detect typo using Levenshtein distance
+if "datprep" not in declared_slots:
+    suggestions = find_similar(provided_slots, declared_slots, threshold=2)
+    raise DependencyError(
+        f"Unknown dependency slot 'datprep'. Did you mean 'dataprep'?"
+    )
+```
+
+**Error message example:**
+```
+Error: Unknown dependency slot 'datprep'
+
+Expected slots (from config):
+  - dataprep (dataprep.py)
+  - training (train.py)
+
+Did you mean: dataprep?
+```
+
+### 5. Concurrency and File Locking
+
+**Problem:** Multiple yanex processes updating dependencies.json (bidirectional tracking)
+
+**Phase 1 approach:**
+- No file locking (acceptable for single-user tool)
+- Last write wins
+- Rare case: Two experiments depending on same experiment simultaneously
+- Risk: One reverse index entry might be lost
+
+**Phase 2 enhancement:**
+- Add file locking using `fcntl.flock()` (Unix) / `msvcrt.locking()` (Windows)
+- Lock experiment directory during dependency updates
+- Retry logic with exponential backoff
+- Timeout after 5 seconds with clear error
+
+**Trade-off:** Simplicity in Phase 1 vs robustness in Phase 2
+
+### 6. Module Command Edge Cases
+
+**Case 1: No `yanex.scripts[]` section**
+```bash
+yanex module --config config.yaml
+# Output: "No scripts defined in config.yaml"
+```
+
+**Case 2: Empty scripts array**
+```yaml
+yanex:
+  scripts: []
+```
+Same as Case 1.
+
+**Case 3: Script without dependencies**
+```bash
+yanex module --config config.yaml
+# Output:
+# Module: config.yaml
+# Scripts: 1
+#   dataprep.py (no dependencies)
+```
+
+**Case 4: Multiple configs in directory**
+```bash
+# User must specify which config
+yanex module --config shared_config.yaml  # explicit path required
+```
+
+### 7. Slot Name Flexibility
+
+**Question:** Can slot names differ from script names?
+
+**Answer:** Yes! Slot names are arbitrary labels.
+
+**Example:**
+```yaml
+yanex:
+  scripts:
+    - name: "compare.py"
+      dependencies:
+        baseline_model: train.py  # slot name != script name
+        variant_model: train.py   # two slots, same script type
+```
+
+This enables:
+- Multiple dependencies on same script type
+- Semantic slot names (e.g., "baseline_model" vs "train_model_1")
+- Clear intent in dependency graph
+
+### 8. Dependency Graph Terminology
+
+To avoid confusion, we use consistent terminology:
+
+- **Dependency graph**: The complete graph of experiment relationships (nodes = experiments, edges = dependencies)
+- **Pipeline**: Colloquial term for a dependency graph, often implies linear workflow
+- **Module**: A config file with `yanex.scripts[]` defining multiple scripts
+- **Slot**: A named dependency requirement (e.g., "dataprep", "model")
+- **Fulfillment**: Providing a specific experiment ID for a slot
+- **Declaration**: Defining what slots a script needs in config
+- **Orchestration**: Automated execution of dependency chains (Phase 4, future)
+
+**Usage examples:**
+- "Query the dependency graph" ✅
+- "Visualize the pipeline" ✅ (less formal)
+- "Define a module" ✅
+- "Fulfill the dataprep slot" ✅
+- "Orchestrate the pipeline" (Phase 4 only) ✅
+
+### 9. Error Message Catalog
+
+Common errors with exact messages:
+
+**Missing required dependency:**
+```
+Error: Missing required dependency 'dataprep'
+
+Script: train.py
+Config: shared_config.yaml
+
+Expected dependencies:
+  ✗ dataprep (dataprep.py) - MISSING
+  ✓ baseline (baseline.py) - PROVIDED: baseline1
+
+To fix: yanex run train.py -d dataprep=<experiment_id> -d baseline=baseline1
+
+Find dataprep experiments: yanex id --script dataprep.py --status completed
+```
+
+**Experiment not found:**
+```
+Error: Dependency experiment 'xyz999' not found
+
+Slot: dataprep
+Required script: dataprep.py
+
+Recent dataprep.py experiments:
+  dp1 (completed, 2 hours ago)
+  dp2 (completed, 1 hour ago)
+
+List all: yanex list --script dataprep.py
+```
+
+**Script mismatch:**
+```
+Error: Dependency script mismatch for slot 'dataprep'
+
+Expected: dataprep.py
+Actual: train.py (experiment tr1)
+
+It looks like you may have swapped dependencies. Did you mean:
+  yanex run evaluate.py -d dataprep=dp1 -d training=tr1
+```
+
+**Not completed:**
+```
+Error: Dependency 'dataprep' (dp1) is not completed
+
+Current status: running
+Required status: completed
+
+Dependencies must be completed experiments to ensure reproducibility.
+
+Wait for completion: yanex show dp1
+Cancel and restart: yanex cancel dp1
+```
+
+**Unknown slot (typo):**
+```
+Error: Unknown dependency slot 'datprep'
+
+Expected slots (from config.yaml):
+  - dataprep (dataprep.py)
+  - training (train.py)
+
+Did you mean: dataprep?
+```
+
+### 10. Retroactive Dependency Addition
+
+**Question:** Can you add dependency metadata to experiments that already ran?
+
+**Phase 1:** No - dependencies must be specified at creation time
+
+**Phase 3 enhancement:** `yanex deps add` command
+```bash
+# Retroactively add dependency metadata
+yanex deps add eval1 --depends-on dataprep=dp1 --depends-on training=tr1
+
+# Validates and updates dependencies.json
+# Useful for organizing existing experiments
+```
+
+**Validation:** Still checks experiment exists and is completed, but doesn't re-run validation
+
+**Use case:** You ran experiments ad-hoc, now want to formalize relationships
+
 ## Design Decisions (Finalized)
 
 **1. Only completed experiments can be dependencies (STRICT)**
@@ -2910,36 +3587,29 @@ def test_delete_with_cascade(temp_dir):
    - **Implementation:** Use `include_archived=True` when validating and loading dependencies
    - **Rationale:** Archived experiments are still valid completed work, just moved for organization
 
-**3. Sweep syntax consistency (TO BE ALIGNED)**
-   - **Issue:** Need to align dependency sweep syntax with parameter sweep syntax
-   - **Current state:**
-     - Parameter sweeps: `--param "lr=list(1e-4, 5e-4, 1e-5)"` (uses `list()` wrapper)
-     - Dependency sweeps (proposed): `--depends-on "training=tr1,tr2,tr3"` (simple comma-separated)
+**3. Sweep syntax: Comma-separated (FINALIZED)**
+   - **Decision:** Use comma-separated syntax for both parameter sweeps AND dependency sweeps
+   - **Rationale:** Simpler, more intuitive, less typing required
 
-   - **Option A: Comma-separated for both (PREFERRED)**
-     ```bash
-     # Parameters
-     --param "lr=1e-4,5e-4,1e-5"
+   **Syntax:**
+   ```bash
+   # Parameter sweep (will update from list() to comma-separated)
+   --param "lr=1e-4,5e-4,1e-5"
 
-     # Dependencies
-     --depends-on "training=tr1,tr2,tr3"
-     ```
-     - **Pros:** Less typing, simpler syntax, more intuitive
-     - **Cons:** Breaking change for existing parameter sweep syntax
+   # Dependency sweep (NEW)
+   -d "training=tr1,tr2,tr3"
+   ```
 
-   - **Option B: list() wrapper for both**
-     ```bash
-     # Parameters (current)
-     --param "lr=list(1e-4, 5e-4, 1e-5)"
+   **Migration strategy:**
+   - Since single-user tool currently, no backward compatibility needed
+   - Update parameter sweep parser to accept comma-separated values
+   - Keep `list()` wrapper working temporarily (will warn deprecated)
+   - Remove `list()` support in future version
 
-     # Dependencies
-     --depends-on "training=list(tr1, tr2, tr3)"
-     ```
-     - **Pros:** Backward compatible with existing parameter sweeps
-     - **Cons:** More verbose, harder to type
-
-   - **Recommendation:** Use **Option A** (comma-separated) for both parameters and dependencies
-   - **Migration:** Deprecate `list()` syntax for parameters, support both temporarily for backward compatibility
+   **Consistent behavior:**
+   - Comma-separated = sweep (multiple experiments created)
+   - Single value = single experiment
+   - Applies to both `--param` and `-d/--depends-on`
 
 ## Open Questions
 
