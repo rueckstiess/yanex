@@ -481,14 +481,14 @@ class DependencyValidator:
             dep_id = resolved_deps[slot_name]
             expected_script = slot_config["script"]
 
-            # Validate experiment exists
-            if not self.storage.experiment_exists(dep_id):
+            # Validate experiment exists (including archived experiments)
+            if not self.storage.experiment_exists(dep_id, include_archived=True):
                 raise DependencyError(
                     f"Dependency experiment '{dep_id}' not found"
                 )
 
-            # Load dependency metadata
-            dep_metadata = self.storage.load_metadata(dep_id)
+            # Load dependency metadata (including archived experiments)
+            dep_metadata = self.storage.load_metadata(dep_id, include_archived=True)
 
             # Validate script matches
             actual_script = Path(dep_metadata["script_path"]).name
@@ -500,12 +500,14 @@ class DependencyValidator:
                     f"but experiment {dep_id} ran '{actual_script}'"
                 )
 
-            # Validate status
+            # Validate status - ONLY completed experiments allowed
+            # This ensures reproducibility - no failed or running experiments
             dep_status = dep_metadata.get("status")
-            if dep_status not in ["completed"]:
+            if dep_status != "completed":
                 raise DependencyError(
-                    f"Dependency '{slot_name}' ({dep_id}) has status '{dep_status}', "
-                    f"expected 'completed'"
+                    f"Dependency '{slot_name}' ({dep_id}) has status '{dep_status}'. "
+                    f"Only 'completed' experiments can be dependencies. "
+                    f"This ensures reproducibility."
                 )
 
             # Record check
@@ -1506,34 +1508,23 @@ Create `yanex/cli/commands/id.py`:
 ```python
 """Command to output experiment IDs matching filters."""
 import click
+from ..arguments import experiment_filter_options
 from ..formatters.experiment_list import get_experiment_ids
 
 @click.command()
-@click.option("--script", help="Filter by script name/pattern")
-@click.option("--status", help="Filter by status")
-@click.option("--tags", multiple=True, help="Filter by tags")
-@click.option("--since", help="Filter by date (e.g., '2 days ago')")
+@experiment_filter_options  # Inherits all filter options from centralized decorator
 @click.option("--limit", type=int, help="Limit number of results")
 @click.option("--format", type=click.Choice(["line", "csv", "json"]), default="line")
-@click.option("--depends-on", help="Filter by dependency on experiment ID")
-@click.option("--depends-on-script", help="Filter by dependency on script type")
-@click.option("--root", is_flag=True, help="Only root experiments (no dependencies)")
-@click.option("--leaf", is_flag=True, help="Only leaf experiments (nothing depends on them)")
-def id_command(script, status, tags, since, limit, format, depends_on,
-               depends_on_script, root, leaf):
-    """Output experiment IDs matching filters (for composition with other commands)."""
+def id_command(limit, format, **filter_kwargs):
+    """
+    Output experiment IDs matching filters (for composition with other commands).
+
+    All standard filter options are inherited from experiment_filter_options:
+    --script, --status, --tags, --since, --depends-on, --depends-on-script, --root, --leaf
+    """
 
     # Get filtered experiments (reuse existing filter logic)
-    experiments = get_filtered_experiments(
-        script=script,
-        status=status,
-        tags=tags,
-        since=since,
-        depends_on=depends_on,
-        depends_on_script=depends_on_script,
-        root=root,
-        leaf=leaf
-    )
+    experiments = get_filtered_experiments(**filter_kwargs)
 
     # Apply limit
     if limit:
@@ -1691,7 +1682,47 @@ def delete_command(experiment_id, cascade, force):
 
 ### New Filters
 
-Add to existing filter infrastructure:
+Add new filter options to `yanex/cli/arguments.py` in the `experiment_filter_options()` decorator so they're available to **all commands** that filter experiments:
+
+```python
+# yanex/cli/arguments.py
+
+def experiment_filter_options(func):
+    """
+    Decorator to add common experiment filtering options to CLI commands.
+
+    These options are shared across: list, show, compare, id, etc.
+    """
+    # Existing filters
+    func = click.option("--script", help="Filter by script name/pattern")(func)
+    func = click.option("--status", help="Filter by status")(func)
+    func = click.option("--tags", multiple=True, help="Filter by tags")(func)
+    func = click.option("--since", help="Filter by date")(func)
+
+    # NEW: Dependency filters
+    func = click.option(
+        "--depends-on",
+        help="Filter by dependency on experiment ID"
+    )(func)
+    func = click.option(
+        "--depends-on-script",
+        help="Filter by dependency on script type (e.g., dataprep.py)"
+    )(func)
+    func = click.option(
+        "--root",
+        is_flag=True,
+        help="Only experiments with no dependencies (root nodes)"
+    )(func)
+    func = click.option(
+        "--leaf",
+        is_flag=True,
+        help="Only experiments nothing depends on (leaf nodes)"
+    )(func)
+
+    return func
+```
+
+**Filter implementation:**
 
 ```python
 # In filter utilities
@@ -2669,27 +2700,30 @@ def test_delete_with_cascade(temp_dir):
    - `examples/dependencies/evaluate.py`
    - `examples/dependencies/config.yaml`
 
+## Design Decisions (Finalized)
+
+**1. Only completed experiments can be dependencies (STRICT)**
+   - **Decision:** ONLY experiments with `status="completed"` can be dependencies
+   - **Rationale:** Ensures reproducibility and data integrity
+   - **No exceptions:** No `--allow-failed` or `--allow-running` flags
+   - Failed experiments may have incomplete/corrupt artifacts
+   - Running experiments are in an unstable state
+
+**2. Archived experiments ARE valid dependencies**
+   - **Decision:** Dependencies can reference archived experiments
+   - **Implementation:** Use `include_archived=True` when validating and loading dependencies
+   - **Rationale:** Archived experiments are still valid completed work, just moved for organization
+
 ## Open Questions
 
-1. **Should failed experiments be allowed as dependencies?**
-   - Use case: Evaluate model even if training failed
-   - Recommendation: Default reject, add `--allow-failed` flag
-
-2. **Should running experiments be allowed as dependencies?**
-   - Use case: Start evaluation while training is ongoing (read partial checkpoints)
-   - Recommendation: Default reject, could add `--allow-running` flag later
-
-3. **Circular dependency detection:**
+1. **Circular dependency detection:**
    - When to check? At declaration time or execution time?
-   - Recommendation: Phase 4 feature - check at creation time
+   - Recommendation: Phase 4 feature - check at creation time using DFS
 
-4. **Artifact validation:**
-   - Should we validate artifacts exist even in MVP?
-   - Recommendation: No, add in Phase 2/3
-
-5. **Dependency on archived experiments:**
-   - Should dependencies search archived experiments too?
-   - Recommendation: Yes, with `include_archived=True` in lookups
+2. **Artifact validation:**
+   - Should we validate specific artifacts exist in MVP?
+   - Recommendation: No, only validate experiment exists and is completed in Phase 1
+   - Add artifact-level validation in Phase 2/3 as enhancement
 
 ## Success Metrics
 
