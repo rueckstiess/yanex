@@ -2714,6 +2714,37 @@ def test_delete_with_cascade(temp_dir):
    - **Implementation:** Use `include_archived=True` when validating and loading dependencies
    - **Rationale:** Archived experiments are still valid completed work, just moved for organization
 
+**3. Sweep syntax consistency (TO BE ALIGNED)**
+   - **Issue:** Need to align dependency sweep syntax with parameter sweep syntax
+   - **Current state:**
+     - Parameter sweeps: `--param "lr=list(1e-4, 5e-4, 1e-5)"` (uses `list()` wrapper)
+     - Dependency sweeps (proposed): `--depends-on "training=tr1,tr2,tr3"` (simple comma-separated)
+
+   - **Option A: Comma-separated for both (PREFERRED)**
+     ```bash
+     # Parameters
+     --param "lr=1e-4,5e-4,1e-5"
+
+     # Dependencies
+     --depends-on "training=tr1,tr2,tr3"
+     ```
+     - **Pros:** Less typing, simpler syntax, more intuitive
+     - **Cons:** Breaking change for existing parameter sweep syntax
+
+   - **Option B: list() wrapper for both**
+     ```bash
+     # Parameters (current)
+     --param "lr=list(1e-4, 5e-4, 1e-5)"
+
+     # Dependencies
+     --depends-on "training=list(tr1, tr2, tr3)"
+     ```
+     - **Pros:** Backward compatible with existing parameter sweeps
+     - **Cons:** More verbose, harder to type
+
+   - **Recommendation:** Use **Option A** (comma-separated) for both parameters and dependencies
+   - **Migration:** Deprecate `list()` syntax for parameters, support both temporarily for backward compatibility
+
 ## Open Questions
 
 1. **Circular dependency detection:**
