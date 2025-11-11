@@ -1067,6 +1067,438 @@ class DependencyReference:
         return path
 ```
 
+### Results API: Querying Dependency Graphs
+
+The `Experiment` class in `yanex/results/experiment.py` should provide methods for querying dependency relationships post-hoc. This enables analysis notebooks, pipeline debugging, and reporting.
+
+#### `Experiment.get_dependencies()` - Query Upstream
+
+```python
+def get_dependencies(
+    self,
+    recursive: bool = False,
+    max_depth: int | None = None
+) -> list["Experiment"]:
+    """
+    Get experiments this one depends on (upstream/parents).
+
+    Args:
+        recursive: Include all ancestors (default: direct only)
+        max_depth: Limit recursion depth (None = unlimited)
+
+    Returns:
+        List of Experiment objects
+
+    Example:
+        exp = Experiment("eval1")
+        deps = exp.get_dependencies()
+        # [Experiment("dp1"), Experiment("tr1")]
+
+        all_deps = exp.get_dependencies(recursive=True)
+        # [Experiment("dp1"), Experiment("prep0")] if dp1 depends on prep0
+    """
+    result = []
+
+    if not recursive:
+        # Direct dependencies only
+        deps_data = self._manager.storage.load_dependencies(
+            self.id, include_archived=self.archived
+        )
+        if deps_data and deps_data.get("resolved_dependencies"):
+            for dep_id in deps_data["resolved_dependencies"].values():
+                result.append(Experiment(dep_id, self._manager))
+        return result
+
+    # Recursive traversal
+    visited = set()
+
+    def traverse(exp_id: str, depth: int = 0):
+        if exp_id in visited:
+            return
+        if max_depth is not None and depth >= max_depth:
+            return
+
+        visited.add(exp_id)
+
+        deps_data = self._manager.storage.load_dependencies(exp_id)
+        if deps_data and deps_data.get("resolved_dependencies"):
+            for dep_id in deps_data["resolved_dependencies"].values():
+                result.append(Experiment(dep_id, self._manager))
+                traverse(dep_id, depth + 1)
+
+    traverse(self.id)
+    return result
+```
+
+#### `Experiment.get_dependents()` - Query Downstream
+
+```python
+def get_dependents(
+    self,
+    recursive: bool = False,
+    max_depth: int | None = None
+) -> list["Experiment"]:
+    """
+    Get experiments that depend on this one (downstream/children).
+
+    Args:
+        recursive: Include all descendants (default: direct only)
+        max_depth: Limit recursion depth (None = unlimited)
+
+    Returns:
+        List of Experiment objects
+
+    Example:
+        exp = Experiment("dp1")
+        deps = exp.get_dependents()
+        # [Experiment("tr1"), Experiment("tr2"), Experiment("eval1")]
+
+        all_deps = exp.get_dependents(recursive=True)
+        # Includes children of tr1, tr2, eval1 recursively
+    """
+    result = []
+
+    if not recursive:
+        # Direct dependents only
+        deps_data = self._manager.storage.load_dependencies(
+            self.id, include_archived=self.archived
+        )
+        if deps_data and deps_data.get("depended_by"):
+            for dep_info in deps_data["depended_by"]:
+                result.append(Experiment(dep_info["experiment_id"], self._manager))
+        return result
+
+    # Recursive traversal
+    visited = set()
+
+    def traverse(exp_id: str, depth: int = 0):
+        if exp_id in visited:
+            return
+        if max_depth is not None and depth >= max_depth:
+            return
+
+        visited.add(exp_id)
+
+        deps_data = self._manager.storage.load_dependencies(exp_id)
+        if deps_data and deps_data.get("depended_by"):
+            for dep_info in deps_data["depended_by"]:
+                dep_id = dep_info["experiment_id"]
+                result.append(Experiment(dep_id, self._manager))
+                traverse(dep_id, depth + 1)
+
+    traverse(self.id)
+    return result
+```
+
+#### `Experiment.get_dependency_info()` - Detailed Metadata
+
+```python
+def get_dependency_info(self) -> dict[str, dict]:
+    """
+    Get detailed dependency information with slot names and metadata.
+
+    Returns:
+        Dictionary mapping slot names to dependency details
+
+    Example:
+        exp = Experiment("eval1")
+        info = exp.get_dependency_info()
+        # {
+        #   "dataprep": {
+        #       "experiment_id": "dp1",
+        #       "experiment": Experiment("dp1"),
+        #       "slot": "dataprep",
+        #       "script": "dataprep.py",
+        #       "status": "completed",
+        #       "validated": True
+        #   },
+        #   "training": {...}
+        # }
+    """
+    deps_data = self._manager.storage.load_dependencies(
+        self.id, include_archived=self.archived
+    )
+
+    if not deps_data or not deps_data.get("resolved_dependencies"):
+        return {}
+
+    result = {}
+    declared_slots = deps_data.get("declared_slots", {})
+    validation_checks = deps_data.get("validation", {}).get("checks", [])
+
+    for slot, dep_id in deps_data["resolved_dependencies"].items():
+        dep_exp = Experiment(dep_id, self._manager)
+
+        # Find validation info for this slot
+        validation_info = None
+        for check in validation_checks:
+            if check["slot"] == slot:
+                validation_info = check
+                break
+
+        result[slot] = {
+            "experiment_id": dep_id,
+            "experiment": dep_exp,
+            "slot": slot,
+            "script": declared_slots.get(slot, {}).get("script"),
+            "status": dep_exp.status,
+            "validated": validation_info["valid"] if validation_info else None
+        }
+
+    return result
+```
+
+#### `Experiment.get_dependency_graph()` / `Experiment.get_pipeline()` - Full Subgraph
+
+```python
+def get_dependency_graph(self) -> dict:
+    """
+    Get full connected subgraph (pipeline) containing this experiment.
+
+    Traverses both upstream and downstream to find all connected experiments.
+    Returns DAG as edge list with rich node objects.
+
+    Returns:
+        {
+            "nodes": {experiment_id: Experiment, ...},
+            "edges": [{"source": id, "target": id, "slot": name}, ...],
+            "root_nodes": [experiment_id, ...],
+            "leaf_nodes": [experiment_id, ...]
+        }
+
+    Example:
+        exp = Experiment("tr1")  # Any experiment in pipeline
+        graph = exp.get_dependency_graph()
+
+        # Access nodes
+        dataprep = graph["nodes"]["dp1"]
+        print(dataprep.status)
+
+        # Find entry/exit points
+        roots = [graph["nodes"][id] for id in graph["root_nodes"]]
+        leaves = [graph["nodes"][id] for id in graph["leaf_nodes"]]
+
+        # Iterate edges
+        for edge in graph["edges"]:
+            print(f"{edge['source']} -> {edge['target']} (slot: {edge['slot']})")
+    """
+    visited = set()
+    nodes = {}
+    edges = []
+
+    def traverse(exp_id: str):
+        """Recursively traverse both directions."""
+        if exp_id in visited:
+            return
+        visited.add(exp_id)
+
+        # Add node
+        exp = Experiment(exp_id, self._manager)
+        nodes[exp_id] = exp
+
+        # Traverse upstream (dependencies)
+        deps_data = self._manager.storage.load_dependencies(exp_id)
+        if deps_data and deps_data.get("resolved_dependencies"):
+            for slot, dep_id in deps_data["resolved_dependencies"].items():
+                edges.append({"source": dep_id, "target": exp_id, "slot": slot})
+                traverse(dep_id)
+
+        # Traverse downstream (dependents)
+        if deps_data and deps_data.get("depended_by"):
+            for dep_info in deps_data["depended_by"]:
+                dep_id = dep_info["experiment_id"]
+                slot = dep_info["slot_name"]
+                edges.append({"source": exp_id, "target": dep_id, "slot": slot})
+                traverse(dep_id)
+
+    # Start traversal from this experiment
+    traverse(self.id)
+
+    # Find root and leaf nodes
+    all_sources = {e["source"] for e in edges}
+    all_targets = {e["target"] for e in edges}
+    root_nodes = list(all_sources - all_targets)
+    leaf_nodes = list(all_targets - all_sources)
+
+    # Handle single-node graph (no dependencies or dependents)
+    if not edges:
+        root_nodes = [self.id]
+        leaf_nodes = [self.id]
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "root_nodes": root_nodes,
+        "leaf_nodes": leaf_nodes
+    }
+
+def get_pipeline(self) -> dict:
+    """
+    Alias for get_dependency_graph().
+
+    More intuitive name for getting the full experiment pipeline.
+    """
+    return self.get_dependency_graph()
+```
+
+#### Module-Level `get_pipeline()` Function
+
+Add to `yanex/results/__init__.py`:
+
+```python
+def get_pipeline(experiment_id: str) -> dict:
+    """
+    Get full pipeline (dependency graph) for any experiment.
+
+    Convenience function - equivalent to Experiment(id).get_pipeline()
+
+    Args:
+        experiment_id: Any experiment in the pipeline
+
+    Returns:
+        Full connected subgraph with nodes, edges, roots, and leaves
+
+    Example:
+        import yanex.results as yr
+
+        # Get pipeline from any experiment in it
+        pipeline = yr.get_pipeline("tr1")
+
+        # All experiments in pipeline
+        all_exps = list(pipeline["nodes"].values())
+
+        # Entry points
+        roots = [pipeline["nodes"][id] for id in pipeline["root_nodes"]]
+
+        # Exit points
+        leaves = [pipeline["nodes"][id] for id in pipeline["leaf_nodes"]]
+
+        # Count experiments by script
+        from collections import Counter
+        scripts = Counter(exp.script_path.name for exp in all_exps)
+        # Counter({'train.py': 3, 'dataprep.py': 1, 'evaluate.py': 2})
+    """
+    from .experiment import Experiment
+    exp = Experiment(experiment_id)
+    return exp.get_pipeline()
+```
+
+#### Usage Examples
+
+```python
+# Example 1: Analyze entire pipeline
+import yanex.results as yr
+
+pipeline = yr.get_pipeline("tr1")  # Any experiment in the pipeline
+
+print(f"Pipeline has {len(pipeline['nodes'])} experiments")
+print(f"Entry points: {pipeline['root_nodes']}")
+print(f"Final outputs: {pipeline['leaf_nodes']}")
+
+# Example 2: Find all failed experiments in pipeline
+failed = [
+    exp for exp in pipeline["nodes"].values()
+    if exp.status == "failed"
+]
+if failed:
+    print(f"Failed experiments: {[e.id for e in failed]}")
+
+# Example 3: Compare all training runs that used same dataprep
+from yanex.results import Experiment
+
+dataprep = Experiment("dp1")
+training_runs = [
+    exp for exp in dataprep.get_dependents()
+    if "train.py" in str(exp.script_path)
+]
+
+for run in training_runs:
+    metrics = run.get_metrics()
+    print(f"{run.id}: accuracy={metrics.get('accuracy', 'N/A')}")
+
+# Example 4: Get dependency info with slot names
+exp = Experiment("eval1")
+dep_info = exp.get_dependency_info()
+
+for slot, info in dep_info.items():
+    print(f"Slot '{slot}':")
+    print(f"  Experiment: {info['experiment_id']}")
+    print(f"  Script: {info['script']}")
+    print(f"  Status: {info['status']}")
+    print(f"  Validated: {info['validated']}")
+
+# Example 5: Export for UI visualization (React-Flow format)
+import json
+
+pipeline = yr.get_pipeline("eval1")
+
+ui_format = {
+    "nodes": [
+        {
+            "id": exp.id,
+            "data": {
+                "name": exp.name or exp.id,
+                "script": exp.script_path.name if exp.script_path else "unknown",
+                "status": exp.status,
+                "created_at": exp.created_at.isoformat() if exp.created_at else None
+            },
+            "position": {"x": 0, "y": 0}  # Layout done client-side
+        }
+        for exp in pipeline["nodes"].values()
+    ],
+    "edges": [
+        {
+            "id": f"{e['source']}-{e['target']}",
+            "source": e["source"],
+            "target": e["target"],
+            "label": e["slot"]
+        }
+        for e in pipeline["edges"]
+    ]
+}
+
+# Can be sent to UI
+json_str = json.dumps(ui_format, indent=2)
+
+# Example 6: Delete entire pipeline
+pipeline = yr.get_pipeline("dp1")
+root = pipeline["nodes"][pipeline["root_nodes"][0]]
+
+# Delete from root will cascade to all dependents
+# (requires --cascade flag implemented in Phase 2)
+```
+
+#### JSON Export Format
+
+The edge list format is **JSON-serializable** with minor transformation:
+
+```python
+import json
+from datetime import datetime
+
+def serialize_pipeline(pipeline: dict) -> str:
+    """Convert pipeline to JSON (Experiment objects → dicts)."""
+
+    serializable = {
+        "nodes": [
+            {
+                "id": exp.id,
+                "name": exp.name,
+                "script": str(exp.script_path) if exp.script_path else None,
+                "status": exp.status,
+                "tags": exp.tags,
+                "created_at": exp.created_at.isoformat() if exp.created_at else None
+            }
+            for exp in pipeline["nodes"].values()
+        ],
+        "edges": pipeline["edges"],  # Already JSON-serializable
+        "root_nodes": pipeline["root_nodes"],
+        "leaf_nodes": pipeline["leaf_nodes"]
+    }
+
+    return json.dumps(serializable, indent=2)
+```
+
 ### New Command: `yanex id`
 
 Create `yanex/cli/commands/id.py`:
@@ -1758,6 +2190,197 @@ def test_get_dependencies(temp_dir, git_repo):
             deps["dataprep"].load_artifact("missing.parquet")
 ```
 
+**Test Results API:**
+```python
+# tests/results/test_dependency_results_api.py
+from yanex.results import Experiment, get_pipeline
+
+def test_experiment_get_dependencies(temp_dir, git_repo):
+    """Test Experiment.get_dependencies() returns direct dependencies."""
+    # Create pipeline: dp1 -> tr1 -> eval1
+    dp_id = create_completed_experiment("dataprep.py")
+    tr_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+    eval_id = create_completed_experiment_with_deps("evaluate.py", {"train": tr_id, "dataprep": dp_id})
+
+    # Test direct dependencies
+    exp = Experiment(eval_id)
+    deps = exp.get_dependencies()
+
+    assert len(deps) == 2
+    assert any(d.id == dp_id for d in deps)
+    assert any(d.id == tr_id for d in deps)
+
+def test_experiment_get_dependencies_recursive(temp_dir, git_repo):
+    """Test Experiment.get_dependencies(recursive=True) returns all ancestors."""
+    # Create chain: prep0 -> dp1 -> tr1
+    prep0_id = create_completed_experiment("prep.py")
+    dp_id = create_completed_experiment_with_deps("dataprep.py", {"prep": prep0_id})
+    tr_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+
+    # Test recursive
+    exp = Experiment(tr_id)
+    all_deps = exp.get_dependencies(recursive=True)
+
+    assert len(all_deps) == 2  # dp1 and prep0
+    assert any(d.id == dp_id for d in all_deps)
+    assert any(d.id == prep0_id for d in all_deps)
+
+def test_experiment_get_dependents(temp_dir, git_repo):
+    """Test Experiment.get_dependents() returns direct dependents."""
+    # Create pipeline: dp1 -> [tr1, tr2, eval1]
+    dp_id = create_completed_experiment("dataprep.py")
+    tr1_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+    tr2_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+    eval_id = create_completed_experiment_with_deps("evaluate.py", {"dataprep": dp_id})
+
+    # Test direct dependents
+    exp = Experiment(dp_id)
+    dependents = exp.get_dependents()
+
+    assert len(dependents) == 3
+    dep_ids = {d.id for d in dependents}
+    assert tr1_id in dep_ids
+    assert tr2_id in dep_ids
+    assert eval_id in dep_ids
+
+def test_experiment_get_dependents_recursive(temp_dir, git_repo):
+    """Test Experiment.get_dependents(recursive=True) returns all descendants."""
+    # Create chain: dp1 -> tr1 -> eval1
+    dp_id = create_completed_experiment("dataprep.py")
+    tr_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+    eval_id = create_completed_experiment_with_deps("evaluate.py", {"train": tr_id})
+
+    # Test recursive from root
+    exp = Experiment(dp_id)
+    all_dependents = exp.get_dependents(recursive=True)
+
+    assert len(all_dependents) == 2  # tr1 and eval1
+    assert any(d.id == tr_id for d in all_dependents)
+    assert any(d.id == eval_id for d in all_dependents)
+
+def test_experiment_get_dependency_info(temp_dir, git_repo):
+    """Test Experiment.get_dependency_info() returns slot metadata."""
+    dp_id = create_completed_experiment("dataprep.py")
+    tr_id = create_completed_experiment("train.py")
+    eval_id = create_completed_experiment_with_deps(
+        "evaluate.py",
+        {"dataprep": dp_id, "training": tr_id}
+    )
+
+    exp = Experiment(eval_id)
+    info = exp.get_dependency_info()
+
+    assert "dataprep" in info
+    assert "training" in info
+
+    # Check dataprep info
+    assert info["dataprep"]["experiment_id"] == dp_id
+    assert info["dataprep"]["experiment"].id == dp_id
+    assert info["dataprep"]["slot"] == "dataprep"
+    assert info["dataprep"]["script"] == "dataprep.py"
+    assert info["dataprep"]["status"] == "completed"
+
+    # Check training info
+    assert info["training"]["experiment_id"] == tr_id
+    assert info["training"]["slot"] == "training"
+
+def test_experiment_get_pipeline(temp_dir, git_repo):
+    """Test Experiment.get_pipeline() returns full connected subgraph."""
+    # Create DAG:
+    #     dp1
+    #    /   \
+    #  tr1   tr2
+    #    \   /
+    #    eval1
+
+    dp_id = create_completed_experiment("dataprep.py")
+    tr1_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+    tr2_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+    eval_id = create_completed_experiment_with_deps(
+        "evaluate.py",
+        {"train1": tr1_id, "train2": tr2_id, "dataprep": dp_id}
+    )
+
+    # Get pipeline from middle node
+    exp = Experiment(tr1_id)
+    graph = exp.get_pipeline()
+
+    # Verify nodes
+    assert len(graph["nodes"]) == 4
+    assert dp_id in graph["nodes"]
+    assert tr1_id in graph["nodes"]
+    assert tr2_id in graph["nodes"]
+    assert eval_id in graph["nodes"]
+
+    # Verify edges
+    assert len(graph["edges"]) == 5
+    edge_pairs = {(e["source"], e["target"]) for e in graph["edges"]}
+    assert (dp_id, tr1_id) in edge_pairs
+    assert (dp_id, tr2_id) in edge_pairs
+    assert (tr1_id, eval_id) in edge_pairs
+    assert (tr2_id, eval_id) in edge_pairs
+    assert (dp_id, eval_id) in edge_pairs
+
+    # Verify roots and leaves
+    assert graph["root_nodes"] == [dp_id]
+    assert graph["leaf_nodes"] == [eval_id]
+
+def test_get_pipeline_module_function(temp_dir, git_repo):
+    """Test module-level yr.get_pipeline() function."""
+    import yanex.results as yr
+
+    dp_id = create_completed_experiment("dataprep.py")
+    tr_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+
+    # Call module function
+    pipeline = yr.get_pipeline(tr_id)
+
+    assert len(pipeline["nodes"]) == 2
+    assert dp_id in pipeline["nodes"]
+    assert tr_id in pipeline["nodes"]
+    assert pipeline["root_nodes"] == [dp_id]
+    assert pipeline["leaf_nodes"] == [tr_id]
+
+def test_pipeline_edge_list_format(temp_dir, git_repo):
+    """Test that pipeline format is correct (nodes, edges, roots, leaves)."""
+    dp_id = create_completed_experiment("dataprep.py")
+    tr_id = create_completed_experiment_with_deps("train.py", {"dataprep": dp_id})
+
+    pipeline = get_pipeline(tr_id)
+
+    # Verify structure
+    assert "nodes" in pipeline
+    assert "edges" in pipeline
+    assert "root_nodes" in pipeline
+    assert "leaf_nodes" in pipeline
+
+    # Verify nodes are Experiment objects
+    assert isinstance(pipeline["nodes"][dp_id], Experiment)
+    assert isinstance(pipeline["nodes"][tr_id], Experiment)
+
+    # Verify edges have correct structure
+    assert len(pipeline["edges"]) == 1
+    edge = pipeline["edges"][0]
+    assert "source" in edge
+    assert "target" in edge
+    assert "slot" in edge
+    assert edge["source"] == dp_id
+    assert edge["target"] == tr_id
+    assert edge["slot"] == "dataprep"
+
+def test_pipeline_single_node(temp_dir, git_repo):
+    """Test pipeline with single node (no dependencies)."""
+    dp_id = create_completed_experiment("dataprep.py")
+
+    exp = Experiment(dp_id)
+    graph = exp.get_pipeline()
+
+    assert len(graph["nodes"]) == 1
+    assert len(graph["edges"]) == 0
+    assert graph["root_nodes"] == [dp_id]
+    assert graph["leaf_nodes"] == [dp_id]
+```
+
 ### Integration Tests
 
 ```python
@@ -1882,7 +2505,12 @@ def test_delete_with_cascade(temp_dir):
 12. **Python API: Add `dependencies` and `depends_on` fields to `ExperimentSpec`**
 13. **Python API: Implement dependency resolution hierarchy (inline → config → none)**
 14. Python API: `yanex.get_dependencies()` and `DependencyReference` class
-15. Write comprehensive tests (CLI, API, integration)
+15. **Results API: Add `Experiment.get_dependencies(recursive, max_depth)` method**
+16. **Results API: Add `Experiment.get_dependents(recursive, max_depth)` method**
+17. **Results API: Add `Experiment.get_dependency_info()` method**
+18. **Results API: Add `Experiment.get_dependency_graph()` and `get_pipeline()` methods**
+19. **Results API: Add module-level `yanex.results.get_pipeline(experiment_id)` function**
+20. Write comprehensive tests (CLI, API, Results API, integration)
 
 **Deliverables:**
 - Users can declare dependencies in config
@@ -1893,6 +2521,9 @@ def test_delete_with_cascade(temp_dir):
 - Dependencies are tracked bidirectionally
 - Basic queries work (show, list with filters)
 - Scripts can access dependency artifacts via `get_dependencies()`
+- **Results API enables post-hoc dependency graph analysis**
+- **Users can query upstream/downstream dependencies programmatically**
+- **Full pipeline extraction via `yr.get_pipeline(experiment_id)`**
 
 **Testing checklist:**
 - [ ] Parse single/multiple/sweep dependencies
@@ -1908,6 +2539,14 @@ def test_delete_with_cascade(temp_dir):
 - [ ] **Python API: ExperimentSpec with dependencies**
 - [ ] **Python API: get_dependencies() returns correct references**
 - [ ] **Python API: DependencyReference.artifacts works**
+- [ ] **Results API: get_dependencies() returns direct dependencies**
+- [ ] **Results API: get_dependencies(recursive=True) returns all ancestors**
+- [ ] **Results API: get_dependents() returns direct dependents**
+- [ ] **Results API: get_dependents(recursive=True) returns all descendants**
+- [ ] **Results API: get_dependency_info() returns slot metadata**
+- [ ] **Results API: get_pipeline() returns full connected subgraph**
+- [ ] **Results API: yr.get_pipeline() module function works**
+- [ ] **Results API: Edge list format is correct (nodes, edges, roots, leaves)**
 - [ ] Show command displays dependencies
 - [ ] List command shows dependency indicator
 - [ ] Delete command prevents deletion if depended on
