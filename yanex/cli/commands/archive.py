@@ -36,6 +36,10 @@ def archive_experiments(
     started_before: str | None,
     ended_after: str | None,
     ended_before: str | None,
+    depends_on: str | None,
+    depends_on_script: str | None,
+    root: bool,
+    leaf: bool,
     force: bool,
 ):
     """
@@ -65,6 +69,10 @@ def archive_experiments(
             started_before,
             ended_after,
             ended_before,
+            depends_on,
+            depends_on_script,
+            root,
+            leaf,
         ]
     )
 
@@ -99,7 +107,11 @@ def archive_experiments(
             started_before=started_before_dt,
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
-            archived=False,  # Can't archive already archived experiments
+            archived=False,
+            depends_on=depends_on,
+            depends_on_script=depends_on_script,
+            root=root,
+            leaf=leaf,
         )
 
     # Filter out already archived experiments (extra safety)

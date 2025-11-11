@@ -57,6 +57,10 @@ def compare_experiments(
     ended_after: str | None,
     ended_before: str | None,
     archived: bool,
+    depends_on: str | None,
+    depends_on_script: str | None,
+    root: bool,
+    leaf: bool,
     params: str | None,
     metrics: str | None,
     only_different: bool,
@@ -100,6 +104,10 @@ def compare_experiments(
                 started_before,
                 ended_after,
                 ended_before,
+                depends_on,
+                depends_on_script,
+                root,
+                leaf,
             ]
         )
 
@@ -139,6 +147,10 @@ def compare_experiments(
                 ended_after=ended_after_dt,
                 ended_before=ended_before_dt,
                 archived=archived,
+                depends_on=depends_on,
+                depends_on_script=depends_on_script,
+                root=root,
+                leaf=leaf,
             )
 
         if not experiments:

@@ -226,6 +226,10 @@ def find_experiments_by_filters(
     ended_after=None,
     ended_before=None,
     archived: bool = False,
+    depends_on: str | None = None,
+    depends_on_script: str | None = None,
+    root: bool = False,
+    leaf: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Find experiments using filter criteria.
@@ -241,6 +245,10 @@ def find_experiments_by_filters(
         ended_after: Filter by end time
         ended_before: Filter by end time
         archived: Whether to search archived experiments
+        depends_on: Filter experiments that depend on specified experiment ID
+        depends_on_script: Filter experiments with dependencies on specified script
+        root: Filter root experiments (experiments without dependencies)
+        leaf: Filter leaf experiments (experiments with no dependents)
 
     Returns:
         List of found experiments
@@ -256,4 +264,8 @@ def find_experiments_by_filters(
         ended_before=ended_before,
         include_all=True,  # Get all matching experiments for bulk operations
         archived=archived,
+        depends_on=depends_on,
+        depends_on_script=depends_on_script,
+        root=root,
+        leaf=leaf,
     )

@@ -36,6 +36,10 @@ def unarchive_experiments(
     started_before: str | None,
     ended_after: str | None,
     ended_before: str | None,
+    depends_on: str | None,
+    depends_on_script: str | None,
+    root: bool,
+    leaf: bool,
     force: bool,
 ):
     """
@@ -64,6 +68,10 @@ def unarchive_experiments(
             started_before,
             ended_after,
             ended_before,
+            depends_on,
+            depends_on_script,
+            root,
+            leaf,
         ]
     )
 
@@ -99,6 +107,10 @@ def unarchive_experiments(
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
             archived=True,  # Only search archived experiments
+            depends_on=depends_on,
+            depends_on_script=depends_on_script,
+            root=root,
+            leaf=leaf,
         )
 
     # Filter to only archived experiments

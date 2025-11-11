@@ -66,6 +66,10 @@ def update_experiments(
     ended_after: str | None,
     ended_before: str | None,
     archived: bool,
+    depends_on: str | None,
+    depends_on_script: str | None,
+    root: bool,
+    leaf: bool,
     new_name: str | None,
     new_description: str | None,
     new_status: str | None,
@@ -122,6 +126,10 @@ def update_experiments(
             started_before,
             ended_after,
             ended_before,
+            depends_on,
+            depends_on_script,
+            root,
+            leaf,
         ]
     )
 
@@ -155,6 +163,10 @@ def update_experiments(
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
             archived=archived,
+            depends_on=depends_on,
+            depends_on_script=depends_on_script,
+            root=root,
+            leaf=leaf,
         )
 
     # Filter based on archived flag

@@ -7,8 +7,8 @@ particularly for dependency sweeps using shell substitution.
 
 import click
 
-from yanex.cli.arguments import experiment_filter_options
 from yanex.cli.filters import ExperimentFilter
+from yanex.cli.filters.arguments import experiment_filter_options
 
 
 @click.command("id")
