@@ -17,26 +17,7 @@ from yanex.executor import ExperimentResult, ExperimentSpec
 class TestBatchExecutionAPI:
     """Test yanex.run_multiple() batch execution API."""
 
-    def setup_method(self):
-        """Set up test fixtures."""
-        # Store original env var
-        self.old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        self.old_cli_active = os.environ.get("YANEX_CLI_ACTIVE")
-
-    def teardown_method(self):
-        """Clean up after tests."""
-        # Restore original env vars
-        if self.old_yanex_dir is None:
-            os.environ.pop("YANEX_EXPERIMENTS_DIR", None)
-        else:
-            os.environ["YANEX_EXPERIMENTS_DIR"] = self.old_yanex_dir
-
-        if self.old_cli_active is None:
-            os.environ.pop("YANEX_CLI_ACTIVE", None)
-        else:
-            os.environ["YANEX_CLI_ACTIVE"] = self.old_cli_active
-
-    def test_run_multiple_sequential(self, tmp_path):
+    def test_run_multiple_sequential(self, per_test_experiments_dir, tmp_path):
         """Test sequential execution of multiple experiments."""
         # Create simple script
         script_content = """
@@ -45,10 +26,6 @@ print(f"Executed with lr={yanex.get_param('learning_rate')}")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        # Set isolated experiments directory
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
 
         # Create experiment specs
         experiments = [
@@ -84,7 +61,7 @@ print(f"Executed with lr={yanex.get_param('learning_rate')}")
         assert [r.name for r in results] == ["exp-1", "exp-2", "exp-3"]
 
         # Verify experiments were created
-        manager = ExperimentManager(experiments_dir)
+        manager = ExperimentManager(per_test_experiments_dir)
         all_experiments = manager.list_experiments()
         assert len(all_experiments) == 3
 
@@ -98,7 +75,7 @@ print(f"Executed with lr={yanex.get_param('learning_rate')}")
             assert "learning_rate" in config
             assert config["learning_rate"] == expected_lr
 
-    def test_run_multiple_parallel(self, tmp_path):
+    def test_run_multiple_parallel(self, per_test_experiments_dir, tmp_path):
         """Test parallel execution with ProcessPoolExecutor."""
         # Create script that takes a moment
         script_content = """
@@ -111,11 +88,6 @@ print(f"Finished with lr={lr}")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        # Set isolated experiments directory
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         # Create 4 experiments
         experiments = [
             ExperimentSpec(
@@ -135,21 +107,17 @@ print(f"Finished with lr={lr}")
         assert all(r.experiment_id != "unknown" for r in results)
 
         # Verify all experiments were created
-        manager = ExperimentManager(experiments_dir)
+        manager = ExperimentManager(per_test_experiments_dir)
         all_experiments = manager.list_experiments()
         assert len(all_experiments) == 4
 
-    def test_parallel_auto_detect_cpus(self, tmp_path):
+    def test_parallel_auto_detect_cpus(self, per_test_experiments_dir, tmp_path):
         """Test parallel=0 auto-detects CPU count."""
         script_content = """
 print("Executed")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         experiments = [
             ExperimentSpec(
                 script_path=script_path,
@@ -166,7 +134,7 @@ print("Executed")
         assert len(results) == 2
         assert all(r.status == "completed" for r in results)
 
-    def test_error_handling_continues_batch(self, tmp_path):
+    def test_error_handling_continues_batch(self, per_test_experiments_dir, tmp_path):
         """Test that individual experiment failures don't abort entire batch."""
         # Create script that fails on certain values
         script_content = """
@@ -178,10 +146,6 @@ print(f"Success with value={value}")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         # Create 4 experiments where one will fail
         experiments = [
             ExperimentSpec(
@@ -213,7 +177,7 @@ print(f"Success with value={value}")
             assert r.experiment_id != "unknown"
             assert len(r.experiment_id) == 8
 
-    def test_experiment_spec_validation(self, tmp_path):
+    def test_experiment_spec_validation(self, per_test_experiments_dir, tmp_path):
         """Test ExperimentSpec validation logic."""
         # Test: neither script_path nor function specified
         spec1 = ExperimentSpec()
@@ -237,7 +201,7 @@ print(f"Success with value={value}")
         spec4 = ExperimentSpec(script_path=script_path)
         spec4.validate()  # Should not raise
 
-    def test_run_multiple_validation_errors(self, tmp_path):
+    def test_run_multiple_validation_errors(self, per_test_experiments_dir, tmp_path):
         """Test run_multiple validates inputs."""
         # Test: empty experiments list
         with pytest.raises(ValueError, match="experiments list cannot be empty"):
@@ -255,17 +219,13 @@ print(f"Success with value={value}")
         with pytest.raises(ValueError, match="Invalid ExperimentSpec at index 1"):
             yanex.run_multiple(invalid_experiments)
 
-    def test_cli_context_allowed(self, tmp_path):
+    def test_cli_context_allowed(self, per_test_experiments_dir, tmp_path):
         """Test that run_multiple works from CLI context (orchestrator pattern)."""
         script_content = """
 print("Test")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         # Simulate CLI context (e.g., orchestrator run via 'yanex run')
         os.environ["YANEX_CLI_ACTIVE"] = "1"
 
@@ -280,7 +240,7 @@ print("Test")
         assert len(results) == 1
         assert results[0].status == "completed"
 
-    def test_script_args_passthrough(self, tmp_path):
+    def test_script_args_passthrough(self, per_test_experiments_dir, tmp_path):
         """Test that script_args are passed through to subprocess."""
         # Create script that uses argparse
         script_content = """
@@ -297,10 +257,6 @@ print(f"lr={lr} data={args.data_exp} fold={args.fold}")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         # Create experiments with script_args
         experiments = [
             ExperimentSpec(
@@ -325,14 +281,16 @@ print(f"lr={lr} data={args.data_exp} fold={args.fold}")
         assert all(r.status == "completed" for r in results)
 
         # Verify script_args were stored in metadata
-        manager = ExperimentManager(experiments_dir)
+        manager = ExperimentManager(per_test_experiments_dir)
         for result in results:
             metadata = manager.get_experiment_metadata(result.experiment_id)
             assert "script_args" in metadata
             assert "--data-exp" in metadata["script_args"]
             assert "abc123" in metadata["script_args"]
 
-    def test_script_args_with_parallel_execution(self, tmp_path):
+    def test_script_args_with_parallel_execution(
+        self, per_test_experiments_dir, tmp_path
+    ):
         """Test script_args work correctly in parallel execution."""
         script_content = """
 import argparse
@@ -347,10 +305,6 @@ print(f"Fold {args.fold} with lr={lr}")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         # Create 3 experiments with different fold numbers
         experiments = [
             ExperimentSpec(
@@ -369,7 +323,9 @@ print(f"Fold {args.fold} with lr={lr}")
         assert len(results) == 3
         assert all(r.status == "completed" for r in results)
 
-    def test_experiment_result_includes_duration(self, tmp_path):
+    def test_experiment_result_includes_duration(
+        self, per_test_experiments_dir, tmp_path
+    ):
         """Test that ExperimentResult includes execution duration."""
         script_content = """
 import time
@@ -378,10 +334,6 @@ print("Done")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         experiments = [
             ExperimentSpec(script_path=script_path, config={}, name="timed"),
         ]
@@ -396,17 +348,13 @@ print("Done")
         assert result.duration > 0.05  # Should take at least 0.05 seconds
         assert result.duration < 5.0  # But not more than 5 seconds
 
-    def test_tags_and_description_stored(self, tmp_path):
+    def test_tags_and_description_stored(self, per_test_experiments_dir, tmp_path):
         """Test that tags and description are properly stored."""
         script_content = """
 print("Test")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         experiments = [
             ExperimentSpec(
                 script_path=script_path,
@@ -423,13 +371,13 @@ print("Test")
         assert results[0].status == "completed"
 
         # Verify metadata
-        manager = ExperimentManager(experiments_dir)
+        manager = ExperimentManager(per_test_experiments_dir)
         metadata = manager.get_experiment_metadata(results[0].experiment_id)
 
         assert set(metadata["tags"]) == {"kfold", "cv", "test"}
         assert metadata["description"] == "K-fold cross-validation experiment"
 
-    def test_parallel_failure_handling(self, tmp_path):
+    def test_parallel_failure_handling(self, per_test_experiments_dir, tmp_path):
         """Test error handling in parallel execution mode."""
         # Create script that fails for certain values
         script_content = """
@@ -441,10 +389,6 @@ print(f"Odd value {value} succeeded")
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         # Create 6 experiments (3 will fail, 3 will succeed)
         experiments = [
             ExperimentSpec(
@@ -472,7 +416,9 @@ print(f"Odd value {value} succeeded")
             assert r.error_message is not None
             assert "not allowed" in r.error_message
 
-    def test_config_parameters_passed_correctly(self, tmp_path):
+    def test_config_parameters_passed_correctly(
+        self, per_test_experiments_dir, tmp_path
+    ):
         """Test that config parameters are correctly passed to experiments."""
         script_content = """
 import yanex
@@ -493,10 +439,6 @@ assert isinstance(use_cuda, bool)
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         experiments = [
             ExperimentSpec(
                 script_path=script_path,
@@ -519,20 +461,7 @@ assert isinstance(use_cuda, bool)
 class TestKFoldOrchestrationPattern:
     """Test k-fold cross-validation orchestration pattern."""
 
-    def setup_method(self):
-        """Set up test fixtures."""
-        # Store original env var
-        self.old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-
-    def teardown_method(self):
-        """Clean up after tests."""
-        # Restore original env vars
-        if self.old_yanex_dir is None:
-            os.environ.pop("YANEX_EXPERIMENTS_DIR", None)
-        else:
-            os.environ["YANEX_EXPERIMENTS_DIR"] = self.old_yanex_dir
-
-    def test_kfold_execution_mode_detection(self, tmp_path):
+    def test_kfold_execution_mode_detection(self, per_test_experiments_dir, tmp_path):
         """Test that scripts can detect execution mode vs orchestration mode."""
         # Create script that uses _fold_idx parameter to detect mode
         train_script_content = """
@@ -550,10 +479,6 @@ else:
 """
         script_path = tmp_path / "train.py"
         script_path.write_text(train_script_content)
-
-        experiments_dir = tmp_path / "experiments"
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(experiments_dir)
-
         # Test 1: Orchestration mode (no _fold_idx)
         orchestration_exp = [
             ExperimentSpec(
@@ -585,6 +510,6 @@ else:
         assert all(r.status == "completed" for r in results)
 
         # Verify all experiments were created
-        manager = ExperimentManager(experiments_dir)
+        manager = ExperimentManager(per_test_experiments_dir)
         all_experiments = manager.list_experiments()
         assert len(all_experiments) == 4  # 1 orchestration + 3 folds

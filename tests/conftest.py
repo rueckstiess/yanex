@@ -2,6 +2,7 @@
 Pytest configuration and shared fixtures.
 """
 
+import os
 import shutil
 import tempfile
 from collections.abc import Generator
@@ -9,6 +10,43 @@ from pathlib import Path
 
 import git
 import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolate_experiments_directory():
+    """Automatically isolate experiments directory for entire test session.
+
+    This fixture ensures ALL tests use a temporary experiments directory
+    instead of the production ~/.yanex/experiments folder.
+
+    The fixture:
+    - Creates a temporary directory for test experiments
+    - Sets YANEX_EXPERIMENTS_DIR environment variable
+    - Automatically cleans up after all tests complete
+
+    This runs automatically for every test session (autouse=True)
+    and does not need to be explicitly requested by individual tests.
+    """
+    # Create temporary directory for test experiments
+    test_experiments_dir = tempfile.mkdtemp(prefix="yanex_test_experiments_")
+
+    # Save original value (if exists)
+    original_env = os.environ.get("YANEX_EXPERIMENTS_DIR")
+
+    # Set environment variable for entire test session
+    os.environ["YANEX_EXPERIMENTS_DIR"] = test_experiments_dir
+
+    try:
+        yield test_experiments_dir
+    finally:
+        # Restore original environment
+        if original_env is not None:
+            os.environ["YANEX_EXPERIMENTS_DIR"] = original_env
+        else:
+            os.environ.pop("YANEX_EXPERIMENTS_DIR", None)
+
+        # Clean up temporary directory
+        shutil.rmtree(test_experiments_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -91,6 +129,44 @@ def isolated_experiments_dir(temp_dir: Path) -> Path:
     experiments_dir = temp_dir / "experiments"
     experiments_dir.mkdir()
     return experiments_dir
+
+
+@pytest.fixture
+def per_test_experiments_dir(tmp_path: Path) -> Generator[Path, None, None]:
+    """Provide per-test experiment directory isolation with environment override.
+
+    This fixture creates a completely isolated experiments directory for a single test
+    by temporarily overriding the YANEX_EXPERIMENTS_DIR environment variable.
+
+    Use this fixture when your test needs complete isolation from other tests
+    (e.g., when testing default ExperimentManager() initialization or when you need
+    an empty experiments directory).
+
+    This works on top of the session-wide isolation - it temporarily overrides
+    the session-wide temp directory with a test-specific one.
+
+    Example:
+        def test_something(self, per_test_experiments_dir):
+            # ExperimentManager() will use per_test_experiments_dir
+            manager = ExperimentManager()
+            # Only experiments created in THIS test will be in the directory
+    """
+    test_exp_dir = tmp_path / "experiments"
+    test_exp_dir.mkdir()
+
+    # Save the current (session-wide) value
+    old_env = os.environ.get("YANEX_EXPERIMENTS_DIR")
+
+    # Override with test-specific directory
+    os.environ["YANEX_EXPERIMENTS_DIR"] = str(test_exp_dir)
+
+    try:
+        yield test_exp_dir
+    finally:
+        # Restore session-wide directory
+        if old_env:
+            os.environ["YANEX_EXPERIMENTS_DIR"] = old_env
+        # tmp_path cleanup is handled by pytest's tmp_path fixture
 
 
 @pytest.fixture

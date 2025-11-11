@@ -167,8 +167,10 @@ def find_experiments_by_identifiers(
                     raise click.ClickException(
                         f"Ambiguous experiment ID prefix '{identifier}' matches multiple experiments"
                     )
+            except click.ClickException:
+                raise  # Re-raise ClickExceptions (like ambiguous ID prefix errors)
             except Exception:
-                pass
+                pass  # Suppress other errors and try next identification method
 
         # Try name match
         try:
@@ -193,8 +195,10 @@ def find_experiments_by_identifiers(
                     "Please use specific experiment IDs instead of names for bulk operations."
                 )
                 raise click.ClickException(f"Ambiguous experiment name: '{identifier}'")
+        except click.ClickException:
+            raise  # Re-raise ClickExceptions (like ambiguous name errors)
         except Exception:
-            pass
+            pass  # Suppress other errors and try next identification method
 
         # If we get here, nothing was found
         if archived is True:

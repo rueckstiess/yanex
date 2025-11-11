@@ -2,8 +2,6 @@
 Tests for CLI parameter sweep functionality.
 """
 
-import os
-
 import pytest
 
 from tests.test_utils import TestFileHelpers
@@ -60,35 +58,22 @@ class TestCLIParameterSweeps:
             tmp_path, "sweep_script.py", "simple", test_message="sweep test"
         )
 
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
-
-        try:
-            result = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "lr=range(0.01, 0.03, 0.01)",
-                    "--stage",
-                    "--name",
-                    "sweep-test",
-                ],
-            )
-            assert result.exit_code == 0
-            assert (
-                "Parameter sweep detected: expanding into 2 experiments"
-                in result.output
-            )
-            assert "Staged 2 sweep experiments" in result.output
-            assert "sweep-test-sweep-001" in result.output or "IDs:" in result.output
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--param",
+                "lr=range(0.01, 0.03, 0.01)",
+                "--stage",
+                "--name",
+                "sweep-test",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "Staged 2 sweep experiments" in result.output
+        assert "sweep-test-sweep-001" in result.output or "IDs:" in result.output
 
     def test_multi_parameter_sweep_staging(self, tmp_path, cli_runner):
         """Test staging multi-parameter sweep (cross-product)."""
@@ -96,34 +81,21 @@ class TestCLIParameterSweeps:
             tmp_path, "multi_sweep_script.py", "simple", test_message="multi-sweep test"
         )
 
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
-
-        try:
-            result = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "lr=linspace(0.01, 0.02, 2)",
-                    "--param",
-                    "batch_size=list(16, 32)",
-                    "--stage",
-                ],
-            )
-            assert result.exit_code == 0
-            assert (
-                "Parameter sweep detected: expanding into 4 experiments"
-                in result.output
-            )
-            assert "Staged 4 sweep experiments" in result.output
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--param",
+                "lr=linspace(0.01, 0.02, 2)",
+                "--param",
+                "batch_size=list(16, 32)",
+                "--stage",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Parameter sweep detected: expanding into 4 experiments" in result.output
+        assert "Staged 4 sweep experiments" in result.output
 
     def test_mixed_sweep_and_regular_parameters(self, tmp_path, cli_runner):
         """Test mix of sweep and regular parameters."""
@@ -134,36 +106,23 @@ class TestCLIParameterSweeps:
             test_message="mixed params test",
         )
 
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
-
-        try:
-            result = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "lr=range(0.01, 0.03, 0.01)",
-                    "--param",
-                    "epochs=100",  # regular parameter
-                    "--param",
-                    "model_type=resnet",  # regular parameter
-                    "--stage",
-                ],
-            )
-            assert result.exit_code == 0
-            assert (
-                "Parameter sweep detected: expanding into 2 experiments"
-                in result.output
-            )
-            assert "Staged 2 sweep experiments" in result.output
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--param",
+                "lr=range(0.01, 0.03, 0.01)",
+                "--param",
+                "epochs=100",  # regular parameter
+                "--param",
+                "model_type=resnet",  # regular parameter
+                "--stage",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "Staged 2 sweep experiments" in result.output
 
     def test_nested_parameter_sweep(self, tmp_path, cli_runner):
         """Test parameter sweep with nested keys."""
@@ -174,34 +133,21 @@ class TestCLIParameterSweeps:
             test_message="nested params test",
         )
 
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
-
-        try:
-            result = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "model.learning_rate=range(0.01, 0.03, 0.01)",
-                    "--param",
-                    "training.epochs=100",
-                    "--stage",
-                ],
-            )
-            assert result.exit_code == 0
-            assert (
-                "Parameter sweep detected: expanding into 2 experiments"
-                in result.output
-            )
-            assert "Staged 2 sweep experiments" in result.output
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--param",
+                "model.learning_rate=range(0.01, 0.03, 0.01)",
+                "--param",
+                "training.epochs=100",
+                "--stage",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "Staged 2 sweep experiments" in result.output
 
     def test_regular_parameters_without_sweeps(self, tmp_path, cli_runner):
         """Test that regular parameters work normally without --stage."""
@@ -269,40 +215,27 @@ class TestCLIParameterSweeps:
             tmp_path, "naming_script.py", "simple", test_message="naming test"
         )
 
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--param",
+                "lr=list(1e-4, 1e-3)",
+                "--param",
+                "batch_size=32",
+                "--stage",
+                "--name",
+                "test-model",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "Staged 2 sweep experiments" in result.output
 
-        try:
-            result = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "lr=list(1e-4, 1e-3)",
-                    "--param",
-                    "batch_size=32",
-                    "--stage",
-                    "--name",
-                    "test-model",
-                ],
-            )
-            assert result.exit_code == 0
-            assert (
-                "Parameter sweep detected: expanding into 2 experiments"
-                in result.output
-            )
-            assert "Staged 2 sweep experiments" in result.output
-
-            # Check that parameter values are included in names
-            # Note: We can't easily check the exact names without accessing the storage,
-            # but we can verify the sweep was created successfully
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
+        # Check that parameter values are included in names
+        # Note: We can't easily check the exact names without accessing the storage,
+        # but we can verify the sweep was created successfully
 
     def test_parameter_aware_naming_without_base_name(self, tmp_path, cli_runner):
         """Test parameter-aware naming without explicit base name."""
@@ -310,32 +243,19 @@ class TestCLIParameterSweeps:
             tmp_path, "naming_script.py", "simple", test_message="naming test"
         )
 
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
-
-        try:
-            result = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "lr=range(1e-4, 3e-4, 1e-4)",
-                    "--stage",
-                ],
-            )
-            assert result.exit_code == 0
-            assert (
-                "Parameter sweep detected: expanding into 2 experiments"
-                in result.output
-            )
-            assert "Staged 2 sweep experiments" in result.output
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--param",
+                "lr=range(1e-4, 3e-4, 1e-4)",
+                "--stage",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "Staged 2 sweep experiments" in result.output
 
     @pytest.mark.parametrize(
         "sweep_params,expected_count",
@@ -365,33 +285,23 @@ class TestCLIParameterSweeps:
             tmp_path, "count_test_script.py", "simple"
         )
 
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path)
+        # Build command with all sweep parameters
+        command = [
+            "run",
+            str(script_path),
+            "--stage",
+        ]
 
-        try:
-            # Build command with all sweep parameters
-            command = [
-                "run",
-                str(script_path),
-                "--stage",
-            ]
+        for param in sweep_params:
+            command.extend(["--param", param])
 
-            for param in sweep_params:
-                command.extend(["--param", param])
-
-            result = cli_runner.invoke(cli, command)
-            assert result.exit_code == 0
-            assert (
-                f"Parameter sweep detected: expanding into {expected_count} experiments"
-                in result.output
-            )
-            assert f"Staged {expected_count} sweep experiments" in result.output
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
+        result = cli_runner.invoke(cli, command)
+        assert result.exit_code == 0
+        assert (
+            f"Parameter sweep detected: expanding into {expected_count} experiments"
+            in result.output
+        )
+        assert f"Staged {expected_count} sweep experiments" in result.output
 
     @pytest.mark.parametrize(
         "sweep_type,param_spec",
@@ -624,44 +534,34 @@ class TestCLIParameterSweeps:
             tmp_path, "isolation_test_script.py", "simple"
         )
 
-        # Use isolated experiment directory
-        old_yanex_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
-        os.environ["YANEX_EXPERIMENTS_DIR"] = str(tmp_path / "isolated_experiments")
+        # First sweep
+        result1 = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--param",
+                "lr=list(0.01, 0.02)",
+                "--stage",
+                "--name",
+                "first-sweep",
+            ],
+        )
+        assert result1.exit_code == 0
+        assert "Staged 2 sweep experiments" in result1.output
 
-        try:
-            # First sweep
-            result1 = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "lr=list(0.01, 0.02)",
-                    "--stage",
-                    "--name",
-                    "first-sweep",
-                ],
-            )
-            assert result1.exit_code == 0
-            assert "Staged 2 sweep experiments" in result1.output
-
-            # Second sweep should work independently
-            result2 = cli_runner.invoke(
-                cli,
-                [
-                    "run",
-                    str(script_path),
-                    "--param",
-                    "batch_size=list(16, 32, 64)",
-                    "--stage",
-                    "--name",
-                    "second-sweep",
-                ],
-            )
-            assert result2.exit_code == 0
-            assert "Staged 3 sweep experiments" in result2.output
-        finally:
-            if old_yanex_dir:
-                os.environ["YANEX_EXPERIMENTS_DIR"] = old_yanex_dir
-            elif "YANEX_EXPERIMENTS_DIR" in os.environ:
-                del os.environ["YANEX_EXPERIMENTS_DIR"]
+        # Second sweep should work independently
+        result2 = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "--param",
+                "batch_size=list(16, 32, 64)",
+                "--stage",
+                "--name",
+                "second-sweep",
+            ],
+        )
+        assert result2.exit_code == 0
+        assert "Staged 3 sweep experiments" in result2.output

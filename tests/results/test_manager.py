@@ -293,16 +293,9 @@ class TestResultsManager:
         assert "ResultsManager" in repr_str
         assert str(manager.storage_path) in repr_str
 
-    @pytest.mark.skipif(
-        condition=True,  # Skip by default since pandas might not be available
-        reason="Requires pandas for DataFrame comparison",
-    )
     def test_compare_experiments_with_pandas(self, manager, sample_experiments):
-        """Test experiment comparison with pandas (if available)."""
-        try:
-            import pandas as pd
-        except ImportError:
-            pytest.skip("pandas not available")
+        """Test experiment comparison with pandas."""
+        import pandas as pd
 
         # Compare training experiments
         df = manager.compare_experiments(

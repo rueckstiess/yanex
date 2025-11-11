@@ -646,14 +646,18 @@ class TestExperimentCreation:
         # NEW: Use isolated manager for clean environment
         self.manager = create_isolated_manager()
 
+    @patch("yanex.api._is_cli_context")
     @patch("yanex.api._get_experiment_manager")
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
-    def test_create_experiment(self, mock_capture_env, mock_git_info, mock_get_manager):
+    def test_create_experiment(
+        self, mock_capture_env, mock_git_info, mock_get_manager, mock_is_cli
+    ):
         """Test create_experiment function."""
         # Setup mocks using utilities
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
         mock_capture_env.return_value = {"python_version": "3.11.0"}
+        mock_is_cli.return_value = False  # Prevent CLI context detection
 
         mock_get_manager.return_value = self.manager
 
