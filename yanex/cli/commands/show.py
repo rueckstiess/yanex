@@ -200,6 +200,65 @@ def display_experiment_details(
     except Exception:
         pass  # Skip config if not available
 
+    # Dependencies
+    try:
+        deps_data = manager.storage.load_dependencies(experiment_id, include_archived)
+        if deps_data:
+            deps_table = Table(
+                show_header=True, header_style="bold magenta", box=box.SIMPLE
+            )
+            deps_table.add_column("Slot", style="cyan")
+            deps_table.add_column("Experiment ID", style="green")
+            deps_table.add_column("Script", style="yellow")
+
+            resolved_deps = deps_data.get("resolved_dependencies", {})
+            declared_slots = deps_data.get("declared_slots", {})
+
+            for slot_name, exp_id in resolved_deps.items():
+                slot_config = declared_slots.get(slot_name, {})
+                expected_script = slot_config.get("script", "-")
+                deps_table.add_row(slot_name, exp_id, expected_script)
+
+            console.print(
+                Panel(deps_table, title="[bold]Dependencies[/bold]", box=box.ROUNDED)
+            )
+            console.print()
+
+            # Show reverse dependencies (depended_by)
+            depended_by = deps_data.get("depended_by", [])
+            if depended_by:
+                depended_by_table = Table(
+                    show_header=True, header_style="bold magenta", box=box.SIMPLE
+                )
+                depended_by_table.add_column("Experiment ID", style="green")
+                depended_by_table.add_column("Uses As", style="cyan")
+                depended_by_table.add_column("Created", style="dim")
+
+                for dep in depended_by:
+                    dep_exp_id = dep.get("experiment_id", "-")
+                    slot_name = dep.get("slot_name", "-")
+                    created_at = dep.get("created_at", "-")
+                    if created_at != "-":
+                        # Format timestamp nicely
+                        try:
+                            created_at = formatter._format_time(created_at)
+                        except Exception:
+                            pass
+
+                    depended_by_table.add_row(dep_exp_id, slot_name, created_at)
+
+                console.print(
+                    Panel(
+                        depended_by_table,
+                        title="[bold]Depended On By[/bold]",
+                        box=box.ROUNDED,
+                    )
+                )
+                console.print()
+
+    except Exception:
+        pass  # Skip dependencies if not available
+
     # Results
     try:
         results = manager.storage.load_results(experiment_id, include_archived)
