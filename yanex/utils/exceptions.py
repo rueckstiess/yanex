@@ -68,3 +68,39 @@ class ExperimentContextError(ExperimentError):
     """Raised when experiment context is used incorrectly."""
 
     pass
+
+
+class DependencyError(ExperimentError):
+    """Base exception for dependency-related errors."""
+
+    pass
+
+
+class CircularDependencyError(DependencyError):
+    """Raised when a circular dependency is detected."""
+
+    def __init__(self, cycle: list[str]) -> None:
+        cycle_str = " → ".join(cycle)
+        super().__init__(
+            f"Circular dependency detected: {cycle_str}\n"
+            f"Dependencies must form a directed acyclic graph (DAG)."
+        )
+        self.cycle = cycle
+
+
+class MissingDependencyError(DependencyError):
+    """Raised when a required dependency is not provided."""
+
+    def __init__(self, slot_name: str, script_name: str | None = None) -> None:
+        msg = f"Missing required dependency '{slot_name}'"
+        if script_name:
+            msg += f" for script '{script_name}'"
+        super().__init__(msg)
+        self.slot_name = slot_name
+        self.script_name = script_name
+
+
+class InvalidDependencyError(DependencyError):
+    """Raised when a dependency validation fails."""
+
+    pass

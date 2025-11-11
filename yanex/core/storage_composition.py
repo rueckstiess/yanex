@@ -6,6 +6,7 @@ from typing import Any
 from .storage_archive import FileSystemArchiveStorage
 from .storage_artifacts import FileSystemArtifactStorage
 from .storage_config import FileSystemConfigurationStorage
+from .storage_dependencies import FileSystemDependencyStorage
 from .storage_directory import FileSystemDirectoryManager
 from .storage_executions import FileSystemScriptRunStorage
 from .storage_interfaces import ExperimentStorageInterface
@@ -32,6 +33,7 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         self.script_run_storage = FileSystemScriptRunStorage(self.directory_manager)
         self.artifact_storage = FileSystemArtifactStorage(self.directory_manager)
         self.archive_storage = FileSystemArchiveStorage(self.directory_manager)
+        self.dependency_storage = FileSystemDependencyStorage(self.directory_manager)
 
     # Directory management methods
     def create_experiment_directory(self, experiment_id: str) -> Path:
@@ -191,4 +193,63 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         """Get path to archived experiment directory."""
         return self.archive_storage.get_archived_experiment_directory(
             experiment_id, archive_dir
+        )
+
+    # Dependency methods
+    def save_dependencies(
+        self,
+        experiment_id: str,
+        dependencies: dict[str, Any],
+        include_archived: bool = False,
+    ) -> None:
+        """Save dependency information."""
+        self.dependency_storage.save_dependencies(
+            experiment_id, dependencies, include_archived
+        )
+
+    def load_dependencies(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> dict[str, Any] | None:
+        """Load dependency information."""
+        return self.dependency_storage.load_dependencies(
+            experiment_id, include_archived
+        )
+
+    def add_dependent(
+        self,
+        experiment_id: str,
+        dependent_id: str,
+        slot_name: str,
+        include_archived: bool = False,
+    ) -> None:
+        """Add a dependent to experiment's reverse index."""
+        self.dependency_storage.add_dependent(
+            experiment_id, dependent_id, slot_name, include_archived
+        )
+
+    def remove_dependent(
+        self,
+        experiment_id: str,
+        dependent_id: str,
+        include_archived: bool = False,
+    ) -> None:
+        """Remove a dependent from experiment's reverse index."""
+        self.dependency_storage.remove_dependent(
+            experiment_id, dependent_id, include_archived
+        )
+
+    def experiment_has_dependencies(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> bool:
+        """Check if experiment has any dependencies."""
+        return self.dependency_storage.experiment_has_dependencies(
+            experiment_id, include_archived
+        )
+
+    def experiment_is_depended_on(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> bool:
+        """Check if any experiments depend on this one."""
+        return self.dependency_storage.experiment_is_depended_on(
+            experiment_id, include_archived
         )
