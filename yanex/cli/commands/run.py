@@ -8,9 +8,128 @@ from typing import Any
 import click
 from rich.console import Console
 
-from ...core.config import expand_parameter_sweeps, has_sweep_parameters
+from ...core.config import (
+    expand_parameter_sweeps,
+    has_sweep_parameters,
+    load_yaml_config,
+)
+from ...core.dependency_validator import DependencyValidator
 from ...core.manager import ExperimentManager
 from ...core.script_executor import ScriptExecutor
+from ...utils.exceptions import DependencyError
+
+
+def parse_dependency_args(depends_on: list[str]) -> dict[str, list[str]]:
+    """Parse --depends-on arguments into structured format.
+
+    Args:
+        depends_on: List of "slot=id" or "slot=id1,id2,id3" strings
+
+    Returns:
+        Dictionary mapping slot names to lists of experiment IDs
+        Example: {"dataprep": ["dp1"], "training": ["tr1", "tr2", "tr3"]}
+
+    Raises:
+        click.ClickException: If format is invalid
+    """
+    parsed = {}
+
+    for arg in depends_on:
+        if "=" not in arg:
+            raise click.ClickException(
+                f"Invalid dependency format: '{arg}'\n"
+                f"Expected format: slot=experiment_id or slot=id1,id2,id3"
+            )
+
+        slot_name, ids_str = arg.split("=", 1)
+        slot_name = slot_name.strip()
+        ids_str = ids_str.strip()
+
+        if not slot_name:
+            raise click.ClickException("Dependency slot name cannot be empty")
+
+        if not ids_str:
+            raise click.ClickException(
+                f"No experiment ID provided for slot '{slot_name}'"
+            )
+
+        # Split on comma for multiple IDs (dependency sweep)
+        exp_ids = [id.strip() for id in ids_str.split(",")]
+
+        # Validate each ID is hex and reasonable length
+        for exp_id in exp_ids:
+            if not exp_id:
+                raise click.ClickException(
+                    f"Empty experiment ID in dependency '{slot_name}'"
+                )
+            # Basic hex validation (allow shortened IDs)
+            if not all(c in "0123456789abcdef" for c in exp_id.lower()):
+                raise click.ClickException(
+                    f"Invalid experiment ID '{exp_id}' for slot '{slot_name}'. "
+                    f"IDs must be hexadecimal."
+                )
+
+        parsed[slot_name] = exp_ids
+
+    return parsed
+
+
+def resolve_dependency_declaration(
+    script_path: Path, config_path: Path | None
+) -> dict[str, Any]:
+    """Resolve dependency declaration from config file.
+
+    Looks up the script in yanex.scripts[] array and extracts dependencies.
+
+    Args:
+        script_path: Path to the script being run
+        config_path: Path to config file (None if no config)
+
+    Returns:
+        Declared dependencies in normalized format:
+        {"slot": {"script": "script.py", "required": true}}
+        Returns {} if no config or script not found in config.
+    """
+    if not config_path:
+        return {}
+
+    try:
+        config_data = load_yaml_config(config_path)
+    except Exception as e:
+        raise click.ClickException(f"Failed to load config: {e}")
+
+    yanex_section = config_data.get("yanex", {})
+    scripts = yanex_section.get("scripts", [])
+
+    # Find this script in the array
+    script_name = script_path.name
+    for script_entry in scripts:
+        if script_entry.get("name") == script_name:
+            config_dependencies = script_entry.get("dependencies", {})
+            if not config_dependencies:
+                return {}
+
+            # Normalize to full format
+            normalized = {}
+            for slot, value in config_dependencies.items():
+                if isinstance(value, str):
+                    # Shorthand: "dataprep": "dataprep.py"
+                    normalized[slot] = {"script": value, "required": True}
+                elif isinstance(value, dict):
+                    # Full format already
+                    normalized[slot] = {
+                        "script": value.get("script"),
+                        "required": value.get("required", True),
+                    }
+                else:
+                    raise click.ClickException(
+                        f"Invalid dependency format for slot '{slot}' in config"
+                    )
+
+            return normalized
+
+    # Script not found in config
+    return {}
 
 
 @click.command(
@@ -37,7 +156,13 @@ from ...core.script_executor import ScriptExecutor
 )
 @click.option("--name", "-n", help="Experiment name")
 @click.option("--tag", "-t", multiple=True, help="Experiment tag (repeatable)")
-@click.option("--description", "-d", help="Experiment description")
+@click.option("--description", help="Experiment description")
+@click.option(
+    "--depends-on",
+    "-d",
+    multiple=True,
+    help="Dependency on another experiment (format: slot=experiment_id or slot=id1,id2,id3)",
+)
 @click.option("--dry-run", is_flag=True, help="Validate configuration without running")
 @click.option(
     "--ignore-dirty",
@@ -71,6 +196,7 @@ def run(
     name: str | None,
     tag: list[str],
     description: str | None,
+    depends_on: list[str],
     dry_run: bool,
     ignore_dirty: bool,
     stage: bool,
@@ -158,6 +284,7 @@ def run(
         "name": name,
         "tag": list(tag),
         "description": description,
+        "depends_on": list(depends_on),
         "dry_run": dry_run,
         "stage": stage,
         "staged": staged,
@@ -245,6 +372,56 @@ def run(
         # Validate sweep requirements
         validate_sweep_requirements(experiment_config, resolved_stage)
 
+        # Parse and validate dependencies
+        parsed_dependencies = None
+        declared_dependencies = None
+        resolved_dependencies = None
+
+        if depends_on:
+            # Parse --depends-on arguments
+            parsed_dependencies = parse_dependency_args(depends_on)
+
+            # Resolve dependency declaration from config
+            declared_dependencies = resolve_dependency_declaration(script, config)
+
+            # Check if this is a dependency sweep (multiple IDs for any slot)
+            has_dependency_sweep = any(
+                len(ids) > 1 for ids in parsed_dependencies.values()
+            )
+
+            if has_dependency_sweep and not (resolved_stage or parallel is not None):
+                # Dependency sweep without staging or parallel - inform user
+                total_combinations = 1
+                for ids in parsed_dependencies.values():
+                    total_combinations *= len(ids)
+
+                click.echo(
+                    f"Note: Dependency sweep will create {total_combinations} experiments "
+                    f"(run sequentially). Use --parallel N for parallel execution."
+                )
+
+            # For single experiment (not a sweep), validate dependencies now
+            if not has_dependency_sweep:
+                # Flatten to single values for validation
+                resolved_dependencies = {
+                    slot: ids[0] for slot, ids in parsed_dependencies.items()
+                }
+
+                # Validate dependencies before creation
+                manager = ExperimentManager()
+                validator = DependencyValidator(manager.storage, manager)
+
+                try:
+                    validator.validate_dependencies(
+                        experiment_id=None,  # Not yet created
+                        declared_slots=declared_dependencies,
+                        resolved_deps=resolved_dependencies,
+                        check_cycles=False,  # Can't check cycles without experiment_id yet
+                    )
+                except DependencyError as e:
+                    click.echo(f"Dependency validation failed: {e}", err=True)
+                    raise click.Abort() from e
+
         if resolved_dry_run:
             click.echo("✓ Configuration validation passed")
             click.echo("Dry run completed - experiment would be created with:")
@@ -267,6 +444,7 @@ def run(
                 verbose=verbose,
                 script_args=script_args,
                 cli_args=cli_args,
+                dependencies=(declared_dependencies, resolved_dependencies),
             )
         elif has_sweep_parameters(experiment_config):
             # Direct sweep execution (NEW in v0.6.0)
@@ -280,6 +458,7 @@ def run(
                 max_workers=parallel,  # None=sequential, N=parallel
                 script_args=script_args,
                 cli_args=cli_args,
+                dependencies=(declared_dependencies, parsed_dependencies),
             )
         else:
             # Single experiment execution
@@ -292,6 +471,7 @@ def run(
                 verbose=verbose,
                 script_args=script_args,
                 cli_args=cli_args,
+                dependencies=(declared_dependencies, resolved_dependencies),
             )
 
     except Exception as e:
@@ -308,6 +488,7 @@ def _execute_experiment(
     verbose: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
+    dependencies: tuple[dict[str, Any] | None, dict[str, str] | None] | None = None,
 ) -> None:
     """Execute script as an experiment with proper lifecycle management."""
     console = Console()  # Use stdout with colors
@@ -331,6 +512,56 @@ def _execute_experiment(
 
     if verbose:
         console.print(f"[dim]Created experiment: {experiment_id}[/]")
+
+    # Save dependencies if provided
+    if dependencies and dependencies[0] and dependencies[1]:
+        declared_deps, resolved_deps = dependencies
+
+        # Validate and save dependencies
+        validator = DependencyValidator(manager.storage, manager)
+        try:
+            validation_result = validator.validate_dependencies(
+                experiment_id=experiment_id,
+                declared_slots=declared_deps,
+                resolved_deps=resolved_deps,
+                check_cycles=True,  # Now we have experiment_id
+            )
+        except DependencyError as e:
+            # Dependency validation failed - clean up experiment
+            manager.fail_experiment(experiment_id)
+            raise click.ClickException(f"Dependency validation failed: {e}")
+
+        # Build and save dependencies.json
+        deps_data = {
+            "version": "1.0",
+            "declared_slots": declared_deps,
+            "resolved_dependencies": resolved_deps,
+            "validation": validation_result,
+            "depended_by": [],
+        }
+        manager.storage.save_dependencies(experiment_id, deps_data)
+
+        # Update reverse indexes (add this experiment to each dependency's depended_by list)
+        for slot_name, dep_id in resolved_deps.items():
+            try:
+                manager.storage.add_dependent(
+                    dep_id, experiment_id, slot_name, include_archived=True
+                )
+            except Exception as e:
+                # Log warning but don't fail - reverse index is for convenience
+                if verbose:
+                    console.print(
+                        f"[yellow]Warning: Could not update reverse index for {dep_id}: {e}[/yellow]"
+                    )
+
+        # Update metadata with dependencies summary
+        metadata = manager.storage.load_metadata(experiment_id)
+        metadata["dependencies_summary"] = {
+            "has_dependencies": True,
+            "dependency_count": len(resolved_deps),
+            "dependency_slots": list(resolved_deps.keys()),
+        }
+        manager.storage.save_metadata(experiment_id, metadata)
 
     # Start experiment
     manager.start_experiment(experiment_id)
@@ -390,8 +621,16 @@ def _stage_experiment(
     verbose: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
+    dependencies: tuple[dict[str, Any] | None, dict[str, str] | None] | None = None,
 ) -> None:
     """Stage experiment(s) for later execution, expanding parameter sweeps."""
+
+    # TODO: Implement dependency staging in Phase 2
+    if dependencies and dependencies[0]:
+        click.echo(
+            "[yellow]Warning: Dependencies with --stage not fully implemented yet. "
+            "Dependencies will be ignored for staged experiments.[/yellow]"
+        )
 
     manager = ExperimentManager()
 
@@ -689,6 +928,8 @@ def _execute_sweep_experiments(
     max_workers: int | None = None,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
+    dependencies: tuple[dict[str, Any] | None, dict[str, list[str]] | None]
+    | None = None,
 ) -> None:
     """Execute parameter sweep directly using shared executor.
 
@@ -705,8 +946,16 @@ def _execute_sweep_experiments(
         max_workers: Maximum parallel workers. None=sequential, N=parallel
         script_args: Arguments to pass through to the script
         cli_args: Complete CLI arguments used to run the experiment
+        dependencies: Tuple of (declared_dependencies, parsed_dependencies) or None
     """
     from ...executor import ExperimentSpec, run_multiple
+
+    # TODO: Implement dependency sweep support in Phase 2
+    if dependencies and dependencies[0]:
+        click.echo(
+            "[yellow]Warning: Dependencies with parameter sweeps not fully implemented yet. "
+            "Dependencies will be ignored for sweep experiments.[/yellow]"
+        )
 
     if script_args is None:
         script_args = []
