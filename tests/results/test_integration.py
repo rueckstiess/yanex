@@ -367,16 +367,9 @@ class TestResultsAPIIntegration:
         finally:
             yr._default_manager = None
 
-    @pytest.mark.skipif(
-        condition=True,  # Skip by default
-        reason="Requires pandas for DataFrame functionality",
-    )
     def test_dataframe_integration(self, custom_manager, comprehensive_experiments):
         """Test pandas DataFrame integration."""
-        try:
-            import pandas as pd
-        except ImportError:
-            pytest.skip("pandas not available")
+        import pandas as pd
 
         yr._default_manager = custom_manager
 
