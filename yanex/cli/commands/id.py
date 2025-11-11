@@ -12,7 +12,9 @@ from yanex.cli.filters.arguments import experiment_filter_options
 
 
 @click.command("id")
-@experiment_filter_options
+@experiment_filter_options(
+    include_ids=False, include_archived=True, include_limit=False
+)
 @click.option(
     "--limit",
     type=int,
