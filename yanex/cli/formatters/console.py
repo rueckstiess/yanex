@@ -70,6 +70,7 @@ class ExperimentTableFormatter:
         table.add_column("Script", style="cyan", width=15)
         table.add_column("Name", min_width=12, max_width=25)
         table.add_column("Status", width=12)
+        table.add_column("Deps", width=5, justify="center")
         table.add_column("Duration", width=10, justify="right")
         table.add_column("Tags", min_width=8, max_width=20)
         table.add_column("Started", width=15, justify="right")
@@ -81,6 +82,7 @@ class ExperimentTableFormatter:
                 self._format_script(exp.get("script_path")),
                 self._format_name(exp.get("name")),
                 self._format_status(exp.get("status", "unknown")),
+                self._format_dependencies(exp.get("dependencies_summary")),
                 self._format_duration(exp),
                 self._format_tags(exp.get("tags", [])),
                 self._format_started_time(exp.get("started_at")),
@@ -178,6 +180,22 @@ class ExperimentTableFormatter:
         symbol = self.STATUS_SYMBOLS.get(status, "?")
 
         return Text(f"{symbol} {status}", style=color)
+
+    def _format_dependencies(self, dependencies_summary: dict[str, Any] | None) -> Text:
+        """Format dependency indicator."""
+        if not dependencies_summary:
+            return Text("-", style="dim")
+
+        has_deps = dependencies_summary.get("has_dependencies", False)
+        if not has_deps:
+            return Text("-", style="dim")
+
+        dep_count = dependencies_summary.get("dependency_count", 0)
+        if dep_count == 0:
+            return Text("-", style="dim")
+
+        # Show arrow with count
+        return Text(f"→ {dep_count}", style="yellow")
 
     def _format_duration(self, experiment: dict[str, Any]) -> Text:
         """Format experiment duration."""
