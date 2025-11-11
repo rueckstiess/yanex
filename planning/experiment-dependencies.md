@@ -24,20 +24,20 @@ Typical ML workflow with dependencies:
 yanex run dataprep.py
 # → dp1 (creates train_data.parquet, test_data.parquet)
 
-# 2. Training (depends on dataprep)
-yanex run train.py --depends-on dataprep=dp1
+# 2. Training (depends on dataprep) - using -d short flag
+yanex run train.py -d dataprep=dp1
 # → tr1, tr2, tr3, tr4 (with parameter sweep)
 
 # 3. Evaluation (depends on both dataprep and training)
-yanex run evaluate.py --depends-on dataprep=dp1 --depends-on training=tr1
+yanex run evaluate.py -d dataprep=dp1 -d training=tr1
 # → eval1
 ```
 
-More advanced: Evaluate all 4 trained models:
+More advanced: Evaluate all 4 trained models using dependency sweep:
 ```bash
 yanex run evaluate.py \
-  --depends-on dataprep=dp1 \
-  --depends-on training=$(yanex id --script train.py --limit 4)
+  -d dataprep=dp1 \
+  -d training=$(yanex id --script train.py --limit 4 --format csv)
 # → eval1, eval2, eval3, eval4 (one per training experiment)
 ```
 
@@ -74,56 +74,85 @@ yanex:
 - **Rejected** because experiments are the natural boundary in ML workflows, not individual files
 - Artifact-level validation can be added later as enhancement
 
-### 2. Declaration Location: Config File `yanex:` Section
+### 2. Declaration Location: Config File `yanex.scripts[]` Array
 
-Dependencies are declared in the experiment's config file under the existing `yanex:` section:
+Dependencies are declared for multiple scripts in a shared config file using a `scripts` array under the `yanex:` section. This creates a "yanex module" - a cohesive collection of related scripts with shared parameters and dependency declarations:
 
 ```yaml
-# config.yaml
+# shared_config.yaml
 learning_rate: 0.001
 batch_size: 32
 
 yanex:
-  name: "Model Evaluation"
-  tags: ["evaluation", "prod"]
-  dependencies:
-    dataprep: dataprep.py
-    training: train.py
+  scripts:
+    - name: "dataprep.py"
+      # No dependencies - root node
+
+    - name: "train.py"
+      dependencies:
+        dataprep: "dataprep.py"
+
+    - name: "evaluate.py"
+      dependencies:
+        dataprep: "dataprep.py"
+        training: "train.py"
 ```
 
 **Rationale:**
-- Reuses existing `yanex:` section pattern (already used for CLI defaults)
-- Single source of truth for dependency requirements
-- Can be validated before script execution
-- UI can read config to show required slots
-- Clean separation: config = how to run, parameters = what values to use
+- **Solves shared config use case** - multiple scripts can share one config file with different dependencies
+- **Single source of truth** - entire module's dependency structure in one place
+- **No ambiguity** - when running `yanex run train.py --config shared.yaml`, lookup `train.py` in scripts array
+- **Discovery** - enables `yanex module` command to show all scripts and their relationships
+- **Clean separation** - config parameters shared, dependencies script-specific
 
-**Alternative considered:** Python API declaration (`yanex.require_dependencies(...)`)
-- **Rejected** to avoid multiple sources of truth and enable pre-execution validation
+**Resolution logic when running `yanex run train.py --config shared_config.yaml`:**
+1. **CLI flags** (highest priority): `--depends-on dataprep=abc123` overrides config
+2. **Config lookup**: Find entry in `yanex.scripts[]` where `name == "train.py"`
+3. **Fallback**: No dependencies if script not found in config
 
-### 3. CLI Syntax: `--depends-on slot=experiment_id`
+**Alternative considered:** Single-script `yanex.dependencies` syntax
+- **Rejected** - doesn't support shared configs, forces duplication across pipeline scripts
+
+### 3. CLI Syntax: `--depends-on slot=experiment_id` (short: `-d`)
+
+**Declaration vs Fulfillment:**
+- Config file **declares** what slots a script needs
+- CLI `--depends-on` **fulfills** those slots with specific experiment IDs
+- These are complementary, not conflicting
 
 ```bash
-# Single dependency
-yanex run train.py --depends-on dataprep=dp1
+# Single dependency fulfillment (short flag)
+yanex run train.py -d dataprep=dp1
 
-# Multiple dependencies
+# Multiple dependencies (long flag)
 yanex run evaluate.py --depends-on dataprep=dp1 --depends-on training=tr1
 
 # Multiple values (creates sweep - one experiment per combination)
-yanex run evaluate.py --depends-on dataprep=dp1 --depends-on training=tr1,tr2,tr3
+yanex run evaluate.py -d dataprep=dp1 -d training=tr1,tr2,tr3
 
 # Nested query with yanex id
 yanex run evaluate.py \
-  --depends-on dataprep=dp1 \
-  --depends-on training=$(yanex id --script train.py --status completed --limit 4)
+  -d dataprep=dp1 \
+  -d training=$(yanex id --script train.py --status completed --limit 4)
 ```
+
+**Short flag `-d`:**
+- Repurposed from `--description` (which has no short flag anymore)
+- More important than description - used frequently in workflows
+- No backward compatibility concern (single-user tool currently)
+
+**Validation behavior:**
+- If config declares slots, **all required slots must be fulfilled** via `-d`
+- Missing slots → error: "Missing required dependency 'slot_name'"
+- Extra slots (not in config) → allowed as optional metadata
+- Wrong slot names → error with helpful suggestion
 
 **Rationale:**
 - Explicit slot names prevent confusion
 - Consistent with parameter syntax (`--param key=value`)
 - Composable with shell substitution (`$(yanex id ...)`)
 - Multiple values enable dependency sweeps (like parameter sweeps)
+- Short flag improves ergonomics for common operation
 
 ### 4. Storage: Separate `dependencies.json` File
 
@@ -202,12 +231,12 @@ Multiple values for a slot create multiple experiments (like parameter sweeps):
 
 ```bash
 # Creates 2 experiments
-yanex run evaluate.py --depends-on dataprep=dp1 --depends-on training=tr1,tr2
+yanex run evaluate.py -d dataprep=dp1 -d training=tr1,tr2
 # eval1: dataprep=dp1, training=tr1
 # eval2: dataprep=dp1, training=tr2
 
 # Creates 4 experiments (cartesian product)
-yanex run compare.py --depends-on model1=tr1,tr2 --depends-on model2=tr3,tr4
+yanex run compare.py -d model1=tr1,tr2 -d model2=tr3,tr4
 # cmp1: model1=tr1, model2=tr3
 # cmp2: model1=tr1, model2=tr4
 # cmp3: model1=tr2, model2=tr3
@@ -537,9 +566,9 @@ class DependencyValidator:
 Modify `yanex/cli/commands/run.py`:
 
 ```python
-# Add new option
+# Add new option with short flag
 @click.option(
-    "--depends-on",
+    "--depends-on", "-d",
     multiple=True,
     help="Dependency on another experiment (format: slot=experiment_id or slot=id1,id2,id3)"
 )
@@ -551,11 +580,17 @@ def run(..., depends_on, ...):
     # Returns: {"dataprep": ["dp1"], "training": ["tr1", "tr2"]}
 
     # Load config to get declared slots
+    declared_slots = {}
     if config_path:
         config_data = load_config(config_path)
-        declared_slots = config_data.get("yanex", {}).get("dependencies", {})
-    else:
-        declared_slots = {}
+        yanex_section = config_data.get("yanex", {})
+
+        # Look up this script in the scripts array
+        scripts = yanex_section.get("scripts", [])
+        for script_entry in scripts:
+            if script_entry.get("name") == script_path.name:
+                declared_slots = script_entry.get("dependencies", {})
+                break
 
     # Check if we need to create multiple experiments (dependency sweep)
     if should_create_sweep(parsed_deps):
@@ -710,22 +745,27 @@ def create_experiment(
 
     # Resolve dependency declaration - hierarchy:
     # 1. dependencies parameter (highest priority)
-    # 2. config file yanex.dependencies section
+    # 2. config file yanex.scripts[] array lookup
     # 3. None (no dependencies)
 
     declared_slots = dependencies
     if declared_slots is None and config_path:
-        # Try to load from config file
+        # Try to load from config file - look up script in scripts array
         config_data = load_yaml_config(config_path)
         yanex_section = config_data.get("yanex", {})
-        config_dependencies = yanex_section.get("dependencies", {})
+        scripts = yanex_section.get("scripts", [])
 
-        if config_dependencies:
-            # Normalize to full schema
-            declared_slots = {
-                slot: {"script": script, "required": True}
-                for slot, script in config_dependencies.items()
-            }
+        # Find this script's entry in the array
+        for script_entry in scripts:
+            if script_entry.get("name") == script_path.name:
+                config_dependencies = script_entry.get("dependencies", {})
+                if config_dependencies:
+                    # Normalize to full schema
+                    declared_slots = {
+                        slot: {"script": script, "required": True}
+                        for slot, script in config_dependencies.items()
+                    }
+                break
 
     # Normalize inline declaration to full schema
     if declared_slots and isinstance(next(iter(declared_slots.values())), str):
@@ -815,15 +855,19 @@ with yanex.create_experiment(
     yanex.log_metrics({"accuracy": 0.95})
 
 # Example 2: Config file declaration
-# config.yaml:
+# shared_config.yaml:
 # yanex:
-#   dependencies:
-#     dataprep: dataprep.py
-#     baseline: train.py
+#   scripts:
+#     - name: "dataprep.py"
+#     - name: "baseline.py"
+#     - name: "compare.py"
+#       dependencies:
+#         dataprep: dataprep.py
+#         baseline: baseline.py
 
 with yanex.create_experiment(
     script_path=Path("compare.py"),
-    config_path=Path("config.yaml"),
+    config_path=Path("shared_config.yaml"),
     depends_on={"dataprep": "dp1", "baseline": "tr1"}
 ) as exp:
     exp.start()
@@ -1556,6 +1600,143 @@ yanex id --script train.py --status completed
 yanex run evaluate.py --depends-on training=$(yanex id --script train.py --limit 1 --format csv)
 ```
 
+### New Command: `yanex module`
+
+Show all scripts defined in a shared config file (yanex module) and their dependencies.
+
+Create `yanex/cli/commands/module.py`:
+
+```python
+"""Command to show module (shared config) structure."""
+import click
+from pathlib import Path
+from rich.console import Console
+from rich.tree import Tree
+from ..config import load_yaml_config
+
+@click.command()
+@click.option("--config", required=True, type=click.Path(exists=True), help="Path to shared config file")
+@click.option("--visualize", is_flag=True, help="Show as dependency tree")
+def module_command(config, visualize):
+    """
+    Show all scripts defined in a yanex module (shared config file).
+
+    A yanex module is a config file with yanex.scripts[] array defining
+    multiple scripts and their dependencies.
+    """
+    config_path = Path(config)
+    config_data = load_yaml_config(config_path)
+
+    yanex_section = config_data.get("yanex", {})
+    scripts = yanex_section.get("scripts", [])
+
+    if not scripts:
+        click.echo(f"No scripts defined in {config_path.name}")
+        return
+
+    if visualize:
+        # Tree visualization
+        display_module_tree(config_path.name, scripts)
+    else:
+        # Flat list
+        display_module_list(config_path.name, scripts)
+
+
+def display_module_list(module_name: str, scripts: list):
+    """Display module scripts as flat list."""
+    click.echo(f"Module: {module_name}")
+    click.echo(f"Scripts: {len(scripts)}\n")
+
+    for script in scripts:
+        name = script.get("name", "unknown")
+        deps = script.get("dependencies", {})
+
+        if deps:
+            dep_str = f"(depends on: {', '.join(deps.keys())})"
+        else:
+            dep_str = "(no dependencies)"
+
+        click.echo(f"  {name} {dep_str}")
+
+
+def display_module_tree(module_name: str, scripts: list):
+    """Display module scripts as dependency tree using rich."""
+    from collections import defaultdict
+
+    console = Console()
+
+    # Build dependency graph
+    script_deps = {}
+    script_dependents = defaultdict(list)
+
+    for script in scripts:
+        name = script.get("name")
+        deps = script.get("dependencies", {})
+        script_deps[name] = list(deps.values())  # Get target script names
+
+        for dep_script in deps.values():
+            script_dependents[dep_script].append(name)
+
+    # Find root nodes (no dependencies)
+    roots = [name for name, deps in script_deps.items() if not deps]
+
+    if not roots:
+        # No clear roots - just list all
+        console.print(f"[bold]Module: {module_name}[/bold]")
+        for script_name in script_deps.keys():
+            console.print(f"  • {script_name}")
+        return
+
+    # Build tree from roots
+    tree = Tree(f"[bold]{module_name}[/bold]")
+
+    def add_dependents(parent_node, script_name, visited):
+        if script_name in visited:
+            parent_node.add(f"[dim]{script_name} (already shown)[/dim]")
+            return
+        visited.add(script_name)
+
+        dependents = script_dependents.get(script_name, [])
+        for dep in dependents:
+            node = parent_node.add(f"[green]{dep}[/green]")
+            add_dependents(node, dep, visited)
+
+    visited = set()
+    for root in roots:
+        root_node = tree.add(f"[blue]{root}[/blue]")
+        add_dependents(root_node, root, visited)
+
+    console.print(tree)
+```
+
+**Usage:**
+
+```bash
+# Show flat list of scripts in module
+yanex module --config shared_config.yaml
+# Output:
+# Module: shared_config.yaml
+# Scripts: 3
+#
+#   dataprep.py (no dependencies)
+#   train.py (depends on: dataprep)
+#   evaluate.py (depends on: dataprep, training)
+
+# Show as dependency tree
+yanex module --config shared_config.yaml --visualize
+# Output:
+# shared_config.yaml
+#   dataprep.py
+#     ├── train.py
+#     └── evaluate.py
+```
+
+**Benefits:**
+- Quick discovery: "What scripts are in this module?"
+- Understand structure: "What depends on what?"
+- Onboarding: New users can see the pipeline structure before running anything
+- Documentation: Self-documenting config files
+
 ### Command Enhancements
 
 #### `yanex list`
@@ -2093,11 +2274,13 @@ def test_create_experiment_with_inline_dependencies(temp_dir, git_repo):
 def test_create_experiment_with_config_dependencies(temp_dir, git_repo):
     """Test create_experiment reading dependencies from config file."""
     # Create config with dependency declaration
-    config_path = temp_dir / "config.yaml"
+    config_path = temp_dir / "shared_config.yaml"
     config_path.write_text("""
 yanex:
-  dependencies:
-    dataprep: dataprep.py
+  scripts:
+    - name: "train.py"
+      dependencies:
+        dataprep: dataprep.py
     """)
 
     # Create dependency
@@ -2119,12 +2302,14 @@ yanex:
 def test_create_experiment_override_config_dependencies(temp_dir, git_repo):
     """Test inline dependencies override config file."""
     # Config declares 2 dependencies
-    config_path = temp_dir / "config.yaml"
+    config_path = temp_dir / "shared_config.yaml"
     config_path.write_text("""
 yanex:
-  dependencies:
-    dataprep: dataprep.py
-    baseline: train.py
+  scripts:
+    - name: "evaluate.py"
+      dependencies:
+        dataprep: dataprep.py
+        baseline: train.py
     """)
 
     # Create only train dependency
@@ -2427,10 +2612,10 @@ def test_full_dependency_workflow(temp_dir, git_repo):
     assert result.exit_code == 0
     dp_id = extract_experiment_id(result.output)
 
-    # 2. Run training with dependency
+    # 2. Run training with dependency (using -d short flag)
     result = runner.invoke(cli, [
         "run", "train.py",
-        "--depends-on", f"dataprep={dp_id}",
+        "-d", f"dataprep={dp_id}",
         "--name", "Training"
     ])
     assert result.exit_code == 0
@@ -2448,8 +2633,8 @@ def test_full_dependency_workflow(temp_dir, git_repo):
     # 5. Run evaluation with multiple dependencies
     result = runner.invoke(cli, [
         "run", "evaluate.py",
-        "--depends-on", f"dataprep={dp_id}",
-        "--depends-on", f"training={tr_id}",
+        "-d", f"dataprep={dp_id}",
+        "-d", f"training={tr_id}",
         "--name", "Evaluation"
     ])
     assert result.exit_code == 0
@@ -2467,11 +2652,11 @@ def test_dependency_sweep(temp_dir, git_repo):
         create_experiment("train.py", depends_on={"dataprep": dp_id})
     ]
 
-    # Sweep over training dependencies
+    # Sweep over training dependencies (using -d short flag)
     result = runner.invoke(cli, [
         "run", "evaluate.py",
-        "--depends-on", f"dataprep={dp_id}",
-        "--depends-on", f"training={','.join(tr_ids)}"
+        "-d", f"dataprep={dp_id}",
+        "-d", f"training={','.join(tr_ids)}"
     ])
     assert result.exit_code == 0
 
@@ -2644,21 +2829,27 @@ def test_delete_with_cascade(temp_dir):
 
 ### Phase 4: Advanced Features (Future)
 
-**Goal:** Advanced dependency features
+**Goal:** Advanced dependency features and pipeline orchestration
 
 **Tasks:**
 1. Optional dependencies (`required: false`)
 2. Artifact-level validation (specific files required)
 3. Circular dependency detection
-4. Auto-execution of dependency chains
+4. **Pipeline orchestration:** `yanex pipeline run <config>` - auto-execute dependency chains
 5. Dependency versioning/invalidation
 6. Soft links to dependency artifacts
 7. Dependency templates/macros
-8. Import DAG from config file
+8. Pipeline definitions in config (`yanex.pipelines[]` with execution order)
+
+**Note on pipelines:**
+- Phase 1-3 focus on dependency *tracking* and *visualization*
+- Phase 4 adds dependency *orchestration* and automated execution
+- `yanex.scripts[]` (Phase 1) defines dependencies - what needs what
+- `yanex.pipelines[]` (Phase 4) defines workflows - how to execute multiple scripts together
 
 **Deliverables:**
 - Production-ready dependency system
-- Advanced workflow orchestration
+- Automated pipeline execution
 
 ## Migration Strategy
 
@@ -2677,17 +2868,22 @@ def test_delete_with_cascade(temp_dir):
 
 1. **docs/dependencies.md** (new)
    - Concept explanation
-   - Declaration in config
-   - CLI usage examples
+   - **Yanex modules** - shared config files with multiple scripts
+   - Declaration in config using `yanex.scripts[]` array
+   - CLI usage examples with `-d` short flag
    - Python API examples
    - Common patterns (dataprep → train → evaluate)
 
 2. **docs/configuration.md** (update)
-   - Add `dependencies` section to `yanex:` docs
+   - Add `yanex.scripts[]` array documentation
+   - Explain module concept (shared configs)
+   - Show how to declare dependencies for multiple scripts
 
 3. **docs/cli-reference.md** (update)
-   - Document `--depends-on` flag
+   - Document `--depends-on` flag (short: `-d`)
+   - Note: `-d` no longer used for `--description`
    - Document `yanex id` command
+   - Document `yanex module` command
    - Document `yanex validate`, `yanex deps`, `yanex dependents`
    - Document new filters
 
@@ -2698,7 +2894,7 @@ def test_delete_with_cascade(temp_dir):
    - `examples/dependencies/dataprep.py`
    - `examples/dependencies/train.py`
    - `examples/dependencies/evaluate.py`
-   - `examples/dependencies/config.yaml`
+   - `examples/dependencies/shared_config.yaml` - demonstrates `yanex.scripts[]` with dependencies for all three scripts
 
 ## Design Decisions (Finalized)
 
