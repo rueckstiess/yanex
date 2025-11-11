@@ -307,6 +307,154 @@ class Experiment:
         except Exception:
             return []
 
+    def get_dependencies(self) -> list[dict[str, str]]:
+        """
+        Get experiment dependencies.
+
+        Returns:
+            List of dependency dictionaries with keys: slot, experiment_id, script
+            Empty list if experiment has no dependencies
+        """
+        try:
+            deps_data = self._manager.storage.load_dependencies(
+                self._experiment_id, include_archived=True
+            )
+            if not deps_data:
+                return []
+
+            resolved_deps = deps_data.get("resolved_dependencies", {})
+            declared_slots = deps_data.get("declared_slots", {})
+
+            dependencies = []
+            for slot_name, dep_id in resolved_deps.items():
+                slot_config = declared_slots.get(slot_name, {})
+                expected_script = slot_config.get("script", "unknown")
+                if isinstance(slot_config, str):
+                    expected_script = slot_config
+
+                dependencies.append(
+                    {
+                        "slot": slot_name,
+                        "experiment_id": dep_id,
+                        "script": expected_script,
+                    }
+                )
+
+            return dependencies
+        except Exception:
+            return []
+
+    def get_dependents(self) -> list[dict[str, str]]:
+        """
+        Get experiments that depend on this one.
+
+        Returns:
+            List of dependent dictionaries with keys: slot, experiment_id
+            Empty list if nothing depends on this experiment
+        """
+        try:
+            deps_data = self._manager.storage.load_dependencies(
+                self._experiment_id, include_archived=True
+            )
+            if not deps_data:
+                return []
+
+            depended_by = deps_data.get("depended_by", [])
+            return depended_by.copy() if depended_by else []
+        except Exception:
+            return []
+
+    def get_dependency_info(self) -> dict[str, Any]:
+        """
+        Get full dependency information.
+
+        Returns:
+            Complete dependencies.json data structure with keys:
+            - version: Dependency format version
+            - declared_slots: Dependency slot declarations
+            - resolved_dependencies: Resolved dependency mappings
+            - validation: Validation results
+            - depended_by: List of dependents
+            Empty dict if experiment has no dependencies
+        """
+        try:
+            deps_data = self._manager.storage.load_dependencies(
+                self._experiment_id, include_archived=True
+            )
+            return deps_data.copy() if deps_data else {}
+        except Exception:
+            return {}
+
+    def get_pipeline(self, max_depth: int = 10) -> dict[str, Any]:
+        """
+        Get dependency pipeline/DAG structure.
+
+        Recursively builds the dependency tree showing the full pipeline
+        from root experiments to this experiment.
+
+        Args:
+            max_depth: Maximum recursion depth (default 10, prevents infinite loops)
+
+        Returns:
+            Pipeline structure with keys:
+            - experiment_id: This experiment's ID
+            - name: This experiment's name
+            - script: This experiment's script
+            - status: This experiment's status
+            - dependencies: List of dependency pipelines (recursive structure)
+        """
+
+        def build_pipeline(exp_id: str, depth: int = 0) -> dict[str, Any]:
+            if depth >= max_depth:
+                return {
+                    "experiment_id": exp_id,
+                    "error": "Max depth reached (possible cycle)",
+                }
+
+            try:
+                # Load experiment metadata
+                metadata = self._manager.storage.load_metadata(
+                    exp_id, include_archived=True
+                )
+
+                pipeline_node = {
+                    "experiment_id": exp_id,
+                    "name": metadata.get("name"),
+                    "script": Path(metadata.get("script_path", "")).name,
+                    "status": metadata.get("status", "unknown"),
+                    "dependencies": [],
+                }
+
+                # Load dependencies
+                deps_data = self._manager.storage.load_dependencies(
+                    exp_id, include_archived=True
+                )
+                if deps_data:
+                    resolved_deps = deps_data.get("resolved_dependencies", {})
+                    declared_slots = deps_data.get("declared_slots", {})
+
+                    for slot_name, dep_id in resolved_deps.items():
+                        slot_config = declared_slots.get(slot_name, {})
+                        expected_script = slot_config.get("script", "unknown")
+                        if isinstance(slot_config, str):
+                            expected_script = slot_config
+
+                        # Recursively build pipeline for this dependency
+                        dep_pipeline = build_pipeline(dep_id, depth + 1)
+                        dep_pipeline["slot"] = slot_name
+                        dep_pipeline["expected_script"] = expected_script
+
+                        pipeline_node["dependencies"].append(dep_pipeline)
+
+                return pipeline_node
+            except Exception as e:
+                return {
+                    "experiment_id": exp_id,
+                    "error": str(e),
+                }
+
+        return build_pipeline(self._experiment_id)
+
     def set_name(self, name: str) -> None:
         """
         Set experiment name.
