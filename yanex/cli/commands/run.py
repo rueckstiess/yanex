@@ -74,6 +74,36 @@ def parse_dependency_args(depends_on: list[str]) -> dict[str, list[str]]:
     return parsed
 
 
+def generate_dependency_combinations(
+    parsed_dependencies: dict[str, list[str]],
+) -> list[dict[str, str]]:
+    """Generate all combinations of dependency slot values (cartesian product).
+
+    Args:
+        parsed_dependencies: Dictionary mapping slot names to lists of experiment IDs
+            Example: {"dataprep": ["dp1"], "training": ["tr1", "tr2"]}
+
+    Returns:
+        List of dictionaries, one for each combination (slot -> single ID)
+        Example: [{"dataprep": "dp1", "training": "tr1"},
+                  {"dataprep": "dp1", "training": "tr2"}]
+    """
+    import itertools
+
+    if not parsed_dependencies:
+        return [{}]
+
+    slot_names = list(parsed_dependencies.keys())
+    slot_values = [parsed_dependencies[slot] for slot in slot_names]
+
+    # Generate cartesian product
+    combinations = []
+    for combo in itertools.product(*slot_values):
+        combinations.append(dict(zip(slot_names, combo, strict=True)))
+
+    return combinations
+
+
 def resolve_dependency_declaration(
     script_path: Path, config_path: Path | None
 ) -> dict[str, Any]:
@@ -233,17 +263,34 @@ def run(
       # parser.add_argument('--data-exp', required=True)
       # parser.add_argument('--fold', type=int, default=0)
 
-      # Parameter sweeps (requires --stage)
-      yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --stage
-      yanex run train.py --param "lr=linspace(0.001, 0.1, 5)" --stage
-      yanex run train.py --param "lr=logspace(-3, -1, 3)" --stage
-      yanex run train.py --param "batch_size=list(16, 32, 64)" --stage
+      # Parameter sweeps (direct execution)
+      yanex run train.py --param "lr=range(0.01, 0.1, 0.01)"
+      yanex run train.py --param "lr=linspace(0.001, 0.1, 5)"
+      yanex run train.py --param "lr=logspace(-3, -1, 3)"
+      yanex run train.py --param "batch_size=list(16, 32, 64)"
 
       # Multi-parameter sweep (cross-product)
       yanex run train.py \\
         --param "lr=range(0.01, 0.1, 0.01)" \\
-        --param "batch_size=list(16, 32, 64)" \\
-        --stage
+        --param "batch_size=list(16, 32, 64)"
+
+      # Dependency sweeps (multiple dependency IDs create multiple experiments)
+      yanex run evaluate.py -d dataprep=dp1 -d training=tr1,tr2,tr3
+      # Creates 3 experiments with different training dependencies
+
+      # Dependency cartesian product
+      yanex run compare.py -d model1=tr1,tr2 -d model2=tr3,tr4
+      # Creates 4 experiments (2 × 2 combinations)
+
+      # Combined parameter and dependency sweeps
+      yanex run analyze.py \\
+        --param "threshold=range(0.1, 0.9, 0.1)" \\
+        -d training=tr1,tr2
+      # Creates 16 experiments (8 thresholds × 2 trainings)
+
+      # Execute sweeps in parallel
+      yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --parallel 4
+      yanex run evaluate.py -d training=tr1,tr2,tr3 --parallel 3
 
       # Execute staged experiments
       yanex run --staged
@@ -376,6 +423,7 @@ def run(
         parsed_dependencies = None
         declared_dependencies = None
         resolved_dependencies = None
+        has_dependency_sweep = False
 
         if depends_on:
             # Parse --depends-on arguments
@@ -446,8 +494,8 @@ def run(
                 cli_args=cli_args,
                 dependencies=(declared_dependencies, resolved_dependencies),
             )
-        elif has_sweep_parameters(experiment_config):
-            # Direct sweep execution (NEW in v0.6.0)
+        elif has_sweep_parameters(experiment_config) or has_dependency_sweep:
+            # Direct sweep execution (parameter sweep, dependency sweep, or both)
             _execute_sweep_experiments(
                 script=script,
                 name=resolved_name,
@@ -931,10 +979,15 @@ def _execute_sweep_experiments(
     dependencies: tuple[dict[str, Any] | None, dict[str, list[str]] | None]
     | None = None,
 ) -> None:
-    """Execute parameter sweep directly using shared executor.
+    """Execute parameter and/or dependency sweeps directly using shared executor.
 
     This creates and executes experiments on-the-fly without using
     the "staged" status, avoiding interference with existing staged experiments.
+
+    Supports:
+    - Parameter sweeps only (multiple parameter values)
+    - Dependency sweeps only (multiple dependency IDs)
+    - Both parameter and dependency sweeps (cartesian product)
 
     Args:
         script: Path to the Python script
@@ -947,54 +1000,81 @@ def _execute_sweep_experiments(
         script_args: Arguments to pass through to the script
         cli_args: Complete CLI arguments used to run the experiment
         dependencies: Tuple of (declared_dependencies, parsed_dependencies) or None
+            where parsed_dependencies maps slot -> list of IDs
     """
     from ...executor import ExperimentSpec, run_multiple
-
-    # TODO: Implement dependency sweep support in Phase 2
-    if dependencies and dependencies[0]:
-        click.echo(
-            "[yellow]Warning: Dependencies with parameter sweeps not fully implemented yet. "
-            "Dependencies will be ignored for sweep experiments.[/yellow]"
-        )
 
     if script_args is None:
         script_args = []
     if cli_args is None:
         cli_args = []
 
-    # Expand parameter sweeps into individual configurations
-    expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
+    # Step 1: Expand parameter sweeps (if any)
+    if has_sweep_parameters(config):
+        expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
+    else:
+        expanded_configs = [config]
+        sweep_param_paths = []
 
-    click.echo(
-        f"✓ Parameter sweep detected: running {len(expanded_configs)} experiments"
-    )
+    # Step 2: Generate dependency combinations (if any)
+    declared_dependencies = None
+    dependency_combinations = [{}]  # Default: no dependencies
+
+    if dependencies and dependencies[1]:
+        declared_dependencies = dependencies[0]
+        parsed_dependencies = dependencies[1]
+
+        # Generate all combinations (cartesian product)
+        dependency_combinations = generate_dependency_combinations(parsed_dependencies)
+
+    # Step 3: Cartesian product of parameters × dependencies
+    total_experiments = len(expanded_configs) * len(dependency_combinations)
+
+    # Show informative message
+    if len(expanded_configs) > 1 and len(dependency_combinations) > 1:
+        click.echo(
+            f"✓ Combined sweep detected: running {total_experiments} experiments "
+            f"({len(expanded_configs)} parameter configs × {len(dependency_combinations)} dependency combos)"
+        )
+    elif len(expanded_configs) > 1:
+        click.echo(
+            f"✓ Parameter sweep detected: running {len(expanded_configs)} experiments"
+        )
+    elif len(dependency_combinations) > 1:
+        click.echo(
+            f"✓ Dependency sweep detected: running {len(dependency_combinations)} experiments"
+        )
 
     # Add "sweep" tag to all sweep experiments (CLI convention)
     sweep_tags = list(tags) if tags else []
     if "sweep" not in sweep_tags:
         sweep_tags.append("sweep")
 
-    # Build ExperimentSpec objects for each configuration
-    experiments = [
-        ExperimentSpec(
-            script_path=script,
-            config=expanded_config,
-            name=_generate_sweep_experiment_name(
-                name, expanded_config, sweep_param_paths
-            ),
-            tags=sweep_tags,
-            description=description,
-            script_args=script_args,
-            cli_args=cli_args,
-        )
-        for expanded_config in expanded_configs
-    ]
+    # Step 4: Build ExperimentSpec objects for each combination
+    experiments = []
+    for expanded_config in expanded_configs:
+        for dep_combo in dependency_combinations:
+            experiments.append(
+                ExperimentSpec(
+                    script_path=script,
+                    config=expanded_config,
+                    name=_generate_sweep_experiment_name(
+                        name, expanded_config, sweep_param_paths
+                    ),
+                    tags=sweep_tags,
+                    description=description,
+                    script_args=script_args,
+                    cli_args=cli_args,
+                    dependencies=declared_dependencies or {},
+                    depends_on=dep_combo,
+                )
+            )
 
     # Use shared executor for sequential or parallel execution
     results = run_multiple(experiments, parallel=max_workers, verbose=verbose)
 
     # Print CLI-specific summary
-    _print_sweep_summary(results, len(expanded_configs))
+    _print_sweep_summary(results, total_experiments)
 
 
 def _normalize_tags(tag_value: Any) -> list[str]:
