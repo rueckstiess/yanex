@@ -646,6 +646,355 @@ def parse_dependency_args(depends_on: tuple[str]) -> dict[str, list[str]]:
     return result
 ```
 
+### Python API: Creating Experiments with Dependencies
+
+Both the context manager API (`create_experiment()`) and batch execution API (`ExperimentSpec`) need to support dependency declaration and fulfillment.
+
+#### `create_experiment()` Enhancement
+
+Add two new parameters to `yanex/api.py`:
+
+```python
+def create_experiment(
+    script_path: Path,
+    name: str | None = None,
+    config: dict[str, Any] | None = None,
+    config_path: Path | None = None,
+    tags: list[str] | None = None,
+    description: str | None = None,
+    dependencies: dict[str, str] | None = None,  # NEW: Declaration (slot -> script)
+    depends_on: dict[str, str] | None = None,     # NEW: Fulfillment (slot -> experiment_id)
+) -> ExperimentContext:
+    """
+    Create experiment with optional dependencies.
+
+    Args:
+        script_path: Path to script to execute
+        name: Optional experiment name
+        config: Dictionary of parameters
+        config_path: Path to config file (YAML)
+        tags: List of tags
+        description: Experiment description
+        dependencies: Declare required dependencies (slot -> script name).
+                     If None, reads from config file yanex.dependencies section.
+                     If provided, overrides config file declaration.
+        depends_on: Fulfill dependencies (slot -> experiment_id).
+                   Must match declared dependencies (from dependencies param or config).
+
+    Raises:
+        ValueError: If depends_on provided without dependencies declaration
+        DependencyError: If dependency validation fails
+
+    Example:
+        # Declare inline (no config file)
+        with yanex.create_experiment(
+            script_path=Path("evaluate.py"),
+            dependencies={"dataprep": "dataprep.py", "train": "train.py"},
+            depends_on={"dataprep": "dp1", "train": "tr1"}
+        ) as exp:
+            exp.start()
+            # ... evaluation code ...
+
+        # Declare in config, fulfill in API
+        with yanex.create_experiment(
+            script_path=Path("evaluate.py"),
+            config_path=Path("config.yaml"),  # Has yanex.dependencies
+            depends_on={"dataprep": "dp1", "train": "tr1"}
+        ) as exp:
+            exp.start()
+            # ... evaluation code ...
+    """
+    manager = ExperimentManager()
+
+    # Resolve dependency declaration - hierarchy:
+    # 1. dependencies parameter (highest priority)
+    # 2. config file yanex.dependencies section
+    # 3. None (no dependencies)
+
+    declared_slots = dependencies
+    if declared_slots is None and config_path:
+        # Try to load from config file
+        config_data = load_yaml_config(config_path)
+        yanex_section = config_data.get("yanex", {})
+        config_dependencies = yanex_section.get("dependencies", {})
+
+        if config_dependencies:
+            # Normalize to full schema
+            declared_slots = {
+                slot: {"script": script, "required": True}
+                for slot, script in config_dependencies.items()
+            }
+
+    # Normalize inline declaration to full schema
+    if declared_slots and isinstance(next(iter(declared_slots.values())), str):
+        # Simple format: {"dataprep": "dataprep.py"}
+        declared_slots = {
+            slot: {"script": script, "required": True}
+            for slot, script in declared_slots.items()
+        }
+
+    # Validate dependencies if fulfillment provided
+    if depends_on:
+        if not declared_slots:
+            raise ValueError(
+                "Cannot provide depends_on without declaring dependencies. "
+                "Either add 'dependencies' parameter or declare in config file "
+                "under 'yanex.dependencies' section."
+            )
+
+        validator = DependencyValidator(manager.storage, manager)
+        validation = validator.validate_dependencies(
+            experiment_id=None,
+            declared_slots=declared_slots,
+            resolved_deps=depends_on
+        )
+    else:
+        validation = None
+
+    # Create experiment (existing logic)
+    metadata = manager.create_experiment(
+        script_path=script_path,
+        name=name,
+        config=config,
+        tags=tags,
+        description=description,
+        ...
+    )
+    experiment_id = metadata["id"]
+
+    # Store dependencies if provided
+    if depends_on:
+        dependencies_data = {
+            "version": "1.0",
+            "declared_slots": declared_slots,
+            "resolved_dependencies": depends_on,
+            "validation": validation,
+            "depended_by": []
+        }
+        manager.storage.save_dependencies(experiment_id, dependencies_data)
+
+        # Update reverse index for each dependency
+        for slot_name, dep_id in depends_on.items():
+            manager.storage.add_dependent(dep_id, experiment_id, slot_name)
+
+        # Update metadata summary
+        metadata["dependencies_summary"] = {
+            "has_dependencies": True,
+            "dependency_count": len(depends_on),
+            "dependency_slots": list(depends_on.keys()),
+            "is_depended_by": False,
+            "depended_by_count": 0
+        }
+        manager.storage.save_metadata(experiment_id, metadata)
+
+    return ExperimentContext(experiment_id, manager)
+```
+
+**Usage Examples:**
+
+```python
+# Example 1: Simple inline declaration
+import yanex
+from pathlib import Path
+
+with yanex.create_experiment(
+    script_path=Path("train.py"),
+    dependencies={"dataprep": "dataprep.py"},
+    depends_on={"dataprep": "dp1"}
+) as exp:
+    exp.start()
+
+    # Access dependency artifacts
+    deps = yanex.get_dependencies()
+    data_dir = deps["dataprep"].artifacts_dir
+    train_data = pd.read_parquet(data_dir / "train_data.parquet")
+
+    # ... training code ...
+    yanex.log_metrics({"accuracy": 0.95})
+
+# Example 2: Config file declaration
+# config.yaml:
+# yanex:
+#   dependencies:
+#     dataprep: dataprep.py
+#     baseline: train.py
+
+with yanex.create_experiment(
+    script_path=Path("compare.py"),
+    config_path=Path("config.yaml"),
+    depends_on={"dataprep": "dp1", "baseline": "tr1"}
+) as exp:
+    exp.start()
+    # ... comparison code ...
+
+# Example 3: Override config declaration
+with yanex.create_experiment(
+    script_path=Path("evaluate.py"),
+    config_path=Path("config.yaml"),  # Declares 2 dependencies
+    dependencies={"train": "train.py"},  # Override: only need 1
+    depends_on={"train": "tr1"}
+) as exp:
+    exp.start()
+    # ... evaluation code ...
+```
+
+#### `ExperimentSpec` Enhancement
+
+Update `yanex/executor.py` to support dependencies:
+
+```python
+@dataclass
+class ExperimentSpec:
+    """Specification for a single experiment execution."""
+
+    script_path: Path
+    config: dict[str, Any] | None = None
+    script_args: list[str] | None = None
+    name: str | None = None
+    tags: list[str] | None = None
+    description: str | None = None
+    dependencies: dict[str, str] | None = None  # NEW: Declaration
+    depends_on: dict[str, str] | None = None     # NEW: Fulfillment
+```
+
+**Usage with `run_multiple()`:**
+
+```python
+import yanex
+from pathlib import Path
+
+# Create dataprep experiment (no dependencies)
+dataprep_spec = yanex.ExperimentSpec(
+    script_path=Path("dataprep.py"),
+    config={"dataset": "yelp"},
+    name="YELP Data Prep"
+)
+
+# Run dataprep first
+dataprep_results = yanex.run_multiple([dataprep_spec])
+dp_id = dataprep_results[0].experiment_id
+
+# Create training experiments (depend on dataprep)
+training_specs = [
+    yanex.ExperimentSpec(
+        script_path=Path("train.py"),
+        config={"learning_rate": lr},
+        name=f"Train LR={lr}",
+        tags=["training", "sweep"],
+        dependencies={"dataprep": "dataprep.py"},  # Declare
+        depends_on={"dataprep": dp_id}              # Fulfill
+    )
+    for lr in [0.001, 0.005, 0.01]
+]
+
+# Run training in parallel
+training_results = yanex.run_multiple(training_specs, parallel=3)
+
+# Create evaluation experiments (depend on both dataprep and training)
+eval_specs = [
+    yanex.ExperimentSpec(
+        script_path=Path("evaluate.py"),
+        name=f"Evaluate {result.name}",
+        tags=["evaluation"],
+        dependencies={
+            "dataprep": "dataprep.py",
+            "train": "train.py"
+        },
+        depends_on={
+            "dataprep": dp_id,
+            "train": result.experiment_id
+        }
+    )
+    for result in training_results
+    if result.status == "completed"
+]
+
+# Run evaluations
+eval_results = yanex.run_multiple(eval_specs, parallel=3)
+```
+
+#### Dependency Resolution Hierarchy
+
+The API follows this hierarchy for dependency declaration:
+
+1. **`dependencies` parameter** (highest priority) - overrides everything
+2. **Config file `yanex.dependencies`** - if `config_path` provided
+3. **None** - no dependencies
+
+**Examples:**
+
+```python
+# Scenario 1: Both inline and config - inline wins
+# config.yaml has: yanex.dependencies = {"dataprep": "dataprep.py", "train": "train.py"}
+with yanex.create_experiment(
+    config_path=Path("config.yaml"),
+    dependencies={"train": "train.py"},  # OVERRIDES config
+    depends_on={"train": "tr1"}
+) as exp:
+    # Only "train" dependency required, "dataprep" ignored
+    pass
+
+# Scenario 2: Only config
+with yanex.create_experiment(
+    config_path=Path("config.yaml"),
+    depends_on={"dataprep": "dp1", "train": "tr1"}
+) as exp:
+    # Uses dependencies from config.yaml
+    pass
+
+# Scenario 3: Only inline
+with yanex.create_experiment(
+    dependencies={"dataprep": "dataprep.py"},
+    depends_on={"dataprep": "dp1"}
+) as exp:
+    # Uses inline declaration
+    pass
+
+# Scenario 4: Error - fulfillment without declaration
+with yanex.create_experiment(
+    depends_on={"dataprep": "dp1"}  # No declaration!
+) as exp:
+    # Raises ValueError
+    pass
+```
+
+#### Validation Behavior
+
+**Requirement:** Must declare dependencies before fulfilling them.
+
+```python
+# ✅ Valid: Declaration + Fulfillment
+yanex.create_experiment(
+    dependencies={"dataprep": "dataprep.py"},
+    depends_on={"dataprep": "dp1"}
+)
+
+# ✅ Valid: Declaration in config + Fulfillment in API
+yanex.create_experiment(
+    config_path=Path("config.yaml"),  # Has dependencies
+    depends_on={"dataprep": "dp1"}
+)
+
+# ✅ Valid: Declaration only (no fulfillment = no dependencies)
+yanex.create_experiment(
+    dependencies={"dataprep": "dataprep.py"}
+    # depends_on not provided = experiment has no dependencies
+)
+
+# ❌ Invalid: Fulfillment without declaration
+yanex.create_experiment(
+    depends_on={"dataprep": "dp1"}  # Where's the declaration?
+)
+# Raises: ValueError("Cannot provide depends_on without declaring dependencies...")
+
+# ❌ Invalid: Wrong slot name
+yanex.create_experiment(
+    dependencies={"dataprep": "dataprep.py"},
+    depends_on={"data": "dp1"}  # Slot mismatch!
+)
+# Raises: DependencyError("Missing required dependency 'dataprep'")
+```
+
 ### Python API: `yanex.get_dependencies()`
 
 Add to `yanex/api.py`:
@@ -1248,6 +1597,167 @@ def test_add_dependent(temp_dir):
     assert deps["depended_by"][0]["slot_name"] == "dataprep"
 ```
 
+**Test Python API:**
+```python
+# tests/api/test_dependency_api.py
+def test_create_experiment_with_inline_dependencies(temp_dir, git_repo):
+    """Test create_experiment with inline dependency declaration."""
+    # Create dependency experiment
+    with yanex.create_experiment(
+        script_path=Path("dataprep.py"),
+        name="Data Prep"
+    ) as dep_exp:
+        dep_exp.start()
+        dep_id = dep_exp.experiment_id
+
+    manager = ExperimentManager(temp_dir)
+    manager.complete_experiment(dep_id)
+
+    # Create experiment with inline dependency declaration
+    with yanex.create_experiment(
+        script_path=Path("train.py"),
+        dependencies={"dataprep": "dataprep.py"},
+        depends_on={"dataprep": dep_id}
+    ) as exp:
+        exp.start()
+        exp_id = exp.experiment_id
+
+    # Verify dependencies stored
+    deps = manager.storage.load_dependencies(exp_id)
+    assert deps["resolved_dependencies"]["dataprep"] == dep_id
+    assert deps["declared_slots"]["dataprep"]["script"] == "dataprep.py"
+
+def test_create_experiment_with_config_dependencies(temp_dir, git_repo):
+    """Test create_experiment reading dependencies from config file."""
+    # Create config with dependency declaration
+    config_path = temp_dir / "config.yaml"
+    config_path.write_text("""
+yanex:
+  dependencies:
+    dataprep: dataprep.py
+    """)
+
+    # Create dependency
+    dep_id = create_completed_experiment("dataprep.py")
+
+    # Create experiment with config
+    with yanex.create_experiment(
+        script_path=Path("train.py"),
+        config_path=config_path,
+        depends_on={"dataprep": dep_id}
+    ) as exp:
+        exp_id = exp.experiment_id
+
+    # Verify
+    manager = ExperimentManager(temp_dir)
+    deps = manager.storage.load_dependencies(exp_id)
+    assert deps["resolved_dependencies"]["dataprep"] == dep_id
+
+def test_create_experiment_override_config_dependencies(temp_dir, git_repo):
+    """Test inline dependencies override config file."""
+    # Config declares 2 dependencies
+    config_path = temp_dir / "config.yaml"
+    config_path.write_text("""
+yanex:
+  dependencies:
+    dataprep: dataprep.py
+    baseline: train.py
+    """)
+
+    # Create only train dependency
+    tr_id = create_completed_experiment("train.py")
+
+    # Override config - only need train
+    with yanex.create_experiment(
+        script_path=Path("evaluate.py"),
+        config_path=config_path,
+        dependencies={"train": "train.py"},  # Override
+        depends_on={"train": tr_id}
+    ) as exp:
+        exp_id = exp.experiment_id
+
+    # Verify only train dependency
+    manager = ExperimentManager(temp_dir)
+    deps = manager.storage.load_dependencies(exp_id)
+    assert list(deps["resolved_dependencies"].keys()) == ["train"]
+
+def test_create_experiment_without_declaration_raises(temp_dir, git_repo):
+    """Test that depends_on without dependencies raises error."""
+    with pytest.raises(ValueError, match="Cannot provide depends_on without declaring"):
+        with yanex.create_experiment(
+            script_path=Path("train.py"),
+            depends_on={"dataprep": "dp1"}  # No declaration!
+        ) as exp:
+            pass
+
+def test_experiment_spec_with_dependencies(temp_dir, git_repo):
+    """Test ExperimentSpec with dependencies."""
+    # Create dependency
+    dp_id = create_completed_experiment("dataprep.py")
+
+    # Create spec with dependencies
+    spec = yanex.ExperimentSpec(
+        script_path=Path("train.py"),
+        config={"learning_rate": 0.01},
+        dependencies={"dataprep": "dataprep.py"},
+        depends_on={"dataprep": dp_id}
+    )
+
+    # Run
+    results = yanex.run_multiple([spec])
+    assert len(results) == 1
+    assert results[0].status == "completed"
+
+    # Verify dependencies stored
+    manager = ExperimentManager(temp_dir)
+    deps = manager.storage.load_dependencies(results[0].experiment_id)
+    assert deps["resolved_dependencies"]["dataprep"] == dp_id
+
+def test_get_dependencies(temp_dir, git_repo):
+    """Test yanex.get_dependencies() API."""
+    # Create dependency with artifacts
+    dep_id = create_completed_experiment("dataprep.py")
+    manager = ExperimentManager(temp_dir)
+
+    # Add artifacts to dependency
+    artifacts_dir = manager.storage.get_experiment_directory(dep_id) / "artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+    (artifacts_dir / "train_data.parquet").write_text("data")
+
+    # Create experiment with dependency
+    with yanex.create_experiment(
+        script_path=Path("train.py"),
+        dependencies={"dataprep": "dataprep.py"},
+        depends_on={"dataprep": dep_id}
+    ) as exp:
+        exp.start()
+
+        # Get dependencies
+        deps = yanex.get_dependencies()
+
+        # Verify
+        assert "dataprep" in deps
+        assert deps["dataprep"].experiment_id == dep_id
+        assert deps["dataprep"].slot_name == "dataprep"
+
+        # Check artifacts
+        artifacts = deps["dataprep"].artifacts
+        assert len(artifacts) == 1
+        assert artifacts[0].name == "train_data.parquet"
+
+        # Check artifact_path
+        path = deps["dataprep"].artifact_path("train_data.parquet")
+        assert path.exists()
+
+        # Check load_artifact
+        loaded_path = deps["dataprep"].load_artifact("train_data.parquet")
+        assert loaded_path.exists()
+
+        # Check missing artifact raises
+        with pytest.raises(FileNotFoundError):
+            deps["dataprep"].load_artifact("missing.parquet")
+```
+
 ### Integration Tests
 
 ```python
@@ -1368,15 +1878,21 @@ def test_delete_with_cascade(temp_dir):
 8. Update `yanex list` to show dependency indicator
 9. Prevent `yanex delete` if depended on (without --force)
 10. Add basic filters: `--depends-on`, `--root`, `--leaf`
-11. Python API: `yanex.get_dependencies()`
-12. Write comprehensive tests
+11. **Python API: Add `dependencies` and `depends_on` parameters to `create_experiment()`**
+12. **Python API: Add `dependencies` and `depends_on` fields to `ExperimentSpec`**
+13. **Python API: Implement dependency resolution hierarchy (inline → config → none)**
+14. Python API: `yanex.get_dependencies()` and `DependencyReference` class
+15. Write comprehensive tests (CLI, API, integration)
 
 **Deliverables:**
 - Users can declare dependencies in config
 - Users can provide dependencies via CLI
+- **Users can create experiments with dependencies via Python API**
+- **Both inline and config-based dependency declaration work**
 - Validation prevents invalid dependencies
 - Dependencies are tracked bidirectionally
 - Basic queries work (show, list with filters)
+- Scripts can access dependency artifacts via `get_dependencies()`
 
 **Testing checklist:**
 - [ ] Parse single/multiple/sweep dependencies
@@ -1385,7 +1901,13 @@ def test_delete_with_cascade(temp_dir):
 - [ ] Validate status is completed
 - [ ] Store dependencies.json correctly
 - [ ] Update reverse index correctly
-- [ ] API returns dependencies
+- [ ] **Python API: create_experiment with inline dependencies**
+- [ ] **Python API: create_experiment with config dependencies**
+- [ ] **Python API: create_experiment override config with inline**
+- [ ] **Python API: create_experiment without declaration raises error**
+- [ ] **Python API: ExperimentSpec with dependencies**
+- [ ] **Python API: get_dependencies() returns correct references**
+- [ ] **Python API: DependencyReference.artifacts works**
 - [ ] Show command displays dependencies
 - [ ] List command shows dependency indicator
 - [ ] Delete command prevents deletion if depended on
