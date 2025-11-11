@@ -108,8 +108,8 @@ class TestExperimentTableFormatter:
 
         # Check that Script column exists (2nd column after ID)
         assert (
-            len(table.columns) == 7
-        )  # ID, Script, Name, Status, Duration, Tags, Started
+            len(table.columns) == 8
+        )  # ID, Script, Name, Status, Deps, Duration, Tags, Started
         assert table.columns[1].header == "Script"
         assert table.columns[1].style == "cyan"
         # Note: width is set internally but not exposed as a public attribute
@@ -131,7 +131,7 @@ class TestExperimentTableFormatter:
         table = formatter.format_experiments_table(experiments)
 
         # Should handle missing script_path gracefully
-        assert len(table.columns) == 7
+        assert len(table.columns) == 8
         # The table should still render without errors
         assert table is not None
 
@@ -145,6 +145,46 @@ class TestExperimentTableFormatter:
         assert column_headers[1] == "Script"
         assert column_headers[2] == "Name"
         assert column_headers[3] == "Status"
-        assert column_headers[4] == "Duration"
-        assert column_headers[5] == "Tags"
-        assert column_headers[6] == "Started"
+        assert column_headers[4] == "Deps"
+        assert column_headers[5] == "Duration"
+        assert column_headers[6] == "Tags"
+        assert column_headers[7] == "Started"
+
+    def test_format_dependencies_with_no_dependencies(self, formatter):
+        """Test formatting dependencies when experiment has none."""
+        # None
+        result = formatter._format_dependencies(None)
+        assert isinstance(result, Text)
+        assert str(result.plain) == "-"
+        assert result.style == "dim"
+
+        # Empty dict
+        result = formatter._format_dependencies({})
+        assert str(result.plain) == "-"
+
+        # has_dependencies = False
+        result = formatter._format_dependencies({"has_dependencies": False})
+        assert str(result.plain) == "-"
+
+        # has_dependencies = True but count = 0
+        result = formatter._format_dependencies(
+            {"has_dependencies": True, "dependency_count": 0}
+        )
+        assert str(result.plain) == "-"
+
+    def test_format_dependencies_with_dependencies(self, formatter):
+        """Test formatting dependencies when experiment has them."""
+        # Single dependency
+        result = formatter._format_dependencies(
+            {"has_dependencies": True, "dependency_count": 1}
+        )
+        assert isinstance(result, Text)
+        assert str(result.plain) == "→ 1"
+        assert result.style == "yellow"
+
+        # Multiple dependencies
+        result = formatter._format_dependencies(
+            {"has_dependencies": True, "dependency_count": 3}
+        )
+        assert str(result.plain) == "→ 3"
+        assert result.style == "yellow"

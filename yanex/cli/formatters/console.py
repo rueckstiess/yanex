@@ -66,14 +66,14 @@ class ExperimentTableFormatter:
         table = Table(show_header=True, header_style="bold")
 
         # Add columns
-        table.add_column("ID", style="dim", width=8)
-        table.add_column("Script", style="cyan", width=15)
-        table.add_column("Name", min_width=12, max_width=25)
-        table.add_column("Status", width=12)
-        table.add_column("Deps", width=5, justify="center")
-        table.add_column("Duration", width=10, justify="right")
-        table.add_column("Tags", min_width=8, max_width=20)
-        table.add_column("Started", width=15, justify="right")
+        table.add_column("ID", style="dim", width=6)
+        table.add_column("Script", style="cyan", width=13)
+        table.add_column("Name", width=14, overflow="ellipsis")
+        table.add_column("Status", width=11)
+        table.add_column("Deps", width=3, justify="center")
+        table.add_column("Duration", width=8, justify="right")
+        table.add_column("Tags", width=8, overflow="ellipsis")
+        table.add_column("Started", width=13, justify="right")
 
         # Add rows
         for exp in experiments:
