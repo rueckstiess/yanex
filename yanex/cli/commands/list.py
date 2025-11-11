@@ -33,6 +33,10 @@ def list_experiments(
     ended_after: str | None,
     ended_before: str | None,
     archived: bool,
+    depends_on: str | None,
+    depends_on_script: str | None,
+    root: bool,
+    leaf: bool,
 ) -> None:
     """
     List experiments with filtering options.
@@ -120,6 +124,10 @@ def list_experiments(
             limit=None if force_all else limit,
             include_all=force_all,
             archived=archived,
+            depends_on=depends_on,
+            depends_on_script=depends_on_script,
+            root=root,
+            leaf=leaf,
         )
 
         # Filter experiments based on archived flag

@@ -35,6 +35,29 @@ def experiment_filter_options(
     def decorator(func: Callable) -> Callable:
         # Apply options in reverse order (Click applies them bottom-up)
 
+        # Dependency filtering options
+        func = click.option(
+            "--leaf",
+            is_flag=True,
+            help="Filter leaf experiments (no other experiments depend on them)",
+        )(func)
+
+        func = click.option(
+            "--root",
+            is_flag=True,
+            help="Filter root experiments (have no dependencies)",
+        )(func)
+
+        func = click.option(
+            "--depends-on-script",
+            help="Filter experiments that depend on experiments from a specific script (e.g., 'train.py')",
+        )(func)
+
+        func = click.option(
+            "--depends-on",
+            help="Filter experiments that depend on a specific experiment ID",
+        )(func)
+
         # Time filtering options
         func = click.option(
             "--ended-before",
@@ -124,6 +147,10 @@ def validate_filter_arguments(
     ended_after: str | None = None,
     ended_before: str | None = None,
     archived: bool | None = None,
+    depends_on: str | None = None,
+    depends_on_script: str | None = None,
+    root: bool = False,
+    leaf: bool = False,
     **kwargs,
 ) -> dict[str, Any]:
     """
@@ -176,6 +203,19 @@ def validate_filter_arguments(
     # Boolean filters
     if archived is not None:
         normalized["archived"] = archived
+
+    # Dependency filters
+    if depends_on:
+        normalized["depends_on"] = depends_on
+
+    if depends_on_script:
+        normalized["depends_on_script"] = depends_on_script
+
+    if root:
+        normalized["root"] = True
+
+    if leaf:
+        normalized["leaf"] = True
 
     # Pass through any additional keyword arguments
     for key, value in kwargs.items():
@@ -283,6 +323,18 @@ def format_filter_summary(filter_args: dict[str, Any]) -> str:
             "archived only" if filter_args["archived"] else "non-archived only"
         )
         parts.append(f"Archive status: {archived_text}")
+
+    if "depends_on" in filter_args:
+        parts.append(f"Depends on: {filter_args['depends_on']}")
+
+    if "depends_on_script" in filter_args:
+        parts.append(f"Depends on script: {filter_args['depends_on_script']}")
+
+    if "root" in filter_args and filter_args["root"]:
+        parts.append("Root experiments only")
+
+    if "leaf" in filter_args and filter_args["leaf"]:
+        parts.append("Leaf experiments only")
 
     return "Filters: " + "; ".join(parts) if parts else "No filters applied"
 

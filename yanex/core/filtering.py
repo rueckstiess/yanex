@@ -47,6 +47,10 @@ class ExperimentFilter:
         ended_after: str | datetime | None = None,
         ended_before: str | datetime | None = None,
         archived: bool | None = None,
+        depends_on: str | None = None,
+        depends_on_script: str | None = None,
+        root: bool = False,
+        leaf: bool = False,
         limit: int | None = None,
         sort_by: str = "created_at",
         sort_desc: bool = True,
@@ -66,6 +70,10 @@ class ExperimentFilter:
             ended_after: Filter experiments ended after this time
             ended_before: Filter experiments ended before this time
             archived: True for archived only, False for non-archived only, None for both
+            depends_on: Filter experiments that depend on a specific experiment ID
+            depends_on_script: Filter experiments that depend on experiments from a specific script
+            root: Filter root experiments (no dependencies)
+            leaf: Filter leaf experiments (nothing depends on them)
             limit: Maximum number of results to return
             sort_by: Field to sort by (created_at, started_at, name, status)
             sort_desc: Sort in descending order
@@ -89,6 +97,10 @@ class ExperimentFilter:
             ended_after=ended_after,
             ended_before=ended_before,
             archived=archived,
+            depends_on=depends_on,
+            depends_on_script=depends_on_script,
+            root=root,
+            leaf=leaf,
         )
 
         # Load all experiments (including archived based on filter)
@@ -122,6 +134,10 @@ class ExperimentFilter:
         ended_after: str | datetime | None,
         ended_before: str | datetime | None,
         archived: bool | None,
+        depends_on: str | None,
+        depends_on_script: str | None,
+        root: bool,
+        leaf: bool,
     ) -> dict[str, Any]:
         """Validate and normalize all filter inputs."""
         normalized = {}
@@ -201,6 +217,23 @@ class ExperimentFilter:
                 raise ValueError("archived must be a boolean")
             normalized["archived"] = archived
 
+        # Normalize dependency filters
+        if depends_on is not None:
+            if not isinstance(depends_on, str):
+                raise ValueError("depends_on must be a string (experiment ID)")
+            normalized["depends_on"] = depends_on
+
+        if depends_on_script is not None:
+            if not isinstance(depends_on_script, str):
+                raise ValueError("depends_on_script must be a string (script name)")
+            normalized["depends_on_script"] = depends_on_script
+
+        if root:
+            normalized["root"] = True
+
+        if leaf:
+            normalized["leaf"] = True
+
         return normalized
 
     def _apply_all_filters(
@@ -276,6 +309,25 @@ class ExperimentFilter:
             filtered = [
                 exp for exp in filtered if exp.get("archived", False) == archived_value
             ]
+
+        # Apply dependency filters
+        if "depends_on" in filters:
+            filtered = [
+                exp for exp in filtered if self._depends_on(exp, filters["depends_on"])
+            ]
+
+        if "depends_on_script" in filters:
+            filtered = [
+                exp
+                for exp in filtered
+                if self._depends_on_script(exp, filters["depends_on_script"])
+            ]
+
+        if "root" in filters and filters["root"]:
+            filtered = [exp for exp in filtered if self._is_root(exp)]
+
+        if "leaf" in filters and filters["leaf"]:
+            filtered = [exp for exp in filtered if self._is_leaf(exp)]
 
         return filtered
 
@@ -479,3 +531,103 @@ class ExperimentFilter:
             return True
         except Exception:
             return False
+
+    def _depends_on(self, experiment: dict[str, Any], target_id: str) -> bool:
+        """Check if experiment depends on a specific experiment ID."""
+        exp_id = experiment.get("id")
+        if not exp_id:
+            return False
+
+        # Load dependencies for this experiment
+        try:
+            deps_data = self.manager.storage.load_dependencies(
+                exp_id, include_archived=True
+            )
+            if not deps_data:
+                return False
+
+            resolved_deps = deps_data.get("resolved_dependencies", {})
+            # Check if target_id is in any of the dependency slots
+            return target_id in resolved_deps.values()
+        except Exception:
+            return False
+
+    def _depends_on_script(self, experiment: dict[str, Any], script_name: str) -> bool:
+        """Check if experiment depends on experiments from a specific script."""
+        exp_id = experiment.get("id")
+        if not exp_id:
+            return False
+
+        # Load dependencies for this experiment
+        try:
+            deps_data = self.manager.storage.load_dependencies(
+                exp_id, include_archived=True
+            )
+            if not deps_data:
+                return False
+
+            resolved_deps = deps_data.get("resolved_dependencies", {})
+            if not resolved_deps:
+                return False
+
+            # Check each dependency's script
+            for dep_id in resolved_deps.values():
+                try:
+                    dep_metadata = self.manager.storage.load_metadata(
+                        dep_id, include_archived=True
+                    )
+                    dep_script = Path(dep_metadata.get("script_path", "")).name
+                    # Match against script name (case insensitive)
+                    if dep_script.lower() == script_name.lower():
+                        return True
+                except Exception:
+                    continue
+
+            return False
+        except Exception:
+            return False
+
+    def _is_root(self, experiment: dict[str, Any]) -> bool:
+        """Check if experiment is a root (has no dependencies)."""
+        exp_id = experiment.get("id")
+        if not exp_id:
+            return True  # No ID means no experiment, consider as root
+
+        # Check dependencies_summary for quick check
+        deps_summary = experiment.get("dependencies_summary", {})
+        if deps_summary:
+            has_deps = deps_summary.get("has_dependencies", False)
+            if not has_deps:
+                return True
+
+        # Fall back to loading dependencies
+        try:
+            deps_data = self.manager.storage.load_dependencies(
+                exp_id, include_archived=True
+            )
+            if not deps_data:
+                return True  # No dependencies file
+
+            resolved_deps = deps_data.get("resolved_dependencies", {})
+            return len(resolved_deps) == 0
+        except Exception:
+            return True  # Error loading means likely no dependencies
+
+    def _is_leaf(self, experiment: dict[str, Any]) -> bool:
+        """Check if experiment is a leaf (no other experiments depend on it)."""
+        exp_id = experiment.get("id")
+        if not exp_id:
+            return True  # No ID means no experiment, consider as leaf
+
+        # Load dependencies to check depended_by list
+        try:
+            deps_data = self.manager.storage.load_dependencies(
+                exp_id, include_archived=True
+            )
+            if not deps_data:
+                return True  # No dependencies file means nothing depends on it
+
+            depended_by = deps_data.get("depended_by", [])
+            return len(depended_by) == 0
+        except Exception:
+            return True  # Error loading means likely no dependents
