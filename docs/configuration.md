@@ -125,8 +125,8 @@ yanex run script.py --param data.validation_split=0.3
 --param debug=false              # Boolean
 
 # Lists (JSON format)
---param "layers=[64,128,256]"    # List of integers
---param "tags=[\"exp\",\"test\"]"    # List of strings
+--param "layers=[64,128,256]"      # List of integers
+--param "tags=[\"exp\",\"test\"]"  # List of strings (note: requires escaping)
 ```
 
 ### Parameter Sweeps
@@ -136,44 +136,50 @@ As of v0.6.0, parameter sweeps can be executed immediately without staging, supp
 #### CLI Parameter Sweeps
 
 ```bash
-# Explicit parameter lists
---param "batch_size=list(32, 64, 128)"
+# Comma-separated lists (preferred syntax)
+--param "batch_size=32,64,128"
+--param "optimizer=adam,sgd,rmsprop"
 
-# Ranges (using Python's range syntax)
---param "workload_size=range(4, 8, 1)"  # Generates [4, 5, 6, 7]
+# Range syntax (supports 1, 2, or 3 parameters like Python's range)
+--param "n_epochs=range(10)"        # Generates [0, 1, 2, ..., 9]
+--param "n_epochs=range(5,10)"      # Generates [5, 6, 7, 8, 9]
+--param "workload_size=range(4,8,2)" # Generates [4, 6]
 
-# Linspace and logspace
---param "n_nodes=linspace(10, 100, 5)"  # Generates [10, 30, 50, 70, 100]
---param "learning_rate=logspace(-4, -1, 4)"  # Generates [0.0001, 0.001, 0.01, 0.1]
+# Linspace and logspace for numeric sweeps
+--param "n_nodes=linspace(10,100,5)"        # Generates [10, 30, 50, 70, 100]
+--param "learning_rate=logspace(-4,-1,4)"   # Generates [0.0001, 0.001, 0.01, 0.1]
+
+# Explicit list() syntax (also supported for backwards compatibility)
+--param "batch_size=list(32,64,128)"
 ```
 
 #### Config File Sweeps
 
-Parameter sweeps can also be defined directly in YAML configuration files using the same syntax:
+Parameter sweeps can also be defined directly in YAML configuration files:
 
 ```yaml
 # config.yaml
-# Single parameter sweep
-learning_rate: "list(0.001, 0.01, 0.1)"
+# Single parameter sweep (comma-separated syntax)
+learning_rate: "0.001,0.01,0.1"
 batch_size: 32
 epochs: 100
 
 # Multiple parameter sweeps (creates grid search)
 model:
-  dropout: "linspace(0.1, 0.5, 5)"
-  hidden_size: "list(128, 256, 512)"
+  dropout: "linspace(0.1,0.5,5)"
+  hidden_size: "128,256,512"
 
 training:
-  lr_schedule: "list(constant, linear, cosine)"
-  warmup_steps: "range(0, 1000, 200)"
+  lr_schedule: "constant,linear,cosine"
+  warmup_steps: "range(0,1000,200)"
 ```
 
-**Whitespace handling:** Whitespace in sweep syntax is flexible and ignored:
+**Whitespace and trailing commas:** Whitespace and trailing commas are handled gracefully:
 ```yaml
 # All of these are equivalent
-epochs: "list(10, 20, 30)"
-epochs: "list(10,20,30)"
-epochs: "list( 10 , 20 , 30 )"
+epochs: "10,20,30"
+epochs: "10, 20, 30"
+epochs: "10, 20, 30,"
 ```
 
 **Execution:**
@@ -193,20 +199,20 @@ yanex run script.py --config config.yaml --param "learning_rate=0.001"
 
 ```bash
 # Run sweep sequentially
-yanex run script.py --param "lr=list(0.001, 0.01, 0.1)"
+yanex run script.py --param "lr=0.001,0.01,0.1"
 
 # Run sweep in parallel with 4 workers
-yanex run script.py --param "lr=list(0.001, 0.01, 0.1)" --parallel 4
+yanex run script.py --param "lr=0.001,0.01,0.1" --parallel 4
 
 # Auto-detect CPU count
-yanex run script.py --param "lr=logspace(-4, -1, 10)" --parallel 0
+yanex run script.py --param "lr=logspace(-4,-1,10)" --parallel 0
 ```
 
 #### Staged Execution
 
 ```bash
 # Stage for later execution
-yanex run script.py --param "lr=list(0.001, 0.01, 0.1)" --stage
+yanex run script.py --param "lr=0.001,0.01,0.1" --stage
 
 # Execute staged experiments
 yanex run --staged --parallel 4
