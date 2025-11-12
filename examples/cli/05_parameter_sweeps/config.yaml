@@ -1,0 +1,5 @@
+# Standard configuration with single values
+
+algorithm: quicksort
+data_size: 1000
+random_seed: 42
