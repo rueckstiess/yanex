@@ -1,4 +1,4 @@
-# 08: Staged Experiments
+# 09: Staged Experiments
 
 ## What This Example Demonstrates
 
@@ -396,4 +396,4 @@ yanex delete --status staged --before "1 week ago"
 
 - Stage a parameter sweep and run it in parallel
 - Try staging experiments on one machine, running on another
-- See example 09 to learn about training loops with step-based logging
+- See example 05 to learn about training loops with step-based logging

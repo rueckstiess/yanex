@@ -32,10 +32,10 @@ Organize experiments with names, descriptions, and tags. Filter and search exper
 
 ---
 
-### [05: Parameter Sweeps](05_parameter_sweeps/README.md)
-Run multiple experiments with different parameter combinations automatically. Grid search and parallel execution.
+### [05: Multi-Step Metrics](05_multi_step_metrics/README.md)
+Log metrics at each training step/epoch with explicit step tracking. Build metrics incrementally.
 
-**Concepts**: Comma-separated lists, `range()`, `linspace()`, `logspace()`, cartesian product, `--parallel`
+**Concepts**: `step` parameter, auto-increment, metric merging, `yanex show`
 
 ---
 
@@ -46,39 +46,39 @@ Integrate existing bash scripts and tools. Automatic parameter passing via envir
 
 ---
 
-### [07: Script CLI Arguments](07_script_cli_arguments/README.md)
+### [07: Parameter Sweeps](07_parameter_sweeps/README.md)
+Run multiple experiments with different parameter combinations automatically. Grid search and parallel execution.
+
+**Concepts**: Comma-separated lists, `range()`, `linspace()`, `logspace()`, cartesian product, `--parallel`
+
+---
+
+### [08: Script CLI Arguments](08_script_cli_arguments/README.md)
 Distinguish between yanex parameters (tracked) and script arguments (operational flags). Use argparse with yanex.
 
 **Concepts**: `--param` vs script args, `--` separator, argparse integration
 
 ---
 
-### [08: Staged Experiments](08_staged_experiments/README.md)
+### [09: Staged Experiments](09_staged_experiments/README.md)
 Prepare experiments now, execute later. Batch processing and parallel execution of staged experiments.
 
 **Concepts**: `--stage`, `yanex run --staged`, `--parallel`, deferred execution
 
 ---
 
-### [09: Multi-Step Metrics](09_multi_step_metrics/README.md)
-Log metrics at each training step/epoch with explicit step tracking. Build metrics incrementally.
-
-**Concepts**: `step` parameter, auto-increment, metric merging, `yanex show`
-
----
-
 ## Learning Path
 
 **New to yanex?** Start with examples in order:
-1. **01-03**: Core features (parameters, config, artifacts)
-2. **04-05**: Organization and scaling (metadata, sweeps)
-3. **06-09**: Advanced features (bash, args, staging, multi-step)
+1. **01-04**: Core features (parameters, config, artifacts, metadata)
+2. **05-07**: Training and scaling (multi-step metrics, bash, sweeps)
+3. **08-09**: Advanced features (script args, staging)
 
 **Quick references:**
-- **ML/Training workflows**: 02 → 05 → 09
-- **Bash tool integration**: 06 → 07
-- **Batch processing**: 05 → 08
-- **Experiment organization**: 04 → 05
+- **ML/Training workflows**: 02 → 05 → 07
+- **Bash tool integration**: 06 → 08
+- **Batch processing**: 07 → 09
+- **Experiment organization**: 04 → 07
 
 ## Running Examples
 

@@ -234,4 +234,4 @@ yanex delete --tag baseline
 
 - Organize your experiments with consistent tagging
 - Use `yanex compare --tag <tag>` to compare related experiments
-- See example 05 to learn about parameter sweeps
+- See example 07 to learn about parameter sweeps

@@ -1,4 +1,4 @@
-# 05: Parameter Sweeps
+# 07: Parameter Sweeps
 
 ## What This Example Demonstrates
 
@@ -351,4 +351,4 @@ yanex run test_algorithm.py \
 
 - Run a sweep and compare results: `yanex compare`
 - Try different parallel worker counts: `-j 2`, `-j 4`, `-j 0`
-- See example 06 to learn more about parallel execution optimization
+- See example 09 to learn about staged experiments with parallel execution

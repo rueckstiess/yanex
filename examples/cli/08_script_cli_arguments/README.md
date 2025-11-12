@@ -1,4 +1,4 @@
-# 07: Script CLI Arguments
+# 08: Script CLI Arguments
 
 ## What This Example Demonstrates
 
@@ -356,4 +356,4 @@ sample_size = yanex.get_param('sample_size', default=100)
 
 - Try combining parameters and arguments in one command
 - Convert existing argparse scripts to use yanex parameters
-- See example 08 to learn about staged experiments
+- See example 09 to learn about staged experiments

@@ -350,4 +350,4 @@ chmod +x script.sh
 
 - Try wrapping your own bash scripts with yanex
 - Use parameter sweeps with bash scripts: `yanex run ... -p "duration=5,10,20"`
-- See example 07 for passing script-specific arguments
+- See example 08 for passing script-specific arguments
