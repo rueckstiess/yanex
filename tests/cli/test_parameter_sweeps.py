@@ -178,10 +178,10 @@ class TestCLIParameterSweeps:
     @pytest.mark.parametrize(
         "invalid_param,expected_error_fragment",
         [
-            ("lr=range(not_a_number, 0.1, 0.01)", "Invalid range() syntax"),
-            ("lr=range()", "Invalid sweep syntax: range()"),
+            ("lr=range(not_a_number, 0.1, 0.01)", "Expected numeric value"),
+            ("lr=range()", "range() requires at least 1 parameter"),
             ("lr=linspace()", "Invalid sweep syntax: linspace()"),
-            ("lr=list()", "Invalid list() syntax: list()"),
+            ("lr=list()", "List sweep cannot be empty"),
         ],
     )
     def test_sweep_syntax_validation_errors(
