@@ -317,6 +317,44 @@ class TestSweepSyntaxParsing:
         assert sweep_parser.can_parse("range(1, 5)")
         assert sweep_parser.can_parse("list(1,2,3)")
 
+    def test_comma_separated_list_skips_empty_items(self):
+        """Test that empty items from extra commas are skipped."""
+        sweep_parser = SweepParameterParser()
+
+        # Trailing comma
+        result = sweep_parser.parse("10,20,30,")
+        assert isinstance(result, ListSweep)
+        assert result.items == [10, 20, 30]
+
+        # Double comma
+        result = sweep_parser.parse("10,,20")
+        assert isinstance(result, ListSweep)
+        assert result.items == [10, 20]
+
+        # Extra whitespace between commas
+        result = sweep_parser.parse("10, , 20")
+        assert isinstance(result, ListSweep)
+        assert result.items == [10, 20]
+
+        # Leading comma
+        result = sweep_parser.parse(",10,20")
+        assert isinstance(result, ListSweep)
+        assert result.items == [10, 20]
+
+    def test_comma_separated_list_preserves_quoted_empty_strings(self):
+        """Test that quoted empty strings are preserved in comma-separated lists."""
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse('"a","","b"')
+        assert isinstance(result, ListSweep)
+        assert result.items == ["a", "", "b"]
+
+    def test_list_function_preserves_quoted_empty_strings(self):
+        """Test that quoted empty strings are preserved in list() syntax."""
+        sweep_parser = SweepParameterParser()
+        result = sweep_parser.parse('list("a","","b")')
+        assert isinstance(result, ListSweep)
+        assert result.items == ["a", "", "b"]
+
     def test_parse_non_sweep_syntax(self):
         """Test non-sweep syntax returns None."""
         sweep_parser = SweepParameterParser()

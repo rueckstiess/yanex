@@ -203,6 +203,9 @@ class SweepParameterParser(ParameterParser):
             for item_str in content.split(","):
                 item_str = item_str.strip()
                 if not item_str:
+                    # Skip empty items to handle trailing commas and extra whitespace
+                    # e.g., "a,,b" or "a,b," becomes ["a", "b"]
+                    # For empty strings in sweeps, use quotes: "a","","b"
                     continue
                 # Use BasicParameterParser for list items to avoid recursion
                 basic_parser = BasicParameterParser()
