@@ -656,7 +656,7 @@ with yanex.create_experiment(
     
     # Experiment code here
     accuracy = train_model()
-    exp.log_results({"accuracy": accuracy})
+    exp.log_metrics({"accuracy": accuracy})
 ```
 
 **Parameters:**
@@ -680,7 +680,7 @@ Create context for an existing yanex.
 # Resume an existing experiment
 with yanex.create_context("abc12345") as exp:
     # Continue experiment
-    exp.log_results({"additional_metric": 0.88})
+    exp.log_metrics({"additional_metric": 0.88})
 ```
 
 **Parameters:**
@@ -699,7 +699,7 @@ Manually mark experiment as completed and exit context.
 with yanex.create_experiment(Path(__file__)) as exp:
     try:
         result = risky_computation()
-        exp.log_results({"result": result})
+        exp.log_metrics({"result": result})
         
         # Manually complete experiment
         yanex.completed()

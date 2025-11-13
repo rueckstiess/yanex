@@ -16,6 +16,7 @@ experiments/
 │   └── artifacts/      # Directory for experiment artifacts
 │       ├── script_stdout.txt
 │       ├── script_stderr.txt
+│       ├── git_diff.patch    # Uncommitted changes (if any)
 │       ├── model.pth
 │       └── plots.png
 └── e5f6g7h8/          # Another experiment directory
@@ -43,6 +44,8 @@ Contains experiment metadata, status information, timing, and environment detail
   "description": "Initial baseline model training",
   "git_commit": "abc123...",
   "git_branch": "main",
+  "has_uncommitted_changes": false,
+  "patch_file": null,
   "python_version": "3.11.5",
   "platform": "darwin"
 }
@@ -106,12 +109,16 @@ Contains execution logs from `yanex.execute_bash_script()` calls. Each entry rep
 #### `artifacts/`
 Contains all files created during experiment execution, including:
 
+- **Git patches**: `git_diff.patch` - Automatically captured uncommitted changes (when present)
 - **Script outputs**: `script_stdout.txt`, `script_stderr.txt` (from `execute_bash_script()`)
 - **Models**: Saved model files (`.pth`, `.pkl`, `.h5`, etc.)
 - **Plots**: Visualization files (`.png`, `.pdf`, `.svg`)
 - **Data**: Generated datasets, processed files
 - **Logs**: Custom log files created by your scripts
 - **Any file**: Added via `yanex.log_artifact()` or `yanex.log_text()`
+
+**Git Patch Capture:**
+When you run an experiment with uncommitted changes, Yanex automatically generates and saves a git patch file (`git_diff.patch`) containing all tracked file changes. This ensures full reproducibility even when working with uncommitted code. The metadata fields `has_uncommitted_changes` and `patch_file` indicate whether a patch was captured.
 
 ## Directory Lifecycle
 

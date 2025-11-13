@@ -124,9 +124,7 @@ All filtering options have convenient short aliases:
 - `-n` for `--name`
 - `-t` for `--tag`
 - `-a` for `--archived`
-- `-l` for `--limit` (note: changed from `-n` in v0.7.0)
-
-**Breaking change in v0.7.0:** The `-n` flag was changed from `--limit` to `--name` for consistency with the `run` command. Use `-l` for `--limit`.
+- `-l` for `--limit`
 
 ---
 

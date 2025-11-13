@@ -1,0 +1,13 @@
+# Configuration with parameter sweeps
+# This creates multiple experiments (cartesian product)
+
+# Test multiple algorithms
+algorithm: quicksort,mergesort,heapsort
+
+# Test different data sizes using range
+data_size: range(1000, 5000, 1000) # Generates: 1000, 2000, 3000, 4000
+
+# Fixed seed for reproducibility
+random_seed: 42
+
+# Result: 3 algorithms × 4 sizes = 12 experiments

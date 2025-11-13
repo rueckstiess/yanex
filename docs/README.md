@@ -7,14 +7,17 @@ Complete documentation for Yanex - Yet Another Experiment Tracker
 - [**Installation & Quick Start**](../README.md#quick-start) - Get up and running in minutes
 - [**Configuration**](configuration.md) - Parameter management and config files
 - [**Experiment Structure**](experiment-structure.md) - Directory layout and file organization
+- [**Best Practices**](best-practices.md) - Recommended patterns and workflows
 
 ## CLI Commands
 
-Yanex provides a comprehensive command-line interface for managing experiments:
+Yanex provides a comprehensive command-line interface for managing experiments.
+
+**[→ CLI Commands Overview](cli-commands.md)** - Complete guide with common patterns
 
 ### Core Commands
 - [**`yanex run`**](commands/run.md) - Execute experiments with parameter tracking
-- [**`yanex list`**](commands/list.md) - List and filter experiments  
+- [**`yanex list`**](commands/list.md) - List and filter experiments
 - [**`yanex show`**](commands/show.md) - Display detailed experiment information
 - [**`yanex compare`**](commands/compare.md) - Interactive experiment comparison
 
@@ -24,17 +27,24 @@ Yanex provides a comprehensive command-line interface for managing experiments:
 - [**`yanex delete`**](commands/delete.md) - Permanently delete experiments
 - [**`yanex update`**](commands/update.md) - Modify experiment metadata
 
+### Utility Commands
+- [**`yanex ui`**](commands/ui.md) - Launch web interface
+- [**`yanex open`**](commands/open.md) - Open experiment directory
+
 
 ## Python API
 
-- [**Python API Reference**](python-api.md) - Complete API documentation
-- [**CLI-First Pattern**](python-api.md#cli-driven-pattern-primary) - Recommended approach
-- [**Explicit Creation**](python-api.md#explicit-creation-pattern-advanced) - Advanced control
-- [**Parameter Management**](python-api.md#parameter-access) - Working with configs and overrides
-- [**Result Logging**](python-api.md#result-logging) - Tracking metrics and artifacts
+Yanex provides two APIs for programmatic access:
 
+- [**Run API**](run-api.md) - Create and execute experiments programmatically (advanced patterns)
+- [**Results API**](results-api.md) - Query and analyze completed experiments
+- [**Python API Overview**](python-api.md) - API usage patterns and examples
 
 ## Examples
 
-- [**Basic Usage Examples**](../examples/) - Simple experiment scripts
+Practical demonstrations for all Yanex features:
+
+- [**CLI Examples**](../examples/cli/) - Main usage patterns (9 examples)
+- [**Run API Examples**](../examples/run-api/) - Advanced programmatic patterns (3 examples)
+- [**Results API Examples**](../examples/results-api/) - Analysis with Jupyter notebooks (2 notebooks)
 

@@ -1,0 +1,15 @@
+# Scraper configuration
+
+# Scraping parameters
+num_pages: 10
+delay_ms: 100
+
+# Yanex metadata defaults
+# These can be overridden from CLI
+yanex:
+  name: "web-scraper-test"
+  description: "Testing web scraping with different parameters"
+  tag:
+    - scraping
+    - automation
+    - dev
