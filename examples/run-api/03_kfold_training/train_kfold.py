@@ -137,25 +137,34 @@ def orchestrate_kfold(n_folds, learning_rate, parallel_workers=None):
 
                 # get_metric returns the value (single value if one step, list if multiple)
                 # For single-step metrics like ours, extract the value
-                fold_metrics.append({
-                    "train_loss": train_loss,
-                    "val_loss": val_loss,
-                    "val_accuracy": val_accuracy,
-                })
+                fold_metrics.append(
+                    {
+                        "train_loss": train_loss,
+                        "val_loss": val_loss,
+                        "val_accuracy": val_accuracy,
+                    }
+                )
 
             except Exception as e:
                 print(f"  Warning: Could not load metrics for {result.name}: {e}")
 
         if fold_metrics:
             # Calculate aggregated statistics
-            avg_train_loss = sum(m.get("train_loss", 0) for m in fold_metrics) / len(fold_metrics)
-            avg_val_loss = sum(m.get("val_loss", 0) for m in fold_metrics) / len(fold_metrics)
-            avg_val_accuracy = sum(m.get("val_accuracy", 0) for m in fold_metrics) / len(fold_metrics)
+            avg_train_loss = sum(m.get("train_loss", 0) for m in fold_metrics) / len(
+                fold_metrics
+            )
+            avg_val_loss = sum(m.get("val_loss", 0) for m in fold_metrics) / len(
+                fold_metrics
+            )
+            avg_val_accuracy = sum(
+                m.get("val_accuracy", 0) for m in fold_metrics
+            ) / len(fold_metrics)
 
             # Calculate standard deviation for validation accuracy
             val_accuracies = [m.get("val_accuracy", 0) for m in fold_metrics]
             std_val_accuracy = (
-                sum((acc - avg_val_accuracy) ** 2 for acc in val_accuracies) / len(val_accuracies)
+                sum((acc - avg_val_accuracy) ** 2 for acc in val_accuracies)
+                / len(val_accuracies)
             ) ** 0.5
 
             aggregated = {
@@ -169,7 +178,9 @@ def orchestrate_kfold(n_folds, learning_rate, parallel_workers=None):
             print(f"Aggregated Results (n={len(fold_metrics)} folds):")
             print(f"  Average train loss: {avg_train_loss:.4f}")
             print(f"  Average val loss: {avg_val_loss:.4f}")
-            print(f"  Average val accuracy: {avg_val_accuracy:.4f} ± {std_val_accuracy:.4f}")
+            print(
+                f"  Average val accuracy: {avg_val_accuracy:.4f} ± {std_val_accuracy:.4f}"
+            )
             print()
 
             # If running in experiment context, log aggregated metrics

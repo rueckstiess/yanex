@@ -19,7 +19,7 @@ def main():
     batch_sizes = [16, 32]
     epochs = 10
 
-    print(f"Grid Search Configuration")
+    print("Grid Search Configuration")
     print(f"  Learning rates: {learning_rates}")
     print(f"  Batch sizes: {batch_sizes}")
     print(f"  Epochs: {epochs}")
@@ -53,7 +53,7 @@ def main():
     print()
 
     # Execute all experiments in parallel
-    print(f"Running experiments with 3 parallel workers...")
+    print("Running experiments with 3 parallel workers...")
     print()
 
     results = yanex.run_multiple(experiments, parallel=3, verbose=False)
