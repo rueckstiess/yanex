@@ -174,17 +174,22 @@ def display_experiment_details(
 
     # Configuration
     try:
+        from yanex.utils.dict_utils import flatten_dict
+
         config = manager.storage.load_config(experiment_id, include_archived)
         if config:
+            # Flatten nested configuration for better readability
+            flat_config = flatten_dict(config)
+
             config_table = Table(
                 show_header=True, header_style="bold magenta", box=box.SIMPLE
             )
             config_table.add_column("Parameter", style="cyan")
             config_table.add_column("Value", style="green")
 
-            for key, value in config.items():
+            for key, value in sorted(flat_config.items()):
                 # Format value for display
-                if isinstance(value, dict | list):
+                if isinstance(value, list):
                     value_str = str(value)
                     if len(value_str) > 50:
                         value_str = value_str[:47] + "..."

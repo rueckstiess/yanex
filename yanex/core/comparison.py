@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from ..utils.datetime_utils import calculate_duration_seconds, parse_iso_timestamp
+from ..utils.dict_utils import flatten_dict
 from ..utils.exceptions import StorageError
 from .manager import ExperimentManager
 
@@ -168,9 +169,10 @@ class ExperimentComparisonData:
         all_metrics = set()
 
         for exp_data in experiments_data:
-            # Collect parameter keys
+            # Collect parameter keys from flattened config
             config = exp_data.get("config", {})
-            all_params.update(config.keys())
+            flat_config = flatten_dict(config)
+            all_params.update(flat_config.keys())
 
             # Collect metric keys
             results = exp_data.get("results", {})
@@ -224,7 +226,7 @@ class ExperimentComparisonData:
 
         Args:
             exp_data: Experiment data dictionary
-            param_columns: Parameter column names
+            param_columns: Parameter column names (using dot notation for nested params)
             metric_columns: Metric column names
 
         Returns:
@@ -232,6 +234,9 @@ class ExperimentComparisonData:
         """
         config = exp_data.get("config", {})
         results = exp_data.get("results", {})
+
+        # Flatten config for parameter extraction
+        flat_config = flatten_dict(config)
 
         # Fixed columns
         from pathlib import Path
@@ -250,9 +255,9 @@ class ExperimentComparisonData:
             "tags": self._format_tags(exp_data.get("tags", [])),
         }
 
-        # Parameter columns
+        # Parameter columns (using flattened config with dot notation)
         for param in param_columns:
-            value = config.get(param)
+            value = flat_config.get(param)
             row[f"param:{param}"] = self._format_value(value)
 
         # Metric columns
