@@ -43,7 +43,7 @@ yanex run train.py --tag imagenet
 yanex run train.py --tag ml --tag hyperparameter-sweep --tag resnet --tag v2
 ```
 
-**Example**: [04_metadata_and_tags](../examples/cli/04_metadata_and_tags/)
+**Example**: [04_metadata_and_tags](../examples/cli/04_metadata_and_tags/README.md)
 
 ### Naming Conventions
 
