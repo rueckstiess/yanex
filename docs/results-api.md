@@ -214,6 +214,7 @@ print(exp.duration)     # timedelta object or None
 print(exp.script_path)  # Path object or None
 print(exp.archived)     # True/False
 print(exp.experiment_dir) # Path to experiment directory
+print(exp.artifacts_dir)  # Path to artifacts directory
 ```
 
 ### Data Access Methods
@@ -269,7 +270,16 @@ Get list of artifact paths.
 artifacts = exp.get_artifacts()  # List of Path objects
 for artifact in artifacts:
     print(f"Artifact: {artifact.name}")
+
+# Access artifacts directory directly via property
+artifacts_dir = exp.artifacts_dir
+model_path = artifacts_dir / "model.pkl"
+if model_path.exists():
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
 ```
+
+**Note:** Use the `artifacts_dir` property for direct access to the artifacts directory path. This is equivalent to `exp.experiment_dir / "artifacts"`.
 
 ### Metadata Update Methods
 

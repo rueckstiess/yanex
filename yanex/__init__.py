@@ -23,6 +23,7 @@ from .api import (
     execute_bash_script,
     fail,
     # Experiment information
+    get_artifacts_dir,
     get_cli_args,
     get_experiment_dir,
     get_experiment_id,
@@ -67,6 +68,7 @@ __all__ = [
     # Experiment information
     "get_experiment_id",
     "get_experiment_dir",
+    "get_artifacts_dir",
     "get_status",
     "get_metadata",
     # Experiment creation (advanced)

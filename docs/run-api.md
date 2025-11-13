@@ -392,7 +392,7 @@ Get absolute path to current experiment directory. Returns None in standalone mo
 exp_dir = yanex.get_experiment_dir()
 if exp_dir:
     print(f"Experiment directory: {exp_dir}")
-    
+
     # Save files directly to experiment directory
     output_file = exp_dir / "custom_results.txt"
     output_file.write_text("Custom output data")
@@ -400,6 +400,30 @@ if exp_dir:
 
 **Returns:**
 - `Path` or `None`: Absolute path to experiment directory
+
+#### `yanex.get_artifacts_dir()`
+
+Get absolute path to current experiment's artifacts directory. Returns None in standalone mode.
+
+```python
+artifacts_dir = yanex.get_artifacts_dir()
+if artifacts_dir:
+    print(f"Artifacts directory: {artifacts_dir}")
+
+    # Save files directly to artifacts directory
+    model_path = artifacts_dir / "model.pkl"
+    with open(model_path, 'wb') as f:
+        pickle.dump(model, f)
+
+    # Read artifacts from previous step
+    if (artifacts_dir / "checkpoint.pt").exists():
+        checkpoint = torch.load(artifacts_dir / "checkpoint.pt")
+```
+
+**Returns:**
+- `Path` or `None`: Absolute path to artifacts directory (`{experiment_dir}/artifacts`)
+
+**Note:** This is a convenience method equivalent to `get_experiment_dir() / "artifacts"`. Use `log_artifact()` for automatic artifact logging with yanex tracking.
 
 #### `yanex.execute_bash_script(command, timeout=None, raise_on_error=False, stream_output=True, working_dir=None)`
 
