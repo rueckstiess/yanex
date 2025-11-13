@@ -7,6 +7,7 @@ This guide provides recommended patterns and workflows for effective experiment 
 - [Organizing Experiments](#organizing-experiments)
 - [Configuration Strategies](#configuration-strategies)
 - [When to Use What](#when-to-use-what)
+- [Metric Logging Strategies](#metric-logging-strategies)
 - [Parameter Sweep Strategies](#parameter-sweep-strategies)
 - [Git Workflow Integration](#git-workflow-integration)
 - [Debugging Failed Experiments](#debugging-failed-experiments)
@@ -267,6 +268,51 @@ best = yr.get_best("accuracy", maximize=True, tags=["hyperparameter-sweep"])
 - Finding optimal configurations
 - Creating reports and visualizations
 - Comparing experiment results
+
+## Metric Logging Strategies
+
+### Incremental Metric Building
+
+**Key feature**: Metrics logged to the same step are **merged**, not overwritten.
+
+This allows you to build metrics incrementally, which is especially useful when some metrics are only available at certain intervals:
+
+```python
+for epoch in range(1, epochs + 1):
+    # Always log training metrics
+    yanex.log_metrics({
+        'train_loss': train_loss,
+        'train_accuracy': train_accuracy,
+    }, step=epoch)
+
+    # Every N epochs, add validation metrics
+    if epoch % validation_frequency == 0:
+        val_loss, val_accuracy = validate_model()
+        # Merges with existing metrics for this epoch
+        yanex.log_metrics({
+            'val_loss': val_loss,
+            'val_accuracy': val_accuracy,
+        }, step=epoch)
+```
+
+**Result**: Epochs 0, N, 2N, ... will have both training AND validation metrics. Other epochs only have training metrics.
+
+**Benefits**:
+- Avoid expensive validation at every step
+- Keep all metrics for the same epoch together
+- Flexible conditional logging without complex logic
+
+**Important**: The `step` parameter must be separate, not inside the metrics dictionary:
+
+```python
+# ✓ Correct
+yanex.log_metrics({'train_loss': loss}, step=epoch)
+
+# ✗ Wrong
+yanex.log_metrics({'step': epoch, 'train_loss': loss})
+```
+
+**Example**: [05_multi_step_metrics](../examples/cli/05_multi_step_metrics/README.md)
 
 ## Parameter Sweep Strategies
 
