@@ -272,6 +272,5 @@ Prefixed with 📈, derived from logged results:
 ---
 
 **Related:**
-- [CLI Commands Overview](../cli-commands.md)
+- [CLI Commands Overview](../cli-commands.md) - See filtering patterns section
 - [Python API](../python-api.md)
-- [Filtering Guide](../filtering.md)

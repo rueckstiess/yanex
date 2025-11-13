@@ -46,6 +46,7 @@ This ensures reproducibility and easy comparison of results.
 #### Parameter Overrides
 - `--param KEY=VALUE`: Override configuration parameter
 - `--config PATH`: Use specific configuration file
+- `--clone-from EXP_ID`: Clone configuration from another experiment
 
 #### Metadata
 - `--name NAME`: Set experiment name
@@ -59,7 +60,7 @@ This ensures reproducibility and easy comparison of results.
 - `--stage`: Stage the experiment for later execution
 - `--staged`: Run all staged experiments
 
-#### Parallel Execution (v0.5.0+)
+#### Parallel Execution
 - `--parallel N` / `-j N`: Run experiments in parallel with N workers (0=auto-detect CPUs)
 
 #### General Options
@@ -117,7 +118,7 @@ yanex run script.py --param "lr=list(0.01, 0.001)" --stage
 # Run all staged experiments sequentially
 yanex run --staged
 
-# Run all staged experiments in parallel (v0.5.0+)
+# Run all staged experiments in parallel
 yanex run --staged --parallel 4
 ```
 
@@ -170,9 +171,9 @@ yanex run script.py --config production.yaml --param batch_size=128
 
 ## Parameter Sweeps
 
-Yanex supports parameter sweeps to run multiple experiments with different configurations. As of v0.6.0, you can execute sweeps immediately or stage them for later execution.
+Yanex supports parameter sweeps to run multiple experiments with different configurations. You can execute sweeps immediately or stage them for later execution.
 
-### Direct Sweep Execution (v0.6.0+)
+### Direct Sweep Execution
 
 Run parameter sweeps immediately without staging:
 
@@ -280,7 +281,7 @@ yanex run script.py --param "workload_size=list(50, 100, 200)" --stage
 # Run all staged experiments sequentially
 yanex run --staged
 
-# Run all staged experiments in parallel with 4 workers (v0.5.0+)
+# Run all staged experiments in parallel with 4 workers
 yanex run --staged --parallel 4
 ```
 
@@ -289,7 +290,7 @@ yanex run --staged --parallel 4
 - Running experiments at a later time (e.g., overnight)
 - Reviewing experiment configurations before execution
 
-### Parallel Execution (v0.5.0+)
+### Parallel Execution
 
 The `--parallel` flag enables parallel execution using multiple workers:
 
@@ -408,6 +409,26 @@ yanex run train.py --tag "new-architecture"
 yanex run train.py --tag "experimental-changes"
 ```
 
+### Cloning Experiment Configurations
+
+Use `--clone-from` to re-run an experiment with the same configuration:
+
+```bash
+# Clone configuration from a previous experiment
+yanex run train.py --clone-from abc123
+
+# Clone and override specific parameters
+yanex run train.py --clone-from abc123 --param learning_rate=0.01
+
+# Clone configuration but use current script version
+yanex run train.py --clone-from abc123
+```
+
+This is useful for:
+- Re-running experiments with slight variations
+- Testing bug fixes with same parameters
+- Comparing different script versions with identical configs
+
 ### Reproducing Experiments with Patches
 
 If an experiment was run with uncommitted changes, you can reproduce it by:
@@ -415,7 +436,6 @@ If an experiment was run with uncommitted changes, you can reproduce it by:
 2. Applying the saved patch: `git apply <experiment_dir>/artifacts/git_diff.patch`
 3. Running the experiment again
 
-*(Note: Future versions will include a `yanex reproduce` command to automate this process)*
 
 
 ---
@@ -423,4 +443,4 @@ If an experiment was run with uncommitted changes, you can reproduce it by:
 **Related:**
 - [Python API Reference](../python-api.md)
 - [Configuration Guide](../configuration.md)
-- [Git Integration](../git-integration.md)
+- [Best Practices - Git Workflow](../best-practices.md#git-workflow-integration)

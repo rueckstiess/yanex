@@ -131,7 +131,7 @@ yanex run script.py --param data.validation_split=0.3
 
 ### Parameter Sweeps
 
-As of v0.6.0, parameter sweeps can be executed immediately without staging, supporting both sequential and parallel execution. Parameter sweeps can be defined via CLI parameters or directly in configuration files.
+Parameter sweeps can be executed immediately with support for both sequential and parallel execution. Parameter sweeps can be defined via CLI parameters or directly in configuration files.
 
 #### CLI Parameter Sweeps
 
@@ -195,7 +195,7 @@ yanex run script.py --config config.yaml --parallel 4
 yanex run script.py --config config.yaml --param "learning_rate=0.001"
 ```
 
-#### Direct Execution (v0.6.0+)
+#### Executing Parameter Sweeps
 
 ```bash
 # Run sweep sequentially
@@ -238,7 +238,6 @@ yanex:
   name: "transformer-experiment"
   tag: ["ml", "transformer", "dev"]
   description: "Training transformer model on text data"
-  ignore_dirty: true
   dry_run: false
   stage: false
 ```
@@ -264,12 +263,20 @@ The `yanex` section supports these `yanex run` parameters:
 
 - `name`: Experiment name
 - `tag`: Tags (single string or list)
-- `description`: Experiment description  
-- `ignore_dirty`: Allow dirty git state (boolean)
+- `description`: Experiment description
 - `dry_run`: Dry run mode (boolean)
 - `stage`: Stage changes before run (boolean)
 
 **Note:** This feature only works with the `yanex run` command - other commands like `list`, `show`, etc. are not affected.
+
+### Git Integration
+
+Yanex automatically captures uncommitted changes as patch files, so there's no need to worry about git state. Each experiment stores:
+- The current commit hash
+- Branch name
+- Uncommitted changes (saved as `artifacts/git_diff.patch`)
+
+See [Best Practices - Git Workflow](best-practices.md#git-workflow-integration) for details.
 
 ## Environment Variables
 

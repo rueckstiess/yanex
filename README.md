@@ -35,12 +35,11 @@ That's it. Yanex creates a separate directory for each experiment, saves the log
 
 - 🔒 **Reproducible**: Automatic Git state tracking ensures every experiment is reproducible
 - 📊 **Interactive Comparison**: Compare experiments side-by-side with an interactive table
-- ⚙️ **Flexible Parameters**: YAML configs with CLI overrides for easy experimentation and syntax for parameter sweeps
-- ⚡ **Parallel Execution**: Run multiple experiments simultaneously on multi-core systems (v0.5.0+)
-- 🚀 **Direct Sweep Execution**: Execute parameter sweeps immediately without staging (v0.6.0+)
+- ⚙️ **Flexible Parameters**: YAML configs with CLI overrides and syntax for parameter sweeps
+- ⚡ **Parallel Execution**: Run multiple experiments simultaneously on multi-core systems
 - 📈 **Rich Logging**: Track metrics, artifacts, and figures
 - 🔍 **Powerful Search**: Find experiments by status, parameters, tags, or time ranges
-- 📦 **Zero Dependencies**: No external services required - works offline
+- 🌐 **Web UI**: Interactive browser-based interface for experiment management
 
 ## Quick Start
 
@@ -110,53 +109,14 @@ yanex show exp_id
 yanex archive --started-before "1 month ago"
 ```
 
-## Two Ways to Use Yanex
+## Programmatic Access
 
-Yanex supports two usage patterns:
+Yanex provides two APIs for working with experiments:
 
-### 1. CLI-First (Recommended)
-Write scripts that work both standalone and with yanex tracking:
+- **[Run API](docs/run-api.md)**: Create and execute experiments programmatically, ideal for k-fold cross-validation, ensemble training, and batch processing
+- **[Results API](docs/results-api.md)**: Query, filter, and analyze completed experiments with pandas integration for advanced analysis
 
-```python
-# train.py - Works both ways!
-import yanex
-
-params = yanex.get_params()  # Gets parameters or defaults
-lr = params.get('learning_rate', 0.001)
-
-# Your training code
-accuracy = train_model(lr=lr)
-
-# Logging works in both contexts
-yanex.log_metrics({"accuracy": accuracy})
-```
-
-```bash
-# Run standalone (no tracking)
-python train.py
-
-# Run with yanex (full tracking)
-yanex run train.py --param learning_rate=0.01
-```
-
-### 2. Explicit Experiment Creation (Advanced)
-For Jupyter notebook usage, or when you need fine control:
-
-```python
-import yanex
-from pathlib import Path
-
-experiment = yanex.create_experiment(script_path=Path(__file__), name="my-exp", config={"lr": 0.01})
-
-with experiment:
-    
-    # Your code here
-    # ...
-
-    yanex.log_metrics({"accuracy": 0.95})
-```
-
-> **Note:** Don't mix both patterns! Use CLI-first for most cases, explicit creation for advanced scenarios.
+See the [examples directory](examples/) for practical demonstrations of both APIs.
 
 
 ## Configuration Files
@@ -181,16 +141,9 @@ training:
 
 ## Parameter Sweeps & Parallel Execution
 
-**New in v0.5.0 & v0.6.0**: Run multiple experiments efficiently with parameter sweeps and parallel execution.
-
-### Direct Sweep Execution (v0.6.0+)
-
-Run parameter sweeps immediately without staging:
+Run parameter sweeps with automatic parallelization:
 
 ```bash
-# Run sweep sequentially (one after another)
-yanex run train.py --param "lr=range(0.01, 0.1, 0.01)"
-
 # Run sweep in parallel with 4 workers
 yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --parallel 4
 
@@ -198,62 +151,29 @@ yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --parallel 4
 yanex run train.py --param "lr=logspace(-4, -1, 10)" --parallel 0
 ```
 
-### Sweep Syntax
-
-Use Python-like syntax for parameter sweeps in both CLI parameters and config files:
-
-**CLI Parameters:**
+**Sweep Syntax:**
 ```bash
+# List of values
+--param "batch_size=16, 32, 64, 128"
+
 # Range: start, stop, step
 --param "lr=range(0.01, 0.1, 0.01)"
 
 # Linspace: start, stop, num_points
 --param "lr=linspace(0.001, 0.1, 10)"
 
-# Logspace: start_exp, stop_exp, num_points
+# Logspace: start_exp, stop_exp, num_points (uses powers of 10)
 --param "lr=logspace(-4, -1, 10)"
 
-# List of values
---param "batch_size=list(16, 32, 64, 128)"
 
-# Multi-parameter sweep (cross-product)
+# Multi-parameter sweep (cartesian product)
 yanex run train.py \
   --param "lr=range(0.01, 0.1, 0.01)" \
-  --param "batch_size=list(32, 64)" \
+  --param "batch_size=32, 64" \
   --parallel 4
 ```
 
-**Config Files:**
-```yaml
-# config.yaml
-learning_rate: "list(0.001, 0.01, 0.1)"
-batch_size: "range(16, 128, 16)"
-dropout: "linspace(0.1, 0.5, 5)"
-```
-
-```bash
-# Run config file sweep
-yanex run train.py --config config.yaml --parallel 4
-```
-
-### Staged Execution (Original Workflow)
-
-Stage experiments first, execute later:
-
-```bash
-# Stage parameter sweep
-yanex run train.py --param "lr=range(0.01, 0.1, 0.01)" --stage
-
-# Execute all staged experiments in parallel
-yanex run --staged --parallel 4
-```
-
-**Benefits:**
-- ⚡ True parallelism using separate processes (bypasses Python GIL)
-- 🎯 Each experiment runs in isolation with separate storage
-- 📊 Progress tracking with completion summary
-- 💪 Ideal for multi-core systems and hyperparameter tuning
-- 🚀 Run multiple independent `yanex run` commands concurrently from different shells (no restrictions)
+See [Configuration Guide](docs/configuration.md#parameter-sweeps) for complete sweep syntax details.
 
 
 ## Documentation
@@ -262,12 +182,16 @@ yanex run --staged --parallel 4
 
 **Quick Links:**
 - [CLI Commands](docs/cli-commands.md) - All yanex commands with examples
-- [Python API](docs/python-api.md) - Complete Python API reference  
-- [Configuration](docs/configuration.md) - Parameter management and config files
 - [Experiment Structure](docs/experiment-structure.md) - Directory layout and file organization
-- [Comparison Tool](docs/compare.md) - Interactive experiment comparison
-- [Best Practices](docs/best-practices.md) - Tips for effective experiment tracking
+- [Configuration](docs/configuration.md) - Parameter management and config files
+- [Run API](docs/run-api.md) - Programmatic experiment execution
+- [Results API](docs/results-api.md) - Querying and analyzing experiment results
 
+## Examples
+
+- **[CLI Examples](examples/cli/)** - Main use case: Dual-mode scripts that work standalone or with yanex tracking
+- **[Run API Examples](examples/run-api/)** - Programmatic experiment creation for advanced patterns like k-fold cross-validation and batch processing
+- **[Results API Examples](examples/results-api/)** - Querying and analyzing completed experiments with pandas integration
 
 ## Contributing
 
