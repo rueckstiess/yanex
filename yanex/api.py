@@ -229,6 +229,19 @@ def get_experiment_dir() -> Path | None:
     return manager.storage.get_experiment_directory(experiment_id)
 
 
+def get_artifacts_dir() -> Path | None:
+    """Get absolute path to current experiment's artifacts directory.
+
+    Returns:
+        Path to artifacts directory, or None in standalone mode
+    """
+    exp_dir = get_experiment_dir()
+    if exp_dir is None:
+        return None
+
+    return exp_dir / "artifacts"
+
+
 def get_metadata() -> dict[str, Any]:
     """Get complete experiment metadata.
 

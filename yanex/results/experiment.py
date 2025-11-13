@@ -145,6 +145,11 @@ class Experiment:
             self._experiment_id, include_archived=self.archived
         )
 
+    @property
+    def artifacts_dir(self) -> Path:
+        """Get artifacts directory path."""
+        return self.experiment_dir / "artifacts"
+
     def get_params(self) -> dict[str, Any]:
         """
         Get all experiment parameters.
@@ -275,10 +280,7 @@ class Experiment:
             List of paths to experiment artifacts
         """
         try:
-            exp_dir = self._manager.storage.get_experiment_directory(
-                self._experiment_id, include_archived=self.archived
-            )
-            artifacts_dir = exp_dir / "artifacts"
+            artifacts_dir = self.artifacts_dir
 
             if not artifacts_dir.exists():
                 return []
