@@ -17,7 +17,7 @@ epochs = yanex.get_param('epochs', default=10)
 # ...
 
 # log results, artifacts and figures
-yanex.log_metrics({"step": epoch, "loss": loss, "accuracy": accuracy})
+yanex.log_metrics({"loss": loss, "accuracy": accuracy}, step=epoch)
 yanex.log_artifact("model.pth", model_path)
 yanex.log_matplotlib_figure(fig, "loss_curve.png")
 ```
