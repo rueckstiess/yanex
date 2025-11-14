@@ -7,7 +7,15 @@ including metadata access, data retrieval, and metadata updates.
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import pandas as pd
+else:
+    # Create a dummy for runtime
+    class pd:
+        DataFrame = "pd.DataFrame"
+
 
 from ..core.manager import ExperimentManager
 from ..utils.datetime_utils import parse_iso_timestamp
@@ -195,18 +203,36 @@ class Experiment:
             return params.get(key, default)
 
     def get_metrics(
-        self, step: int | None = None
-    ) -> list[dict[str, Any]] | dict[str, Any]:
+        self, step: int | None = None, as_dataframe: bool = True
+    ) -> "list[dict[str, Any]] | dict[str, Any] | pd.DataFrame":
         """
         Get experiment metrics.
 
         Args:
-            step: Optional step number. If provided, returns the metrics dict for that step.
-                  If None, returns the entire list of metrics.
+            step: Optional step number. If provided, returns the metrics for that step only.
+            as_dataframe: If True (default), return DataFrame. If False, return list/dict.
 
         Returns:
-            List of metric dictionaries if step is None,
-            or a single dictionary for the specified step
+            - If as_dataframe=True and step=None: DataFrame with step as index, metrics as columns
+            - If as_dataframe=True and step=N: DataFrame with single row for that step
+            - If as_dataframe=False and step=None: List of metric dictionaries
+            - If as_dataframe=False and step=N: Single dictionary for that step
+
+        Examples:
+            >>> # Get as DataFrame (default)
+            >>> df = exp.get_metrics()
+            >>> df.plot(y='train_accuracy')
+            >>>
+            >>> # Get as list of dicts
+            >>> metrics = exp.get_metrics(as_dataframe=False)
+            >>> for m in metrics:
+            ...     print(m['train_loss'])
+            >>>
+            >>> # Get specific step as DataFrame
+            >>> df_step_5 = exp.get_metrics(step=5)
+            >>>
+            >>> # Get specific step as dict
+            >>> step_5 = exp.get_metrics(step=5, as_dataframe=False)
         """
         if self._cached_metrics is None:
             try:
@@ -229,18 +255,59 @@ class Experiment:
         # Ensure we have a list
         cached = self._cached_metrics if isinstance(self._cached_metrics, list) else []
 
+        # Get data as list/dict first
         if step is not None:
             # Return metrics for specific step
+            data = {}
             for entry in cached:
                 if isinstance(entry, dict) and entry.get("step") == step:
-                    return entry.copy()
-            # Step not found, return empty dict
-            return {}
+                    data = entry.copy()
+                    break
         else:
             # Return entire list
-            return [
+            data = [
                 entry.copy() if isinstance(entry, dict) else entry for entry in cached
             ]
+
+        # Convert to DataFrame if requested
+        if as_dataframe:
+            try:
+                import pandas as pd
+            except ImportError:
+                raise ImportError(
+                    "pandas is required for DataFrame functionality. "
+                    "Install it with: pip install pandas"
+                )
+
+            if step is not None:
+                # Single step: return DataFrame with one row
+                if data:
+                    df = pd.DataFrame([data])
+                    if "step" in df.columns:
+                        df = df.set_index("step")
+                    return df
+                else:
+                    # Empty step: return empty DataFrame
+                    return pd.DataFrame()
+            else:
+                # All steps: return DataFrame with step as index
+                if data:
+                    df = pd.DataFrame(data)
+                    if "step" in df.columns:
+                        df = df.set_index("step")
+                    # Convert numeric columns
+                    for col in df.columns:
+                        try:
+                            df[col] = pd.to_numeric(df[col])
+                        except (ValueError, TypeError):
+                            pass  # Keep as-is if not numeric
+                    return df
+                else:
+                    # Empty metrics: return empty DataFrame
+                    return pd.DataFrame()
+        else:
+            # Return raw data (list or dict)
+            return data
 
     def get_metric(self, name: str) -> Any | None:
         """
@@ -253,7 +320,8 @@ class Experiment:
             Single value if there's only one step, list of values if multiple steps,
             or None if metric not found
         """
-        metrics = self.get_metrics()
+        # Get metrics as list for backward compatibility
+        metrics = self.get_metrics(as_dataframe=False)
         if not metrics:
             return None
 
@@ -441,7 +509,7 @@ class Experiment:
             "script_path": str(self.script_path) if self.script_path else None,
             "archived": self.archived,
             "params": self.get_params(),
-            "metrics": self.get_metrics(),
+            "metrics": self.get_metrics(as_dataframe=False),
             "artifacts": [str(p) for p in self.get_artifacts()],
             "script_runs": self.get_script_runs(),
         }

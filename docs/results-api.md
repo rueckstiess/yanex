@@ -162,6 +162,73 @@ params_df = df.xs("param", axis=1, level=0)  # All parameters
 **Raises:**
 - `ImportError`: If pandas is not available
 
+#### `yanex.results.get_metrics(metrics=None, include_params='auto', as_dataframe=True, **filters)`
+
+Get time-series metrics from multiple experiments in long (tidy) format, optimized for visualization with matplotlib and pandas.
+
+```python
+# Get all metrics for visualization
+df = yr.get_metrics(tags=["training"])
+print(df.columns)  # ['experiment_id', 'step', 'metric_name', 'value', 'learning_rate', ...]
+
+# Filter specific metrics
+df = yr.get_metrics(tags=["training"], metrics=["train_loss", "val_loss"])
+
+# Plot with matplotlib groupby
+import matplotlib.pyplot as plt
+for lr, group in df[df.metric_name == "train_loss"].groupby("learning_rate"):
+    plt.plot(group.step, group.value, label=f"lr={lr}")
+plt.legend()
+plt.show()
+
+# Control parameter inclusion
+df = yr.get_metrics(tags=["training"], include_params="all")     # All params
+df = yr.get_metrics(tags=["training"], include_params="none")    # No params
+df = yr.get_metrics(tags=["training"], include_params=["lr"])    # Specific params
+```
+
+**Parameters:**
+- `metrics` (str | list[str], optional): Metric name(s) to include. If None, includes all metrics.
+- `include_params` (str | list[str], default='auto'):
+  - `'auto'`: Include only parameters that vary across experiments (default)
+  - `'all'`: Include all parameters
+  - `'none'`: Include no parameters
+  - `list[str]`: Include specific parameter names
+- `as_dataframe` (bool, default=True): Return as pandas DataFrame (long format) or dict
+- `**filters`: Filter arguments to select experiments
+
+**Returns:**
+- `pandas.DataFrame` (default): Long-format DataFrame with columns:
+  - `experiment_id`: Experiment ID
+  - `step`: Metric step/iteration number
+  - `metric_name`: Name of the metric
+  - `value`: Metric value
+  - `<param_cols>`: Parameter columns (based on `include_params`)
+- `dict[str, list[dict]]` (if `as_dataframe=False`): Experiment ID → metrics list
+
+**Use Cases:**
+- **Time-series visualization**: Plot metric progression across experiments
+- **Hyperparameter comparison**: Group by parameters to compare training curves
+- **Statistical analysis**: Calculate aggregates (mean, std) across runs
+- **Grid search analysis**: Visualize all parameter combinations
+
+**Example - Compare learning rates:**
+```python
+df = yr.get_metrics(tags=["sweep"], metrics="train_loss")
+for lr, group in df.groupby("learning_rate"):
+    plt.plot(group.step, group.value, label=f"lr={lr}")
+```
+
+**Example - Final accuracy by epoch length:**
+```python
+df = yr.get_metrics(tags=["sweep"], metrics="accuracy")
+final = df.loc[df.groupby("experiment_id")["step"].idxmax()]
+plt.boxplot([final[final.epochs == e]["value"] for e in [10, 20, 30]])
+```
+
+**Raises:**
+- `ImportError`: If pandas is not available and `as_dataframe=True`
+
 ### Utility Functions
 
 #### `yanex.results.get_experiment_count(**filters)`

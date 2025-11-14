@@ -373,3 +373,131 @@ def find_best_experiments(
     sorted_df = filtered_df.sort_values(metric_col, ascending=not maximize)
 
     return sorted_df.head(top_n)
+
+
+def determine_varying_params(experiments: list) -> list[str]:
+    """
+    Determine which parameters vary across experiments.
+
+    Args:
+        experiments: List of Experiment objects
+
+    Returns:
+        List of parameter names that have different values across experiments
+
+    Examples:
+        >>> varying = determine_varying_params(experiments)
+        >>> print(varying)  # ['lr', 'batch_size'] if only these vary
+    """
+    if not experiments:
+        return []
+
+    # Collect all params from all experiments
+    all_params: dict[str, set[str]] = {}
+    for exp in experiments:
+        params = exp.get_params()
+        for key, value in params.items():
+            if key not in all_params:
+                all_params[key] = set()
+            # Convert to string for comparison (handles different types)
+            all_params[key].add(str(value))
+
+    # Return only params with >1 unique value
+    return [key for key, values in all_params.items() if len(values) > 1]
+
+
+def metrics_to_long_dataframe(
+    experiments: list,
+    metrics: list[str] | None = None,
+    param_cols: list[str] | None = None,
+) -> pd.DataFrame:
+    """
+    Convert experiment metrics to long (tidy) format DataFrame.
+
+    Args:
+        experiments: List of Experiment objects
+        metrics: List of metric names to include (None for all)
+        param_cols: List of parameter names to include as columns (None for none)
+
+    Returns:
+        DataFrame with columns: [experiment_id, step, metric_name, value, <params...>]
+
+    Examples:
+        >>> df = metrics_to_long_dataframe(experiments, metrics=['train_loss'], param_cols=['lr'])
+        >>> print(df.columns)  # ['experiment_id', 'step', 'metric_name', 'value', 'lr']
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError(
+            "pandas is required for DataFrame functionality. Install it with: pip install pandas"
+        )
+
+    if not experiments:
+        # Return empty DataFrame with expected structure
+        columns = ["experiment_id", "step", "metric_name", "value"]
+        if param_cols:
+            columns.extend(param_cols)
+        return pd.DataFrame(columns=columns)
+
+    rows = []
+
+    for exp in experiments:
+        exp_id = exp.id
+        exp_metrics = exp.get_metrics(as_dataframe=False)  # Returns list[dict]
+
+        # Get params for this experiment (constant across all steps)
+        exp_params = exp.get_params() if param_cols else {}
+
+        # Process each step
+        for step_data in exp_metrics:
+            step = step_data.get("step")
+
+            # Extract each metric as a separate row
+            for metric_name, metric_value in step_data.items():
+                # Skip non-metric fields
+                if metric_name in ["step", "timestamp", "last_updated"]:
+                    continue
+
+                # Filter to requested metrics if specified
+                if metrics is not None and metric_name not in metrics:
+                    continue
+
+                # Build row
+                row = {
+                    "experiment_id": exp_id,
+                    "step": step,
+                    "metric_name": metric_name,
+                    "value": metric_value,
+                }
+
+                # Add param columns
+                if param_cols:
+                    for param_name in param_cols:
+                        row[param_name] = exp_params.get(param_name)
+
+                rows.append(row)
+
+    # Create DataFrame
+    df = pd.DataFrame(rows)
+
+    # Optimize data types
+    if not df.empty:
+        # Convert step to int if possible
+        if "step" in df.columns:
+            df["step"] = pd.to_numeric(df["step"], errors="coerce")
+
+        # Convert value to numeric if possible
+        if "value" in df.columns:
+            df["value"] = pd.to_numeric(df["value"], errors="coerce")
+
+        # Convert param columns to numeric where possible
+        if param_cols:
+            for param_col in param_cols:
+                if param_col in df.columns:
+                    try:
+                        df[param_col] = pd.to_numeric(df[param_col])
+                    except (ValueError, TypeError):
+                        pass  # Keep as object if not numeric
+
+    return df

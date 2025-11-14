@@ -7,7 +7,7 @@ for experiment filtering, comparison, and bulk operations.
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -187,6 +187,112 @@ class ResultsManager:
 
         return experiments_to_dataframe(comparison_data)
 
+    def get_metrics(
+        self,
+        *,
+        metrics: str | list[str] | None = None,
+        include_params: list[str] | Literal["auto", "all", "none"] = "auto",
+        as_dataframe: bool = True,
+        **filters,
+    ) -> "pd.DataFrame | dict[str, list[dict]]":
+        """
+        Get time-series metrics from multiple experiments.
+
+        By default, returns long format (tidy data) with parameter columns included,
+        optimized for visualization and grouping by hyperparameters.
+
+        Args:
+            metrics: Which metrics to include:
+                - None: All metrics (default)
+                - str: Single metric name
+                - list[str]: List of specific metric names
+            include_params: Which parameter columns to include:
+                - 'auto' (default): Include only parameters that vary across experiments
+                - 'all': Include all parameters
+                - 'none': No parameter columns
+                - list[str]: Include only specified parameters
+            as_dataframe: If True, return DataFrame. If False, return dict.
+            **filters: Filter arguments to select experiments (same as get_experiments)
+
+        Returns:
+            DataFrame with columns: [experiment_id, step, metric_name, value, <params...>]
+            or dict[str, list[dict]] mapping experiment_id to metrics list
+
+        Raises:
+            ImportError: If pandas is not available and as_dataframe=True
+
+        Examples:
+            >>> manager = ResultsManager()
+            >>> # Get all metrics with auto param detection
+            >>> df = manager.get_metrics(tags=['sweep'])
+            >>> df_loss = df[df.metric_name == 'train_loss']
+            >>> # Plot by learning rate
+            >>> for lr, group in df_loss.groupby('lr'):
+            ...     plt.plot(group.step, group.value, label=f'lr={lr}')
+            >>> # Get specific metric only
+            >>> df = manager.get_metrics(tags=['training'], metrics='train_loss')
+            >>> # Include all params
+            >>> df = manager.get_metrics(tags=['sweep'], include_params='all')
+            >>> # No params
+            >>> df = manager.get_metrics(tags=['sweep'], include_params='none')
+            >>> # Dict format
+            >>> data = manager.get_metrics(tags=['training'], as_dataframe=False)
+        """
+        # Normalize metrics to list
+        if isinstance(metrics, str):
+            metrics_list = [metrics]
+        else:
+            metrics_list = metrics
+
+        # Get experiment objects matching filters
+        experiments = self.get_experiments(**filters)
+
+        if not experiments:
+            if as_dataframe:
+                try:
+                    import pandas as pd
+                except ImportError:
+                    raise ImportError(
+                        "pandas is required for DataFrame functionality. "
+                        "Install it with: pip install pandas"
+                    )
+                # Return empty DataFrame with expected structure
+                columns = ["experiment_id", "step", "metric_name", "value"]
+                return pd.DataFrame(columns=columns)
+            else:
+                return {}
+
+        # Return dict format if requested
+        if not as_dataframe:
+            result = {}
+            for exp in experiments:
+                result[exp.id] = exp.get_metrics(as_dataframe=False)
+            return result
+
+        # Determine which params to include
+        if include_params == "auto":
+            from .dataframe import determine_varying_params
+
+            param_cols = determine_varying_params(experiments)
+        elif include_params == "all":
+            # Get all params from first experiment
+            if experiments:
+                param_cols = list(experiments[0].get_params().keys())
+            else:
+                param_cols = []
+        elif include_params == "none":
+            param_cols = []
+        else:
+            # Specific list provided
+            param_cols = include_params
+
+        # Convert to long format DataFrame
+        from .dataframe import metrics_to_long_dataframe
+
+        return metrics_to_long_dataframe(
+            experiments=experiments, metrics=metrics_list, param_cols=param_cols
+        )
+
     def get_latest(self, **filters) -> Experiment | None:
         """
         Get the most recently created experiment matching filters.
@@ -242,7 +348,7 @@ class ResultsManager:
 
         for exp in experiments:
             # Get the latest metric value from the list of metrics
-            metrics = exp.get_metrics()
+            metrics = exp.get_metrics(as_dataframe=False)
             value = None
 
             if isinstance(metrics, list):

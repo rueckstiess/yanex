@@ -153,30 +153,31 @@ class TestExperiment:
 
     def test_get_metrics(self, manager, sample_experiment):
         """Test metrics access."""
+        import pandas as pd
+
         exp = Experiment(sample_experiment, manager)
 
-        # Should return a list by default
+        # Should return a DataFrame by default (new behavior)
         metrics = exp.get_metrics()
-        assert isinstance(metrics, list)
+        assert isinstance(metrics, pd.DataFrame)
         assert len(metrics) > 0
 
-        # The last entry should contain our test data
-        latest_metrics = metrics[-1]
-        assert latest_metrics["accuracy"] == 0.95
-        assert latest_metrics["loss"] == 0.05
-        assert latest_metrics["step"] == 0  # add_result_step starts from 0
+        # Check the DataFrame contains expected metrics
+        assert "accuracy" in metrics.columns
+        assert "loss" in metrics.columns
+        assert metrics.loc[0, "accuracy"] == 0.95
+        assert metrics.loc[0, "loss"] == 0.05
 
-        # Test specific step access
+        # Test specific step access as DataFrame
         step_0_metrics = exp.get_metrics(step=0)
-        assert isinstance(step_0_metrics, dict)
-        assert step_0_metrics["accuracy"] == 0.95
-        assert step_0_metrics["loss"] == 0.05
-        assert step_0_metrics["step"] == 0
+        assert isinstance(step_0_metrics, pd.DataFrame)
+        assert step_0_metrics.loc[0, "accuracy"] == 0.95
+        assert step_0_metrics.loc[0, "loss"] == 0.05
 
         # Test nonexistent step
         nonexistent_metrics = exp.get_metrics(step=999)
-        assert isinstance(nonexistent_metrics, dict)
-        assert nonexistent_metrics == {}
+        assert isinstance(nonexistent_metrics, pd.DataFrame)
+        assert nonexistent_metrics.empty
 
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
@@ -205,13 +206,11 @@ class TestExperiment:
         )
 
         exp = Experiment(exp_id, manager)
-        metrics = exp.get_metrics()
 
-        # Should return the entire list
+        # Test list format (explicit as_dataframe=False)
+        metrics = exp.get_metrics(as_dataframe=False)
         assert isinstance(metrics, list)
         assert len(metrics) == 3
-
-        # Verify all entries are present
         assert metrics[0]["accuracy"] == 0.8
         assert metrics[0]["epoch"] == 1
         assert metrics[0]["step"] == 0
@@ -229,15 +228,15 @@ class TestExperiment:
             assert "timestamp" in entry
             assert "step" in entry
 
-        # Test step-specific access
-        step_1_metrics = exp.get_metrics(step=1)
+        # Test step-specific access (as dict)
+        step_1_metrics = exp.get_metrics(step=1, as_dataframe=False)
         assert isinstance(step_1_metrics, dict)
         assert step_1_metrics["accuracy"] == 0.85
         assert step_1_metrics["epoch"] == 2
         assert step_1_metrics["step"] == 1
 
-        # Test nonexistent step
-        empty_metrics = exp.get_metrics(step=999)
+        # Test nonexistent step (as dict)
+        empty_metrics = exp.get_metrics(step=999, as_dataframe=False)
         assert isinstance(empty_metrics, dict)
         assert empty_metrics == {}
 
@@ -374,9 +373,17 @@ class TestExperiment:
 
         exp = Experiment(exp_id, manager)
 
-        # Should return empty list, not fail
-        assert exp.get_metrics() == []
-        assert exp.get_metrics(step=0) == {}
+        # Should return empty DataFrame by default, not fail
+        metrics_df = exp.get_metrics()
+        assert metrics_df.empty
+
+        # Should return empty DataFrame for specific step
+        step_0_df = exp.get_metrics(step=0)
+        assert step_0_df.empty
+
+        # Should return empty list/dict with as_dataframe=False
+        assert exp.get_metrics(as_dataframe=False) == []
+        assert exp.get_metrics(step=0, as_dataframe=False) == {}
 
     def test_get_metric(self, manager, sample_experiment):
         """Test getting a specific metric."""
