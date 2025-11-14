@@ -26,7 +26,7 @@ Example usage:
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -239,6 +239,110 @@ def compare(
     )
 
 
+def get_metrics(
+    *,
+    metrics: str | list[str] | None = None,
+    include_params: list[str] | Literal["auto", "all", "none"] = "auto",
+    as_dataframe: bool = True,
+    **filters,
+) -> "pd.DataFrame | dict[str, list[dict]]":
+    """
+    Get time-series metrics from multiple experiments in long (tidy) format.
+
+    Returns a DataFrame optimized for visualization and analysis with matplotlib,
+    seaborn, or plotly.
+
+    Args:
+        metrics: Which metrics to include:
+            - None: All metrics (default)
+            - str: Single metric name
+            - list[str]: List of specific metric names
+        include_params: Which parameter columns to include:
+            - 'auto' (default): Include only parameters that vary across experiments
+            - 'all': Include all parameters
+            - 'none': No parameter columns
+            - list[str]: Include only specified parameters
+        as_dataframe: If True (default), return DataFrame. If False, return dict.
+        **filters: Filter arguments to select experiments (same as get_experiments)
+
+    Returns:
+        DataFrame with columns: [experiment_id, step, metric_name, value, <params...>]
+        or dict[str, list[dict]] mapping experiment_id to metrics list
+
+    Raises:
+        ImportError: If pandas is not available and as_dataframe=True
+
+    Examples:
+        Basic usage with matplotlib:
+
+        >>> import yanex.results as yr
+        >>> import matplotlib.pyplot as plt
+        >>>
+        >>> # Get metrics for all experiments with a tag
+        >>> df = yr.get_metrics(tags=['sweep'])
+        >>> df_loss = df[df.metric_name == 'train_loss']
+        >>>
+        >>> # Plot grouped by learning rate
+        >>> for lr, group in df_loss.groupby('lr'):
+        ...     plt.plot(group.step, group.value, label=f'lr={lr}')
+        >>> plt.legend()
+
+        Multiple metrics with subplots:
+
+        >>> df = yr.get_metrics(tags=['training'])
+        >>> fig, (ax1, ax2) = plt.subplots(2, 1)
+        >>>
+        >>> # Plot loss
+        >>> df_loss = df[df.metric_name == 'train_loss']
+        >>> for lr, group in df_loss.groupby('lr'):
+        ...     ax1.plot(group.step, group.value, label=f'lr={lr}')
+        >>> ax1.set_ylabel('Loss')
+        >>> ax1.legend()
+        >>>
+        >>> # Plot accuracy
+        >>> df_acc = df[df.metric_name == 'train_accuracy']
+        >>> for lr, group in df_acc.groupby('lr'):
+        ...     ax2.plot(group.step, group.value, label=f'lr={lr}')
+        >>> ax2.set_ylabel('Accuracy')
+        >>> ax2.legend()
+
+        Get specific metric only:
+
+        >>> df = yr.get_metrics(tags=['training'], metrics='train_loss')
+        >>> # Only train_loss rows
+
+        Control parameter inclusion:
+
+        >>> # Only varying params (default)
+        >>> df = yr.get_metrics(tags=['sweep'])
+        >>>
+        >>> # All params
+        >>> df = yr.get_metrics(tags=['sweep'], include_params='all')
+        >>>
+        >>> # No params
+        >>> df = yr.get_metrics(tags=['sweep'], include_params='none')
+        >>>
+        >>> # Specific params
+        >>> df = yr.get_metrics(tags=['sweep'], include_params=['lr', 'epochs'])
+
+        Get raw dict format:
+
+        >>> data = yr.get_metrics(tags=['training'], as_dataframe=False)
+        >>> for exp_id, metrics in data.items():
+        ...     print(f"{exp_id}: {len(metrics)} steps")
+
+    See Also:
+        compare: Compare final metric values across experiments (wide format)
+        get_experiments: Get experiment objects for custom processing
+    """
+    return _get_manager().get_metrics(
+        metrics=metrics,
+        include_params=include_params,
+        as_dataframe=as_dataframe,
+        **filters,
+    )
+
+
 # Bulk operations
 def archive_experiments(**filters) -> int:
     """
@@ -399,6 +503,7 @@ __all__ = [
     "list_experiments",
     # Comparison and DataFrames
     "compare",
+    "get_metrics",
     # Bulk operations
     "archive_experiments",
     "delete_experiments",

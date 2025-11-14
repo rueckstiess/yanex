@@ -168,7 +168,7 @@ class TestResultsAPIIntegration:
             # Test get_best()
             best_accuracy = yr.get_best("accuracy", maximize=True)
             assert best_accuracy is not None
-            metrics = best_accuracy.get_metrics()
+            metrics = best_accuracy.get_metrics(as_dataframe=False)
             accuracy_value = None
             if metrics:
                 for entry in reversed(metrics):
@@ -224,7 +224,7 @@ class TestResultsAPIIntegration:
             for exp in training_objects:
                 lr = exp.get_param("learning_rate")
                 # Get accuracy from the latest metrics entry
-                metrics = exp.get_metrics()
+                metrics = exp.get_metrics(as_dataframe=False)
                 acc = None
                 if metrics:
                     for entry in reversed(metrics):
@@ -448,6 +448,102 @@ class TestResultsAPIIntegration:
             # Test limiting
             limited = yr.find(tags=["performance_test"], limit=5)
             assert len(limited) == 5
+
+        finally:
+            yr._default_manager = None
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_api(
+        self, mock_capture_env, mock_git_info, custom_manager, experiment_manager
+    ):
+        """Test the yr.get_metrics() public API function."""
+        import pandas as pd
+
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        yr._default_manager = custom_manager
+
+        try:
+            # Create experiments with multi-step metrics
+            exp1_id = experiment_manager.create_experiment(
+                script_path=Path("train.py"),
+                config={"lr": 0.01, "epochs": 10},
+                tags=["api-test", "unit-tests"],
+            )
+            experiment_manager.start_experiment(exp1_id)
+            experiment_manager.storage.add_result_step(
+                exp1_id, {"train_loss": 0.5, "train_acc": 0.8}
+            )
+            experiment_manager.storage.add_result_step(
+                exp1_id, {"train_loss": 0.4, "train_acc": 0.85}
+            )
+            experiment_manager.complete_experiment(exp1_id)
+
+            exp2_id = experiment_manager.create_experiment(
+                script_path=Path("train.py"),
+                config={"lr": 0.001, "epochs": 10},
+                tags=["api-test", "unit-tests"],
+            )
+            experiment_manager.start_experiment(exp2_id)
+            experiment_manager.storage.add_result_step(
+                exp2_id, {"train_loss": 0.6, "train_acc": 0.75}
+            )
+            experiment_manager.storage.add_result_step(
+                exp2_id, {"train_loss": 0.5, "train_acc": 0.8}
+            )
+            experiment_manager.complete_experiment(exp2_id)
+
+            # Test basic usage
+            df = yr.get_metrics(tags=["api-test"])
+
+            assert isinstance(df, pd.DataFrame)
+            assert "experiment_id" in df.columns
+            assert "step" in df.columns
+            assert "metric_name" in df.columns
+            assert "value" in df.columns
+            assert "lr" in df.columns  # Auto-detected varying param
+            assert "epochs" not in df.columns  # Not varying
+
+            # Test filtering metrics
+            df_loss = yr.get_metrics(tags=["api-test"], metrics="train_loss")
+            assert len(df_loss) == 4  # 2 experiments × 2 steps
+            assert set(df_loss["metric_name"].unique()) == {"train_loss"}
+
+            # Test include_params modes
+            df_all = yr.get_metrics(tags=["api-test"], include_params="all")
+            assert "lr" in df_all.columns
+            assert "epochs" in df_all.columns
+
+            df_none = yr.get_metrics(tags=["api-test"], include_params="none")
+            assert "lr" not in df_none.columns
+            assert "epochs" not in df_none.columns
+
+            # Test dict format
+            result_dict = yr.get_metrics(tags=["api-test"], as_dataframe=False)
+            assert isinstance(result_dict, dict)
+            assert exp1_id in result_dict
+            assert exp2_id in result_dict
+
+        finally:
+            yr._default_manager = None
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_empty(self, mock_capture_env, mock_git_info, custom_manager):
+        """Test yr.get_metrics() with no matching experiments."""
+        import pandas as pd
+
+        yr._default_manager = custom_manager
+
+        try:
+            df = yr.get_metrics(tags=["nonexistent-tag"])
+
+            assert isinstance(df, pd.DataFrame)
+            assert len(df) == 0
+            assert "experiment_id" in df.columns
 
         finally:
             yr._default_manager = None

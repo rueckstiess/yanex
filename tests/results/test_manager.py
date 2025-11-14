@@ -347,3 +347,237 @@ class TestResultsManager:
         # get_best with no matches (using valid filter)
         best_none = manager.get_best("nonexistent_metric", status="completed")
         assert best_none is None
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_basic(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test basic get_metrics functionality."""
+        import pandas as pd
+
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiments with multi-step metrics
+        exp1_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"lr": 0.01, "epochs": 10},
+            tags=["metrics-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp1_id)
+        experiment_manager.storage.add_result_step(
+            exp1_id, {"train_loss": 0.5, "train_acc": 0.8}
+        )
+        experiment_manager.storage.add_result_step(
+            exp1_id, {"train_loss": 0.4, "train_acc": 0.85}
+        )
+        experiment_manager.complete_experiment(exp1_id)
+
+        exp2_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"lr": 0.001, "epochs": 10},
+            tags=["metrics-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp2_id)
+        experiment_manager.storage.add_result_step(
+            exp2_id, {"train_loss": 0.6, "train_acc": 0.75}
+        )
+        experiment_manager.storage.add_result_step(
+            exp2_id, {"train_loss": 0.5, "train_acc": 0.8}
+        )
+        experiment_manager.complete_experiment(exp2_id)
+
+        # Get metrics (default: long format, auto params)
+        df = manager.get_metrics(tags=["metrics-test"])
+
+        assert isinstance(df, pd.DataFrame)
+        assert "experiment_id" in df.columns
+        assert "step" in df.columns
+        assert "metric_name" in df.columns
+        assert "value" in df.columns
+        # lr varies, epochs does not
+        assert "lr" in df.columns
+        assert "epochs" not in df.columns
+
+        # Check data
+        assert len(df) == 8  # 2 experiments × 2 metrics × 2 steps
+        assert set(df["experiment_id"].unique()) == {exp1_id, exp2_id}
+        assert set(df["metric_name"].unique()) == {"train_loss", "train_acc"}
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_filter_metrics(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test filtering specific metrics."""
+
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiment
+        exp_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"lr": 0.01},
+            tags=["filter-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp_id)
+        experiment_manager.storage.add_result_step(
+            exp_id, {"train_loss": 0.5, "train_acc": 0.8, "val_loss": 0.6}
+        )
+        experiment_manager.complete_experiment(exp_id)
+
+        # Get only train_loss
+        df = manager.get_metrics(tags=["filter-test"], metrics="train_loss")
+
+        assert len(df) == 1
+        assert df["metric_name"].unique()[0] == "train_loss"
+
+        # Get train_loss and val_loss
+        df = manager.get_metrics(
+            tags=["filter-test"], metrics=["train_loss", "val_loss"]
+        )
+
+        assert len(df) == 2
+        assert set(df["metric_name"].unique()) == {"train_loss", "val_loss"}
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_include_params_modes(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test different include_params modes."""
+
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiments
+        exp1_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"lr": 0.01, "epochs": 10, "batch_size": 32},
+            tags=["params-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp1_id)
+        experiment_manager.storage.add_result_step(exp1_id, {"loss": 0.5})
+        experiment_manager.complete_experiment(exp1_id)
+
+        exp2_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"lr": 0.001, "epochs": 10, "batch_size": 32},
+            tags=["params-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp2_id)
+        experiment_manager.storage.add_result_step(exp2_id, {"loss": 0.6})
+        experiment_manager.complete_experiment(exp2_id)
+
+        # Test include_params='auto' (default - only varying)
+        df_auto = manager.get_metrics(tags=["params-test"], include_params="auto")
+        assert "lr" in df_auto.columns  # varies
+        assert "epochs" not in df_auto.columns  # does not vary
+        assert "batch_size" not in df_auto.columns  # does not vary
+
+        # Test include_params='all'
+        df_all = manager.get_metrics(tags=["params-test"], include_params="all")
+        assert "lr" in df_all.columns
+        assert "epochs" in df_all.columns
+        assert "batch_size" in df_all.columns
+
+        # Test include_params='none'
+        df_none = manager.get_metrics(tags=["params-test"], include_params="none")
+        assert "lr" not in df_none.columns
+        assert "epochs" not in df_none.columns
+        assert "batch_size" not in df_none.columns
+
+        # Test include_params with list
+        df_list = manager.get_metrics(
+            tags=["params-test"], include_params=["lr", "batch_size"]
+        )
+        assert "lr" in df_list.columns
+        assert "batch_size" in df_list.columns
+        assert "epochs" not in df_list.columns
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_dict_format(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test getting metrics in dict format (as_dataframe=False)."""
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiment
+        exp_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"lr": 0.01},
+            tags=["dict-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp_id)
+        experiment_manager.storage.add_result_step(exp_id, {"loss": 0.5})
+        experiment_manager.complete_experiment(exp_id)
+
+        # Get as dict
+        result = manager.get_metrics(tags=["dict-test"], as_dataframe=False)
+
+        assert isinstance(result, dict)
+        assert exp_id in result
+        assert isinstance(result[exp_id], list)
+        assert len(result[exp_id]) == 1
+        assert "loss" in result[exp_id][0]
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_empty_results(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test get_metrics with no matching experiments."""
+        import pandas as pd
+
+        df = manager.get_metrics(tags=["nonexistent-tag"])
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 0
+        assert "experiment_id" in df.columns
+        assert "step" in df.columns
+        assert "metric_name" in df.columns
+        assert "value" in df.columns
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_with_status_filter(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test filtering experiments by status."""
+
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create completed experiment
+        exp1_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"lr": 0.01},
+            tags=["status-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp1_id)
+        experiment_manager.storage.add_result_step(exp1_id, {"loss": 0.5})
+        experiment_manager.complete_experiment(exp1_id)
+
+        # Create failed experiment
+        exp2_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"lr": 0.001},
+            tags=["status-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp2_id)
+        experiment_manager.storage.add_result_step(exp2_id, {"loss": 0.6})
+        experiment_manager.fail_experiment(exp2_id, "Test failure")
+
+        # Get only completed
+        df = manager.get_metrics(tags=["status-test"], status="completed")
+
+        assert len(df) == 1
+        assert df["experiment_id"].unique()[0] == exp1_id

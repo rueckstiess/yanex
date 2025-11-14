@@ -9,12 +9,14 @@ import pytest
 
 from yanex.results.dataframe import (
     correlation_analysis,
+    determine_varying_params,
     experiments_to_dataframe,
     find_best_experiments,
     flatten_dataframe_columns,
     format_dataframe_for_analysis,
     get_metric_summary,
     get_parameter_summary,
+    metrics_to_long_dataframe,
 )
 
 
@@ -433,3 +435,268 @@ class TestFindBestExperiments:
 # Note: export_comparison_summary tests are intentionally omitted
 # Excel export is optional convenience functionality that requires openpyxl
 # Core DataFrame API functionality is tested above
+
+
+class TestDetermineVaryingParams:
+    """Test determine_varying_params function."""
+
+    def test_all_params_same(self):
+        """Test when all parameters are the same across experiments."""
+        from unittest.mock import Mock
+
+        exp1 = Mock()
+        exp1.get_params.return_value = {"lr": 0.01, "batch_size": 32, "epochs": 10}
+        exp2 = Mock()
+        exp2.get_params.return_value = {"lr": 0.01, "batch_size": 32, "epochs": 10}
+        exp3 = Mock()
+        exp3.get_params.return_value = {"lr": 0.01, "batch_size": 32, "epochs": 10}
+
+        experiments = [exp1, exp2, exp3]
+        varying = determine_varying_params(experiments)
+
+        assert varying == []
+
+    def test_some_params_varying(self):
+        """Test when some parameters vary."""
+        from unittest.mock import Mock
+
+        exp1 = Mock()
+        exp1.get_params.return_value = {"lr": 0.01, "batch_size": 32, "epochs": 10}
+        exp2 = Mock()
+        exp2.get_params.return_value = {"lr": 0.001, "batch_size": 32, "epochs": 20}
+        exp3 = Mock()
+        exp3.get_params.return_value = {"lr": 0.1, "batch_size": 32, "epochs": 10}
+
+        experiments = [exp1, exp2, exp3]
+        varying = determine_varying_params(experiments)
+
+        # lr and epochs vary, batch_size does not
+        assert set(varying) == {"lr", "epochs"}
+
+    def test_all_params_varying(self):
+        """Test when all parameters vary."""
+        from unittest.mock import Mock
+
+        exp1 = Mock()
+        exp1.get_params.return_value = {"lr": 0.01, "batch_size": 32}
+        exp2 = Mock()
+        exp2.get_params.return_value = {"lr": 0.001, "batch_size": 64}
+        exp3 = Mock()
+        exp3.get_params.return_value = {"lr": 0.1, "batch_size": 128}
+
+        experiments = [exp1, exp2, exp3]
+        varying = determine_varying_params(experiments)
+
+        assert set(varying) == {"lr", "batch_size"}
+
+    def test_empty_experiment_list(self):
+        """Test with empty experiment list."""
+        varying = determine_varying_params([])
+        assert varying == []
+
+    def test_single_experiment(self):
+        """Test with single experiment."""
+        from unittest.mock import Mock
+
+        exp = Mock()
+        exp.get_params.return_value = {"lr": 0.01, "batch_size": 32}
+
+        varying = determine_varying_params([exp])
+        assert varying == []
+
+    def test_numeric_string_distinction(self):
+        """Test that numeric values are properly compared as strings."""
+        from unittest.mock import Mock
+
+        exp1 = Mock()
+        exp1.get_params.return_value = {"lr": 0.01, "name": "exp1"}
+        exp2 = Mock()
+        exp2.get_params.return_value = {"lr": 0.010, "name": "exp2"}  # Same as 0.01
+
+        experiments = [exp1, exp2]
+        varying = determine_varying_params(experiments)
+
+        # name varies, lr does not (0.01 == 0.010)
+        assert varying == ["name"]
+
+
+class TestMetricsToLongDataFrame:
+    """Test metrics_to_long_dataframe function."""
+
+    def test_basic_conversion(self):
+        """Test basic conversion to long format."""
+        from unittest.mock import Mock
+
+        exp1 = Mock()
+        exp1.id = "exp1"
+        exp1.get_params.return_value = {"lr": 0.01, "epochs": 10}
+        # get_metrics(as_dataframe=False) returns list of dicts
+        exp1.get_metrics.return_value = [
+            {"step": 0, "train_loss": 0.5, "train_acc": 0.8},
+            {"step": 1, "train_loss": 0.4, "train_acc": 0.85},
+            {"step": 2, "train_loss": 0.3, "train_acc": 0.9},
+        ]
+
+        exp2 = Mock()
+        exp2.id = "exp2"
+        exp2.get_params.return_value = {"lr": 0.001, "epochs": 10}
+        exp2.get_metrics.return_value = [
+            {"step": 0, "train_loss": 0.6, "train_acc": 0.75},
+            {"step": 1, "train_loss": 0.5, "train_acc": 0.8},
+            {"step": 2, "train_loss": 0.4, "train_acc": 0.85},
+        ]
+
+        experiments = [exp1, exp2]
+        df = metrics_to_long_dataframe(experiments)
+
+        # Check structure
+        assert isinstance(df, pd.DataFrame)
+        assert "experiment_id" in df.columns
+        assert "step" in df.columns
+        assert "metric_name" in df.columns
+        assert "value" in df.columns
+
+        # Check data
+        assert len(df) == 12  # 2 experiments × 2 metrics × 3 steps
+        assert set(df["experiment_id"].unique()) == {"exp1", "exp2"}
+        assert set(df["metric_name"].unique()) == {"train_loss", "train_acc"}
+        assert df["step"].min() == 0
+        assert df["step"].max() == 2
+
+    def test_with_param_cols(self):
+        """Test with specific parameter columns."""
+        from unittest.mock import Mock
+
+        exp = Mock()
+        exp.id = "exp1"
+        exp.get_params.return_value = {"lr": 0.01, "epochs": 10, "batch_size": 32}
+        exp.get_metrics.return_value = [
+            {"step": 0, "loss": 0.5},
+            {"step": 1, "loss": 0.4},
+        ]
+
+        df = metrics_to_long_dataframe([exp], param_cols=["lr", "epochs"])
+
+        # Should include specified params
+        assert "lr" in df.columns
+        assert "epochs" in df.columns
+        # Should not include batch_size
+        assert "batch_size" not in df.columns
+
+    def test_with_empty_param_cols(self):
+        """Test with empty param_cols (no parameters)."""
+        from unittest.mock import Mock
+
+        exp = Mock()
+        exp.id = "exp1"
+        exp.get_params.return_value = {"lr": 0.01}
+        exp.get_metrics.return_value = [
+            {"step": 0, "loss": 0.5},
+            {"step": 1, "loss": 0.4},
+        ]
+
+        df = metrics_to_long_dataframe([exp], param_cols=[])
+
+        # Should not include any parameter columns
+        assert "lr" not in df.columns
+        assert "experiment_id" in df.columns
+        assert "metric_name" in df.columns
+
+    def test_filter_specific_metrics(self):
+        """Test filtering to specific metrics."""
+        from unittest.mock import Mock
+
+        exp = Mock()
+        exp.id = "exp1"
+        exp.get_params.return_value = {}
+        exp.get_metrics.return_value = [
+            {"step": 0, "train_loss": 0.5, "train_acc": 0.8, "val_loss": 0.6},
+            {"step": 1, "train_loss": 0.4, "train_acc": 0.85, "val_loss": 0.5},
+        ]
+
+        df = metrics_to_long_dataframe([exp], metrics=["train_loss", "train_acc"])
+
+        # Should only include specified metrics
+        assert set(df["metric_name"].unique()) == {"train_loss", "train_acc"}
+        assert "val_loss" not in df["metric_name"].values
+
+    def test_empty_experiment_list(self):
+        """Test with empty experiment list."""
+        df = metrics_to_long_dataframe([])
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 0
+        assert "experiment_id" in df.columns
+        assert "step" in df.columns
+        assert "metric_name" in df.columns
+        assert "value" in df.columns
+
+    def test_single_experiment(self):
+        """Test with single experiment."""
+        from unittest.mock import Mock
+
+        exp = Mock()
+        exp.id = "exp1"
+        exp.get_params.return_value = {"lr": 0.01}
+        exp.get_metrics.return_value = [
+            {"step": 0, "loss": 0.5},
+            {"step": 1, "loss": 0.4},
+            {"step": 2, "loss": 0.3},
+        ]
+
+        df = metrics_to_long_dataframe([exp], param_cols=["lr"])
+
+        assert len(df) == 3  # 3 steps
+        assert df["experiment_id"].unique()[0] == "exp1"
+        assert df["lr"].unique()[0] == 0.01
+
+    def test_experiments_with_no_metrics(self):
+        """Test handling experiments with no metrics."""
+        from unittest.mock import Mock
+
+        exp1 = Mock()
+        exp1.id = "exp1"
+        exp1.get_params.return_value = {}
+        exp1.get_metrics.return_value = []  # Empty list
+
+        exp2 = Mock()
+        exp2.id = "exp2"
+        exp2.get_params.return_value = {}
+        exp2.get_metrics.return_value = [{"step": 0, "loss": 0.5}]
+
+        df = metrics_to_long_dataframe([exp1, exp2])
+
+        # Should only include exp2 which has metrics
+        assert len(df) == 1
+        assert df["experiment_id"].unique()[0] == "exp2"
+
+    def test_missing_metrics_in_some_experiments(self):
+        """Test when different experiments log different metrics."""
+        from unittest.mock import Mock
+
+        exp1 = Mock()
+        exp1.id = "exp1"
+        exp1.get_params.return_value = {}
+        exp1.get_metrics.return_value = [
+            {"step": 0, "loss": 0.5},
+            {"step": 1, "loss": 0.4},
+        ]
+
+        exp2 = Mock()
+        exp2.id = "exp2"
+        exp2.get_params.return_value = {}
+        exp2.get_metrics.return_value = [
+            {"step": 0, "loss": 0.6, "accuracy": 0.8},
+            {"step": 1, "loss": 0.5, "accuracy": 0.85},
+        ]
+
+        df = metrics_to_long_dataframe([exp1, exp2])
+
+        # exp1 contributes 2 rows (loss only)
+        # exp2 contributes 4 rows (loss + accuracy)
+        assert len(df) == 6
+        assert set(df["metric_name"].unique()) == {"loss", "accuracy"}
+
+        # Check exp1 has no accuracy entries
+        exp1_data = df[df["experiment_id"] == "exp1"]
+        assert "accuracy" not in exp1_data["metric_name"].values
