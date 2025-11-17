@@ -115,17 +115,8 @@ def get_experiment_ids(
             archived=archived,
         )
 
-        # Filter experiments based on archived flag
-        if archived:
-            experiments = [exp for exp in experiments if exp.get("archived", False)]
-        else:
-            experiments = [exp for exp in experiments if not exp.get("archived", False)]
-
-        # Apply limit after filtering by archived status if needed
-        if limit is not None:
-            experiments = experiments[:limit]
-
         # Extract experiment IDs
+        # Note: ExperimentFilter already handles archived filtering, no need to filter again
         experiment_ids = [exp["experiment_id"] for exp in experiments]
 
         if verbose:
