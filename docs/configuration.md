@@ -46,6 +46,73 @@ data:
   augmentation: true
 ```
 
+### Multiple Configuration Files
+
+Yanex supports loading multiple configuration files that are merged together, allowing you to organize your configuration into modular, reusable pieces. When multiple config files are provided, they are merged in order from left to right, with later files taking precedence over earlier ones.
+
+**Example Setup:**
+
+```yaml
+# data-config.yaml
+data:
+  filename: "my-data.jsonl"
+  split: 0.2
+```
+
+```yaml
+# model-config.yaml
+model:
+  epochs: 1000
+  learning_rate: 0.01
+```
+
+```yaml
+# scripts-config.yaml
+yanex:
+  scripts:
+    - name: "prepare_data.py"
+    - name: "train_model.py"
+      dependencies:
+        data: "prepare_data.py"
+```
+
+**Usage:**
+
+```bash
+# Load and merge multiple config files
+yanex run train.py --config data-config.yaml --config model-config.yaml --config scripts-config.yaml
+
+# All configs are merged into a single configuration
+# The final config contains: data, model, and yanex sections
+```
+
+**Benefits:**
+
+- **Modularity:** Separate data, model, and infrastructure configurations
+- **Reusability:** Swap out individual config files while keeping others the same
+- **Environment-specific:** Easily switch between dev/staging/production configs
+- **Merge Order:** Later configs override earlier ones for conflicting keys
+
+**Merge Example:**
+
+```yaml
+# base-config.yaml
+learning_rate: 0.01
+batch_size: 32
+epochs: 100
+```
+
+```yaml
+# override-config.yaml
+learning_rate: 0.001  # Overrides base-config value
+optimizer: "adam"     # New parameter
+```
+
+```bash
+yanex run train.py --config base-config.yaml --config override-config.yaml
+# Result: learning_rate=0.001, batch_size=32, epochs=100, optimizer="adam"
+```
+
 ### Accessing Configuration
 
 ```python

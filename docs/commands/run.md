@@ -45,7 +45,7 @@ This ensures reproducibility and easy comparison of results.
 
 #### Parameter Overrides
 - `--param KEY=VALUE`: Override configuration parameter
-- `--config PATH`: Use specific configuration file
+- `--config PATH` / `-c PATH`: Use configuration file (can be repeated for multiple files)
 - `--clone-from EXP_ID`: Clone configuration from another experiment
 
 #### Metadata
@@ -151,12 +151,15 @@ Parameters are resolved in order of priority (highest first):
 
 1. **CLI overrides** (`--param key=value`)
 2. **Environment variables** (`YANEX_PARAM_key=value`)
-3. **Configuration file** (`config.yaml`)
+3. **Configuration files** (merged in order, later files override earlier ones)
 4. **Script defaults** (hardcoded in your script)
 
 ```bash
 # CLI override takes precedence
 yanex run train.py --param model.learning_rate=0.005  # Uses 0.005, not config.yaml value
+
+# With multiple config files, later files override earlier ones
+yanex run train.py --config base.yaml --config prod.yaml  # prod.yaml values override base.yaml
 ```
 
 ### Custom Config Files
@@ -168,6 +171,46 @@ yanex run script.py --config custom_config.yaml
 # Combine custom config with overrides
 yanex run script.py --config production.yaml --param batch_size=128
 ```
+
+### Multiple Config Files
+
+Yanex supports loading multiple configuration files that are merged together. Later config files override values from earlier ones:
+
+```bash
+# Merge multiple config files
+yanex run script.py --config base.yaml --config model.yaml --config data.yaml
+
+# Short form (-c)
+yanex run script.py -c base.yaml -c model.yaml -c data.yaml
+
+# Practical example: environment-specific configs
+yanex run script.py --config shared.yaml --config production.yaml
+```
+
+**Example:**
+
+```yaml
+# base.yaml
+learning_rate: 0.01
+batch_size: 32
+epochs: 100
+```
+
+```yaml
+# production.yaml
+learning_rate: 0.001  # Overrides base.yaml
+workers: 8            # New parameter
+```
+
+```bash
+# Result: learning_rate=0.001, batch_size=32, epochs=100, workers=8
+yanex run train.py --config base.yaml --config production.yaml
+```
+
+This is particularly useful for:
+- **Modular configs:** Separate data, model, and training configurations
+- **Environment-specific settings:** Share a base config, override with dev/staging/prod configs
+- **Reusability:** Swap individual config files without duplicating shared settings
 
 ## Parameter Sweeps
 

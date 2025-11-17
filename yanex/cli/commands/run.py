@@ -21,7 +21,8 @@ from ...core.script_executor import ScriptExecutor
     "--config",
     "-c",
     type=click.Path(exists=True, path_type=Path),
-    help="Configuration file (YAML/JSON)",
+    multiple=True,
+    help="Configuration file (YAML/JSON, repeatable)",
 )
 @click.option(
     "--clone-from",
@@ -65,7 +66,7 @@ from ...core.script_executor import ScriptExecutor
 def run(
     ctx: click.Context,
     script: Path | None,
-    config: Path | None,
+    config: tuple[Path, ...],
     clone_from: str | None,
     param: list[str],
     name: str | None,
@@ -89,6 +90,9 @@ def run(
 
       # With configuration file
       yanex run train.py --config config.yaml
+
+      # With multiple configuration files (merged in order)
+      yanex run train.py --config data.yaml --config model.yaml
 
       # With parameter overrides
       yanex run train.py --param learning_rate=0.01 --param epochs=100
@@ -152,7 +156,7 @@ def run(
     # Build parsed CLI arguments dictionary for yanex.get_cli_args()
     cli_args = {
         "script": str(script) if script else None,
-        "config": str(config) if config else None,
+        "config": [str(c) for c in config] if config else [],
         "clone_from": clone_from,
         "param": list(param),
         "name": name,
@@ -197,7 +201,8 @@ def run(
     if verbose:
         console.print(f"[dim]Running script: {script}[/]")
         if config:
-            console.print(f"[dim]Using config: {config}[/]")
+            for cfg in config:
+                console.print(f"[dim]Using config: {cfg}[/]")
         if clone_from:
             console.print(f"[dim]Cloning from experiment: {clone_from}[/]")
         if param:
@@ -208,7 +213,7 @@ def run(
     try:
         # Load and merge configuration
         experiment_config, cli_defaults = load_and_merge_config(
-            config_path=config,
+            config_paths=config,
             clone_from_id=clone_from,
             param_overrides=list(param),
             verbose=verbose,

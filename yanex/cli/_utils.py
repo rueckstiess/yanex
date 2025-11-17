@@ -12,7 +12,7 @@ from ..core.manager import ExperimentManager
 
 
 def load_and_merge_config(
-    config_path: Path | None,
+    config_paths: tuple[Path, ...] | None,
     clone_from_id: str | None,
     param_overrides: list[str],
     verbose: bool = False,
@@ -22,11 +22,14 @@ def load_and_merge_config(
 
     Merge precedence (highest to lowest):
     1. CLI parameter overrides (--param)
-    2. Config file parameters (--config)
+    2. Config file parameters (--config, merged in order if multiple)
     3. Cloned experiment parameters (--clone-from)
 
+    When multiple config files are provided, they are merged in order (left to right),
+    with later configs taking precedence over earlier ones.
+
     Args:
-        config_path: Optional explicit config file path
+        config_paths: Tuple of config file paths (can be empty or None)
         clone_from_id: Optional experiment ID to clone parameters from (can be shortened)
         param_overrides: Parameter override strings from CLI
         verbose: Whether to enable verbose output
@@ -79,15 +82,16 @@ def load_and_merge_config(
                 if cloned_config:
                     click.echo(f"  Parameters: {cloned_config}")
 
-        # Load and merge with config file if specified
+        # Load and merge config files
         file_config, file_cli_defaults = resolve_config(
-            config_path=config_path,
+            config_paths=config_paths,
             param_overrides=param_overrides,
         )
 
         if verbose:
-            if config_path:
-                click.echo(f"Loaded config from: {config_path}")
+            if config_paths:
+                for config_path in config_paths:
+                    click.echo(f"Loaded config from: {config_path}")
             else:
                 # Check if default config was loaded
                 default_config = Path.cwd() / "config.yaml"
@@ -97,7 +101,7 @@ def load_and_merge_config(
                     click.echo("No configuration file found, using defaults")
 
         # Merge: base (cloned) + file config + param overrides
-        # Note: resolve_config already merges file config + param overrides,
+        # Note: resolve_config already merges file configs + param overrides,
         # so we just need to merge base with the result
         if base_config:
             # Merge base config with file config (file config takes precedence)

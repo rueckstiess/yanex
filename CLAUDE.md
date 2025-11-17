@@ -61,6 +61,7 @@ make clean-web      # Clean web UI build artifacts
 - Strategy pattern implementation for complex parameter handling
 - Config parsing: `config.py`
 - Parameter parsers: `parameter_parsers.py`, `parameter_parser_factory.py`
+- Multiple config file support: `--config` can be repeated, files merged in order (left-to-right, later takes precedence)
 
 **CLI Architecture** (`yanex/cli/`)
 - Click-based command system with centralized error handling

@@ -227,15 +227,18 @@ def merge_configs(
 
 
 def resolve_config(
-    config_path: Path | None = None,
+    config_paths: tuple[Path, ...] | None = None,
     param_overrides: list[str] | None = None,
     default_config_name: str = "config.yaml",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
-    Resolve final configuration from file and parameter overrides.
+    Resolve final configuration from file(s) and parameter overrides.
+
+    When multiple config files are provided, they are merged in order (left to right),
+    with later configs taking precedence over earlier ones.
 
     Args:
-        config_path: Path to configuration file
+        config_paths: Tuple of configuration file paths (can be empty or None)
         param_overrides: List of parameter override strings
         default_config_name: Default config filename to look for
 
@@ -249,18 +252,24 @@ def resolve_config(
     """
     # Start with empty config
     config = {}
+    cli_defaults = {}
 
-    # Load from file if specified or if default exists
-    if config_path is None:
+    # Load from files if specified, or from default if it exists
+    if not config_paths or len(config_paths) == 0:
         default_path = Path.cwd() / default_config_name
         if default_path.exists():
-            config_path = default_path
+            config_paths = (default_path,)
 
-    if config_path is not None:
-        config = load_yaml_config(config_path)
-
-    # Extract CLI defaults from 'yanex' key
-    cli_defaults = config.pop("yanex", {})
+    # Merge all config files in order
+    if config_paths:
+        for config_path in config_paths:
+            file_config = load_yaml_config(config_path)
+            # Extract CLI defaults from 'yanex' key before merging
+            file_cli_defaults = file_config.pop("yanex", {})
+            # Merge the experiment config
+            config = merge_configs(config, file_config)
+            # Merge CLI defaults (later files take precedence)
+            cli_defaults = merge_configs(cli_defaults, file_cli_defaults)
 
     # Apply parameter overrides to experiment config only
     if param_overrides:
