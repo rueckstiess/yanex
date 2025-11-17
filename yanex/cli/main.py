@@ -7,6 +7,7 @@ import click
 from .commands.archive import archive_experiments
 from .commands.compare import compare_experiments
 from .commands.delete import delete_experiments
+from .commands.id import get_experiment_ids
 from .commands.list import list_experiments
 from .commands.open import open_experiment
 from .commands.run import run
@@ -42,6 +43,7 @@ cli.add_command(delete_experiments, name="delete")
 cli.add_command(unarchive_experiments, name="unarchive")
 cli.add_command(update_experiments, name="update")
 cli.add_command(compare_experiments, name="compare")
+cli.add_command(get_experiment_ids, name="id")
 cli.add_command(ui, name="ui")
 
 
