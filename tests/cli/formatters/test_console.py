@@ -40,19 +40,19 @@ class TestExperimentTableFormatter:
         assert result.style == "dim"
 
     def test_format_script_with_long_filename(self, formatter):
-        """Test truncation of long script names while preserving extension."""
-        # Script name within 15 char limit (should not truncate)
-        script_path = "/path/to/short_name.py"  # 13 chars - fits within 15
+        """Test that long script names are shown in full without truncation."""
+        # Script name within 15 char limit
+        script_path = "/path/to/short_name.py"  # 13 chars
         result = formatter._format_script(script_path)
         assert str(result.plain) == "short_name.py"
         assert len(result.plain) == 13
 
-        # Script name > 15 chars (should truncate)
+        # Script name > 15 chars (should NOT truncate - shown in full)
         script_path = "/path/to/very_long_script_name.py"
         result = formatter._format_script(script_path)
-        # Should be truncated to "very_long....py" (15 chars: 9 + 3 + 3)
-        assert str(result.plain) == "very_long....py"
-        assert len(result.plain) == 15
+        # Should show full name without truncation
+        assert str(result.plain) == "very_long_script_name.py"
+        assert len(result.plain) == 24
         assert result.plain.endswith(".py")
 
     def test_format_script_extracts_filename_only(self, formatter):
@@ -78,17 +78,17 @@ class TestExperimentTableFormatter:
         result = formatter._format_script("/path/to/script")
         assert str(result.plain) == "script"
 
-    def test_format_script_preserves_extension_in_truncation(self, formatter):
-        """Test that truncation preserves the file extension."""
+    def test_format_script_with_very_long_filename(self, formatter):
+        """Test that even very long script names are shown in full."""
         # Create a very long script name
-        long_name = "a" * 20 + ".py"  # 22 chars total
+        long_name = "a" * 20 + ".py"  # 23 chars total
         script_path = f"/path/to/{long_name}"
         result = formatter._format_script(script_path)
 
-        # Should be truncated but preserve .py
+        # Should show full name without truncation
         assert result.plain.endswith(".py")
-        assert len(result.plain) == 15
-        assert "..." in result.plain
+        assert len(result.plain) == 23
+        assert str(result.plain) == long_name
 
     def test_format_experiments_table_includes_script_column(self, formatter):
         """Test that the experiments table includes the Script column."""
@@ -148,3 +148,28 @@ class TestExperimentTableFormatter:
         assert column_headers[4] == "Duration"
         assert column_headers[5] == "Tags"
         assert column_headers[6] == "Started"
+
+    def test_calculate_script_column_width(self, formatter):
+        """Test that script column width is calculated based on longest script name."""
+        # Empty experiments should return minimum width
+        assert formatter._calculate_script_column_width([]) == 15
+
+        # Single experiment with short name
+        experiments = [{"script_path": "/path/to/train.py"}]
+        assert formatter._calculate_script_column_width(experiments) == 15  # Minimum
+
+        # Single experiment with long name
+        experiments = [{"script_path": "/path/to/very_long_script_name.py"}]
+        assert formatter._calculate_script_column_width(experiments) == 24
+
+        # Multiple experiments - should use longest
+        experiments = [
+            {"script_path": "/path/to/short.py"},
+            {"script_path": "/path/to/very_long_script_name.py"},
+            {"script_path": "/path/to/medium_length.py"},
+        ]
+        assert formatter._calculate_script_column_width(experiments) == 24
+
+        # Experiment with no script_path
+        experiments = [{"script_path": None}, {"script_path": "/path/to/train.py"}]
+        assert formatter._calculate_script_column_width(experiments) == 15

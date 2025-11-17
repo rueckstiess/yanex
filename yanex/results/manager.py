@@ -275,9 +275,12 @@ class ResultsManager:
 
             param_cols = determine_varying_params(experiments)
         elif include_params == "all":
-            # Get all params from first experiment
+            # Get all params from first experiment (flattened)
             if experiments:
-                param_cols = list(experiments[0].get_params().keys())
+                from ..utils.dict_utils import flatten_dict
+
+                flat_params = flatten_dict(experiments[0].get_params())
+                param_cols = sorted(flat_params.keys())
             else:
                 param_cols = []
         elif include_params == "none":
