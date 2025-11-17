@@ -122,18 +122,7 @@ def list_experiments(
             archived=archived,
         )
 
-        # Filter experiments based on archived flag
-        if archived:
-            experiments = [exp for exp in experiments if exp.get("archived", False)]
-        else:
-            experiments = [exp for exp in experiments if not exp.get("archived", False)]
-
-        # Apply limit after filtering by archived status if needed
-        if not show_all and limit is not None:
-            experiments = experiments[:limit]
-        elif not show_all and limit is None and not archived:
-            # Only apply default limit to regular experiments, not archived
-            experiments = experiments[:10]
+        # Note: ExperimentFilter already handles archived filtering, no need to filter again
 
         if verbose:
             click.echo(f"Found {len(experiments)} matching experiments")
@@ -173,19 +162,10 @@ def list_experiments(
             ]
         ) or (not show_all and limit != len(experiments)):
             # Get total count for summary
+            # Note: ExperimentFilter already handles archived filtering
             total_experiments = experiment_filter.filter_experiments(
                 include_all=True, archived=archived
             )
-
-            # Filter total based on archived flag too
-            if archived:
-                total_experiments = [
-                    exp for exp in total_experiments if exp.get("archived", False)
-                ]
-            else:
-                total_experiments = [
-                    exp for exp in total_experiments if not exp.get("archived", False)
-                ]
 
             formatter.print_summary(experiments, len(total_experiments))
 

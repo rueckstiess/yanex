@@ -9,6 +9,7 @@ This guide provides an overview of all Yanex CLI commands with common usage patt
 | [`run`](commands/run.md) | Execute tracked experiments | `yanex run script.py --param lr=0.01` |
 | [`list`](commands/list.md) | List and filter experiments | `yanex list -s completed -t production` |
 | [`show`](commands/show.md) | Display experiment details | `yanex show abc123` |
+| [`id`](commands/id.md) | Get experiment IDs for bash substitution | `yanex id --tag training --format csv` |
 | [`compare`](commands/compare.md) | Interactive comparison table | `yanex compare exp1 exp2 exp3` |
 | [`archive`](commands/archive.md) | Archive old experiments | `yanex archive --started-before "1 month ago"` |
 | [`unarchive`](commands/unarchive.md) | Restore archived experiments | `yanex unarchive abc123` |
@@ -64,6 +65,30 @@ yanex list -s completed -t ml --started-after "2025-01-01"
 ```
 
 See [list command documentation](commands/list.md) for all filtering options.
+
+### id - Get Experiment IDs
+
+Get experiment IDs for bash substitution and automation:
+
+```bash
+# Get IDs in CSV format (default)
+yanex id --tag training
+# Output: "abc12345,def67890"
+
+# Use in bash substitution for dependencies
+yanex run evaluate.py --depends-on model=$(yanex id --tag training)
+
+# Get IDs in newline format for loops
+for id in $(yanex id --format newline -s failed); do
+  yanex archive $id
+done
+
+# Get IDs in JSON format
+yanex id --status completed --format json
+# Output: ["abc12345", "def67890"]
+```
+
+See [id command documentation](commands/id.md) for format options and bash substitution examples.
 
 ### show - Inspect Details
 
