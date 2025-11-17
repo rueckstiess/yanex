@@ -581,3 +581,59 @@ class TestResultsManager:
 
         assert len(df) == 1
         assert df["experiment_id"].unique()[0] == exp1_id
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_with_nested_params(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test get_metrics with nested parameter configurations."""
+
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiments with nested params
+        exp1_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"train": {"lr": 0.001, "epochs": 10}, "model": {"n_layer": 4}},
+            tags=["nested-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp1_id)
+        experiment_manager.storage.add_result_step(exp1_id, {"loss": 0.5})
+        experiment_manager.complete_experiment(exp1_id)
+
+        exp2_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            config={"train": {"lr": 0.01, "epochs": 10}, "model": {"n_layer": 4}},
+            tags=["nested-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp2_id)
+        experiment_manager.storage.add_result_step(exp2_id, {"loss": 0.6})
+        experiment_manager.complete_experiment(exp2_id)
+
+        # Test auto mode - should flatten and show only varying params
+        df_auto = manager.get_metrics(tags=["nested-test"], include_params="auto")
+        assert "train.lr" in df_auto.columns  # Flattened and varies
+        assert "train.epochs" not in df_auto.columns  # Does not vary
+        assert "model.n_layer" not in df_auto.columns  # Does not vary
+
+        # Verify correct values
+        exp1_rows = df_auto[df_auto["experiment_id"] == exp1_id]
+        exp2_rows = df_auto[df_auto["experiment_id"] == exp2_id]
+        assert exp1_rows["train.lr"].iloc[0] == 0.001
+        assert exp2_rows["train.lr"].iloc[0] == 0.01
+
+        # Test all mode - should flatten and show all params
+        df_all = manager.get_metrics(tags=["nested-test"], include_params="all")
+        assert "train.lr" in df_all.columns
+        assert "train.epochs" in df_all.columns
+        assert "model.n_layer" in df_all.columns
+
+        # Test specific nested param selection
+        df_list = manager.get_metrics(
+            tags=["nested-test"], include_params=["train.lr", "model.n_layer"]
+        )
+        assert "train.lr" in df_list.columns
+        assert "model.n_layer" in df_list.columns
+        assert "train.epochs" not in df_list.columns

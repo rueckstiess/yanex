@@ -379,31 +379,41 @@ def determine_varying_params(experiments: list) -> list[str]:
     """
     Determine which parameters vary across experiments.
 
+    Flattens nested parameter dictionaries before comparison, so parameters like
+    {"train": {"lr": 0.001}} become "train.lr" in the output.
+
     Args:
         experiments: List of Experiment objects
 
     Returns:
-        List of parameter names that have different values across experiments
+        List of parameter names (with dot notation for nested params) that have
+        different values across experiments
 
     Examples:
         >>> varying = determine_varying_params(experiments)
         >>> print(varying)  # ['lr', 'batch_size'] if only these vary
+        >>> # Nested params are flattened:
+        >>> print(varying)  # ['train.lr', 'model.n_layer']
     """
     if not experiments:
         return []
 
-    # Collect all params from all experiments
+    from ..utils.dict_utils import flatten_dict
+
+    # Collect all params from all experiments (flattened)
     all_params: dict[str, set[str]] = {}
     for exp in experiments:
         params = exp.get_params()
-        for key, value in params.items():
+        # Flatten nested params to dot notation
+        flat_params = flatten_dict(params)
+        for key, value in flat_params.items():
             if key not in all_params:
                 all_params[key] = set()
             # Convert to string for comparison (handles different types)
             all_params[key].add(str(value))
 
     # Return only params with >1 unique value
-    return [key for key, values in all_params.items() if len(values) > 1]
+    return sorted([key for key, values in all_params.items() if len(values) > 1])
 
 
 def metrics_to_long_dataframe(
@@ -414,10 +424,13 @@ def metrics_to_long_dataframe(
     """
     Convert experiment metrics to long (tidy) format DataFrame.
 
+    Flattens nested parameter dictionaries, so parameters like {"train": {"lr": 0.001}}
+    become "train.lr" columns in the output.
+
     Args:
         experiments: List of Experiment objects
         metrics: List of metric names to include (None for all)
-        param_cols: List of parameter names to include as columns (None for none)
+        param_cols: List of parameter names (with dot notation for nested) to include as columns
 
     Returns:
         DataFrame with columns: [experiment_id, step, metric_name, value, <params...>]
@@ -425,6 +438,8 @@ def metrics_to_long_dataframe(
     Examples:
         >>> df = metrics_to_long_dataframe(experiments, metrics=['train_loss'], param_cols=['lr'])
         >>> print(df.columns)  # ['experiment_id', 'step', 'metric_name', 'value', 'lr']
+        >>> # Nested params use dot notation:
+        >>> df = metrics_to_long_dataframe(experiments, param_cols=['train.lr', 'model.n_layer'])
     """
     try:
         import pandas as pd
@@ -440,14 +455,16 @@ def metrics_to_long_dataframe(
             columns.extend(param_cols)
         return pd.DataFrame(columns=columns)
 
+    from ..utils.dict_utils import flatten_dict
+
     rows = []
 
     for exp in experiments:
         exp_id = exp.id
         exp_metrics = exp.get_metrics(as_dataframe=False)  # Returns list[dict]
 
-        # Get params for this experiment (constant across all steps)
-        exp_params = exp.get_params() if param_cols else {}
+        # Get params for this experiment (flattened to support dot notation)
+        exp_params = flatten_dict(exp.get_params()) if param_cols else {}
 
         # Process each step
         for step_data in exp_metrics:
@@ -471,7 +488,7 @@ def metrics_to_long_dataframe(
                     "value": metric_value,
                 }
 
-                # Add param columns
+                # Add param columns (from flattened params)
                 if param_cols:
                     for param_name in param_cols:
                         row[param_name] = exp_params.get(param_name)
