@@ -380,7 +380,7 @@ class TestResolveConfig:
         config_data = TestDataFactory.create_experiment_config(config_type=config_type)
         TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
 
-        experiment_config, cli_defaults = resolve_config(config_path=config_path)
+        experiment_config, cli_defaults = resolve_config(config_paths=(config_path,))
 
         assert experiment_config == config_data
         assert cli_defaults == {}
@@ -434,7 +434,7 @@ class TestResolveConfig:
         TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
 
         experiment_config, cli_defaults = resolve_config(
-            config_path=config_path, param_overrides=param_overrides
+            config_paths=(config_path,), param_overrides=param_overrides
         )
 
         # Check that overrides are applied
@@ -509,7 +509,7 @@ class TestResolveConfig:
         ]
 
         experiment_config, cli_defaults = resolve_config(
-            config_path=config_path, param_overrides=param_overrides
+            config_paths=(config_path,), param_overrides=param_overrides
         )
 
         # Verify overrides applied
@@ -541,7 +541,7 @@ class TestResolveConfig:
         config_path = temp_dir / "config.yaml"
         TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
 
-        experiment_config, cli_defaults = resolve_config(config_path=config_path)
+        experiment_config, cli_defaults = resolve_config(config_paths=(config_path,))
 
         # Verify experiment config doesn't contain yanex section
         expected_experiment_config = {"learning_rate": 0.01, "epochs": 100}
@@ -570,7 +570,7 @@ class TestResolveConfig:
         param_overrides = ["learning_rate=0.001", "epochs=200"]
 
         experiment_config, cli_defaults = resolve_config(
-            config_path=config_path, param_overrides=param_overrides
+            config_paths=(config_path,), param_overrides=param_overrides
         )
 
         # Verify experiment config has overrides applied, no yanex section
@@ -594,10 +594,175 @@ class TestResolveConfig:
         config_path = temp_dir / "config.yaml"
         TestFileHelpers.create_config_file(temp_dir, config_data, "config.yaml")
 
-        experiment_config, cli_defaults = resolve_config(config_path=config_path)
+        experiment_config, cli_defaults = resolve_config(config_paths=(config_path,))
 
         assert experiment_config == {"learning_rate": 0.01}
         assert cli_defaults == {}
+
+    def test_resolve_with_multiple_config_files(self, temp_dir):
+        """Test resolving config with multiple config files merged in order."""
+        # Create first config file (data config)
+        data_config = {
+            "data": {
+                "filename": "my-data.jsonl",
+                "split": 0.2,
+            }
+        }
+        data_config_path = temp_dir / "data-config.yaml"
+        TestFileHelpers.create_config_file(temp_dir, data_config, "data-config.yaml")
+
+        # Create second config file (model config)
+        model_config = {
+            "model": {
+                "epochs": 1000,
+                "learning_rate": 0.01,
+            }
+        }
+        model_config_path = temp_dir / "model-config.yaml"
+        TestFileHelpers.create_config_file(temp_dir, model_config, "model-config.yaml")
+
+        # Resolve with both config files
+        experiment_config, cli_defaults = resolve_config(
+            config_paths=(data_config_path, model_config_path)
+        )
+
+        # Verify both configs are merged
+        assert experiment_config["data"]["filename"] == "my-data.jsonl"
+        assert experiment_config["data"]["split"] == 0.2
+        assert experiment_config["model"]["epochs"] == 1000
+        assert experiment_config["model"]["learning_rate"] == 0.01
+        assert cli_defaults == {}
+
+    def test_resolve_with_multiple_configs_later_takes_precedence(self, temp_dir):
+        """Test that later config files override earlier ones."""
+        # Create first config
+        config1 = {
+            "learning_rate": 0.01,
+            "batch_size": 32,
+            "epochs": 100,
+        }
+        config1_path = temp_dir / "config1.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config1, "config1.yaml")
+
+        # Create second config that overrides some values
+        config2 = {
+            "learning_rate": 0.001,  # Override
+            "optimizer": "adam",  # New value
+        }
+        config2_path = temp_dir / "config2.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config2, "config2.yaml")
+
+        # Resolve with both configs
+        experiment_config, cli_defaults = resolve_config(
+            config_paths=(config1_path, config2_path)
+        )
+
+        # Verify later config takes precedence
+        assert experiment_config["learning_rate"] == 0.001  # From config2
+        assert experiment_config["batch_size"] == 32  # From config1
+        assert experiment_config["epochs"] == 100  # From config1
+        assert experiment_config["optimizer"] == "adam"  # From config2
+        assert cli_defaults == {}
+
+    def test_resolve_multiple_configs_with_cli_defaults(self, temp_dir):
+        """Test multiple configs with yanex CLI defaults sections."""
+        # First config with CLI defaults
+        config1 = {
+            "learning_rate": 0.01,
+            "yanex": {
+                "name": "experiment1",
+                "tag": ["ml"],
+            },
+        }
+        config1_path = temp_dir / "config1.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config1, "config1.yaml")
+
+        # Second config with different CLI defaults
+        config2 = {
+            "batch_size": 64,
+            "yanex": {
+                "name": "experiment2",  # Override name
+                "description": "Test experiment",  # Add description
+            },
+        }
+        config2_path = temp_dir / "config2.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config2, "config2.yaml")
+
+        # Resolve with both configs
+        experiment_config, cli_defaults = resolve_config(
+            config_paths=(config1_path, config2_path)
+        )
+
+        # Verify experiment config contains both parameters
+        assert experiment_config["learning_rate"] == 0.01
+        assert experiment_config["batch_size"] == 64
+        assert "yanex" not in experiment_config
+
+        # Verify CLI defaults merged, later takes precedence
+        assert cli_defaults["name"] == "experiment2"  # From config2
+        assert cli_defaults["tag"] == ["ml"]  # From config1
+        assert cli_defaults["description"] == "Test experiment"  # From config2
+
+    def test_resolve_multiple_configs_with_param_overrides(self, temp_dir):
+        """Test multiple configs with parameter overrides."""
+        # First config
+        config1 = {
+            "learning_rate": 0.01,
+            "batch_size": 32,
+        }
+        config1_path = temp_dir / "config1.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config1, "config1.yaml")
+
+        # Second config
+        config2 = {
+            "epochs": 100,
+            "optimizer": "adam",
+        }
+        config2_path = temp_dir / "config2.yaml"
+        TestFileHelpers.create_config_file(temp_dir, config2, "config2.yaml")
+
+        # Parameter overrides
+        param_overrides = ["learning_rate=0.001", "new_param=test"]
+
+        # Resolve with both configs and overrides
+        experiment_config, cli_defaults = resolve_config(
+            config_paths=(config1_path, config2_path),
+            param_overrides=param_overrides,
+        )
+
+        # Verify all values merged and overrides applied
+        assert experiment_config["learning_rate"] == 0.001  # Overridden
+        assert experiment_config["batch_size"] == 32  # From config1
+        assert experiment_config["epochs"] == 100  # From config2
+        assert experiment_config["optimizer"] == "adam"  # From config2
+        assert experiment_config["new_param"] == "test"  # From override
+        assert cli_defaults == {}
+
+    def test_resolve_three_config_files(self, temp_dir):
+        """Test resolving with three config files."""
+        # Create three config files
+        config1 = {"data": {"filename": "data.jsonl"}}
+        config2 = {"yanex": {"scripts": [{"name": "train.py"}]}}
+        config3 = {"model": {"epochs": 1000, "learning_rate": 0.01}}
+
+        config1_path = temp_dir / "data.yaml"
+        config2_path = temp_dir / "scripts.yaml"
+        config3_path = temp_dir / "model.yaml"
+
+        TestFileHelpers.create_config_file(temp_dir, config1, "data.yaml")
+        TestFileHelpers.create_config_file(temp_dir, config2, "scripts.yaml")
+        TestFileHelpers.create_config_file(temp_dir, config3, "model.yaml")
+
+        # Resolve with all three configs
+        experiment_config, cli_defaults = resolve_config(
+            config_paths=(config1_path, config2_path, config3_path)
+        )
+
+        # Verify all configs merged
+        assert experiment_config["data"]["filename"] == "data.jsonl"
+        assert experiment_config["model"]["epochs"] == 1000
+        assert experiment_config["model"]["learning_rate"] == 0.01
+        assert cli_defaults["scripts"] == [{"name": "train.py"}]
 
     def test_normalize_tags_helper(self):
         """Test _normalize_tags helper function."""
