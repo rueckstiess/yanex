@@ -117,7 +117,7 @@ def get_experiment_ids(
 
         # Extract experiment IDs
         # Note: ExperimentFilter already handles archived filtering, no need to filter again
-        experiment_ids = [exp["experiment_id"] for exp in experiments]
+        experiment_ids = [exp["id"] for exp in experiments]
 
         if verbose:
             click.echo(f"Found {len(experiment_ids)} matching experiments", err=True)
