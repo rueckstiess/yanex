@@ -568,6 +568,87 @@ print(f"Output: {result['stdout']}")
 - `YANEX_EXPERIMENT_ID`: Current experiment identifier
 - `YANEX_PARAM_*`: All experiment parameters (e.g., `YANEX_PARAM_learning_rate`)
 
+### Dependency Tracking
+
+Build multi-stage pipelines by declaring dependencies between experiments.
+
+#### `yanex.get_dependencies(transitive=False)`
+
+Get experiments that the current experiment depends on.
+
+```python
+import yanex
+
+# Get direct dependencies
+deps = yanex.get_dependencies()
+
+if deps:
+    for dep in deps:
+        print(f"Depends on: {dep.id} ({dep.name})")
+
+    # Load artifact from first dependency
+    data = yanex.load_artifact("processed_data.pkl", from_experiment=deps[0].id)
+else:
+    print("No dependencies - using default data")
+
+# Get all dependencies recursively (including transitive)
+all_deps = yanex.get_dependencies(transitive=True)
+print(f"Total pipeline has {len(all_deps)} experiments")
+```
+
+**Parameters:**
+- `transitive` (bool): If True, include transitive dependencies recursively (default: False)
+
+**Returns:**
+- `list[Experiment]`: List of Experiment objects in topological order (dependencies before dependents)
+
+**Note:** Returns empty list in standalone mode or if experiment has no dependencies.
+
+**CLI Usage:**
+```bash
+# Run with dependency
+yanex run train.py -D abc12345
+
+# Run with multiple dependencies
+yanex run evaluate.py -D model1,model2,model3
+```
+
+#### `yanex.assert_dependency(script_name)`
+
+Assert that at least one dependency is from a specific script. Fails the experiment cleanly if the dependency check fails.
+
+```python
+import yanex
+
+# Assert required dependency exists
+yanex.assert_dependency("prepare_data.py")
+
+# If we get here, dependency exists - safe to proceed
+deps = yanex.get_dependencies()
+data = yanex.load_artifact("processed_data.pkl", from_experiment=deps[0].id)
+
+# Rest of training code...
+```
+
+**Parameters:**
+- `script_name` (str): Script filename to check for (e.g., "prepare_data.py")
+
+**Behavior:**
+- **With matching dependency**: Returns silently, script continues
+- **Without matching dependency**: Prints error message and fails experiment
+- **Standalone mode**: No-op (allows script to run without yanex tracking)
+
+**Example Error:**
+```
+Error: No dependency from 'prepare_data.py' found
+Current dependencies are from: other_script.py
+✗ Experiment failed: abc12345
+```
+
+**Best Practice:** Place `assert_dependency()` calls at the top of your script to fail fast if dependencies are missing.
+
+**See Also:** [Dependencies Guide](dependencies.md) for complete usage patterns and examples.
+
 ---
 
 ## Advanced API

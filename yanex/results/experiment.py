@@ -413,6 +413,106 @@ class Experiment:
             self._experiment_id, include_archived=self.archived
         )
 
+    @property
+    def dependency_ids(self) -> list[str]:
+        """
+        Get the dependency IDs for this experiment.
+
+        Returns:
+            List of experiment IDs that this experiment depends on
+
+        Examples:
+            >>> exp = get_experiment("abc12345")
+            >>> dep_ids = exp.dependency_ids
+            >>> print(f"Depends on: {dep_ids}")
+        """
+        dep_data = self._manager.storage.dependency_storage.load_dependencies(
+            self._experiment_id, include_archived=self.archived
+        )
+        return dep_data.get("dependency_ids", [])
+
+    @property
+    def has_dependencies(self) -> bool:
+        """
+        Check if this experiment has any dependencies.
+
+        Returns:
+            True if experiment has dependencies, False otherwise
+
+        Examples:
+            >>> exp = get_experiment("abc12345")
+            >>> if exp.has_dependencies:
+            ...     print("This experiment depends on other experiments")
+        """
+        return len(self.dependency_ids) > 0
+
+    def get_dependencies(
+        self, transitive: bool = False, include_self: bool = False
+    ) -> list["Experiment"]:
+        """
+        Get experiment dependencies as Experiment objects.
+
+        Returns list of Experiment objects for experiments that this experiment
+        depends on.
+
+        Args:
+            transitive: If True, include transitive dependencies (dependencies of dependencies)
+            include_self: If True, include current experiment in result (only with transitive=True)
+
+        Returns:
+            List of Experiment objects in topological order (dependencies before dependents)
+
+        Examples:
+            # Get direct dependencies only
+            >>> exp = get_experiment("abc12345")
+            >>> deps = exp.get_dependencies()
+            >>> for dep in deps:
+            ...     print(f"{dep.id}: {dep.name} ({dep.status})")
+
+            # Get all dependencies (transitive)
+            >>> all_deps = exp.get_dependencies(transitive=True)
+
+            # Load artifact from specific dependency
+            >>> deps = exp.get_dependencies()
+            >>> if deps:
+            ...     model = deps[0].load_artifact("model.pt")
+
+            # List artifacts in all dependencies
+            >>> for dep in exp.get_dependencies(transitive=True):
+            ...     print(f"{dep.id} artifacts: {dep.list_artifacts()}")
+        """
+        # Get dependency IDs
+        if transitive:
+            # Get all dependencies using DependencyResolver
+            from ..core.dependencies import DependencyResolver
+
+            resolver = DependencyResolver(self._manager)
+            dependency_ids = resolver.get_transitive_dependencies(
+                self._experiment_id, include_self=include_self, include_archived=True
+            )
+        else:
+            # Get only direct dependencies
+            dep_data = self._manager.storage.dependency_storage.load_dependencies(
+                self._experiment_id, include_archived=True
+            )
+            dependency_ids = dep_data.get("dependency_ids", [])
+
+            if include_self:
+                dependency_ids = dependency_ids + [self._experiment_id]
+
+        # Create Experiment objects for each dependency
+        dependencies = []
+        for dep_id in dependency_ids:
+            try:
+                # Use Experiment class for consistent API
+                experiment = Experiment(dep_id, self._manager)
+                dependencies.append(experiment)
+            except Exception:
+                # Skip dependencies that can't be loaded (e.g., deleted)
+                continue
+
+        return dependencies
+
     def get_script_runs(self) -> list[dict[str, Any]]:
         """
         Get experiment script run history.
@@ -562,6 +662,8 @@ class Experiment:
             "metrics": self.get_metrics(as_dataframe=False),
             "artifacts": self.list_artifacts(),
             "script_runs": self.get_script_runs(),
+            "dependency_ids": self.dependency_ids,
+            "has_dependencies": self.has_dependencies,
         }
 
     def refresh(self) -> None:

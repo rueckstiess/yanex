@@ -15,6 +15,8 @@ from .api import (
     _set_current_experiment_id,
     # Artifact management
     artifact_exists,
+    # Dependency tracking
+    assert_dependency,
     cancel,
     # Manual experiment control
     completed,
@@ -28,7 +30,6 @@ from .api import (
     # Experiment information
     get_artifacts_dir,
     get_cli_args,
-    # Dependency tracking
     get_dependencies,
     get_experiment_dir,
     get_experiment_id,
@@ -86,6 +87,7 @@ __all__ = [
     "get_metadata",
     # Dependency tracking
     "get_dependencies",
+    "assert_dependency",
     "Experiment",
     # Experiment creation (advanced)
     "create_experiment",

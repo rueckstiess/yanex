@@ -8,6 +8,7 @@ and thread-local storage for safe concurrent usage.
 import atexit
 import os
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime
@@ -389,6 +390,54 @@ def get_dependencies(
             continue
 
     return dependencies
+
+
+def assert_dependency(script_name: str) -> None:
+    """Assert that at least one dependency is from a specific script.
+
+    This is a convenience method for validating dependencies at the start of a script.
+    If the dependency check fails, prints an error and fails the experiment.
+
+    Args:
+        script_name: Script filename to check for (e.g., "prepare_data.py")
+
+    Examples:
+        # At the start of train_model.py
+        >>> import yanex
+        >>> yanex.assert_dependency("prepare_data.py")
+        # Continues only if a dependency from prepare_data.py exists
+        # Otherwise, prints error and fails the experiment
+
+    Note:
+        In standalone mode (no experiment context): No-op, allows script to continue
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        # In standalone mode - no-op, allow script to continue
+        return
+
+    # Get dependencies
+    deps = get_dependencies()
+
+    if not deps:
+        # No dependencies at all
+        print(f"Error: No dependency from '{script_name}' found")
+        print("This experiment has no dependencies.")
+        fail(f"Missing required dependency: {script_name}")
+        return
+
+    # Check if any dependency matches the script name
+    for dep in deps:
+        if dep.script_path and dep.script_path.name == script_name:
+            return  # Success - found a match
+
+    # No match found - print error and fail
+    dep_scripts = [
+        dep.script_path.name if dep.script_path else "[unknown]" for dep in deps
+    ]
+    print(f"Error: No dependency from '{script_name}' found")
+    print(f"Current dependencies are from: {', '.join(dep_scripts)}")
+    fail(f"Missing required dependency: {script_name}")
 
 
 def log_metrics(data: dict[str, Any], step: int | None = None) -> None:
@@ -921,10 +970,17 @@ def execute_bash_script(
 
 
 def completed() -> None:
-    """Manually mark experiment as completed and exit context.
+    """Manually mark experiment as completed and exit.
+
+    Marks the current experiment as completed and exits the script gracefully.
+    This triggers atexit handlers (e.g., parameter saving) before exiting.
+
+    In CLI subprocess mode: Uses sys.exit(0) for clean exit without stack traces.
+    In context manager mode: Raises exception for __exit__ to handle.
 
     Raises:
         ExperimentContextError: If no active experiment context
+        _ExperimentCompletedException: In non-CLI mode for context manager handling
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
@@ -935,18 +991,35 @@ def completed() -> None:
     manager = _get_experiment_manager()
     manager.complete_experiment(experiment_id)
 
-    # Raise special exception to exit context cleanly
-    raise _ExperimentCompletedException()
+    # Print success message
+    exp_dir = manager.storage.get_experiment_directory(experiment_id)
+    print(f"✓ Experiment completed successfully: {experiment_id}")
+    print(f"  Directory: {exp_dir}")
+
+    # Different behavior based on context
+    if _is_cli_context():
+        # CLI subprocess mode - exit cleanly without stack trace
+        sys.exit(0)
+    else:
+        # Context manager mode - raise exception for __exit__ to handle
+        raise _ExperimentCompletedException()
 
 
 def fail(message: str) -> None:
-    """Mark experiment as failed with message and exit context.
+    """Mark experiment as failed and exit.
+
+    Marks the current experiment as failed with an error message and exits the script.
+    This triggers atexit handlers (e.g., parameter saving) before exiting.
+
+    In CLI subprocess mode: Uses sys.exit(1) for clean exit without stack traces.
+    In context manager mode: Raises exception for __exit__ to handle.
 
     Args:
         message: Error message describing the failure
 
     Raises:
         ExperimentContextError: If no active experiment context
+        _ExperimentFailedException: In non-CLI mode for context manager handling
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
@@ -957,18 +1030,35 @@ def fail(message: str) -> None:
     manager = _get_experiment_manager()
     manager.fail_experiment(experiment_id, message)
 
-    # Raise special exception to exit context
-    raise _ExperimentFailedException(message)
+    # Print failure message
+    exp_dir = manager.storage.get_experiment_directory(experiment_id)
+    print(f"✗ Experiment failed: {experiment_id}")
+    print(f"  Directory: {exp_dir}")
+
+    # Different behavior based on context
+    if _is_cli_context():
+        # CLI subprocess mode - exit cleanly without stack trace
+        sys.exit(1)
+    else:
+        # Context manager mode - raise exception for __exit__ to handle
+        raise _ExperimentFailedException(message)
 
 
 def cancel(message: str) -> None:
-    """Mark experiment as cancelled with message and exit context.
+    """Mark experiment as cancelled and exit.
+
+    Marks the current experiment as cancelled with a reason and exits the script.
+    This triggers atexit handlers (e.g., parameter saving) before exiting.
+
+    In CLI subprocess mode: Uses sys.exit(1) for clean exit without stack traces.
+    In context manager mode: Raises exception for __exit__ to handle.
 
     Args:
         message: Cancellation reason
 
     Raises:
         ExperimentContextError: If no active experiment context
+        _ExperimentCancelledException: In non-CLI mode for context manager handling
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
@@ -979,8 +1069,18 @@ def cancel(message: str) -> None:
     manager = _get_experiment_manager()
     manager.cancel_experiment(experiment_id, message)
 
-    # Raise special exception to exit context
-    raise _ExperimentCancelledException(message)
+    # Print cancellation message
+    exp_dir = manager.storage.get_experiment_directory(experiment_id)
+    print(f"✗ Experiment cancelled: {experiment_id}")
+    print(f"  Directory: {exp_dir}")
+
+    # Different behavior based on context
+    if _is_cli_context():
+        # CLI subprocess mode - exit cleanly without stack trace
+        sys.exit(1)
+    else:
+        # Context manager mode - raise exception for __exit__ to handle
+        raise _ExperimentCancelledException(message)
 
 
 class _ExperimentCompletedException(Exception):

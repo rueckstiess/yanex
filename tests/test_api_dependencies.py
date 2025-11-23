@@ -386,3 +386,187 @@ class TestLoadArtifactWithDependencies:
         # Load should return None (no artifacts in standalone mode)
         data = yanex.load_artifact("model.txt")
         assert data is None
+
+
+class TestAssertDependency:
+    """Test yanex.assert_dependency() API function."""
+
+    def test_assert_dependency_success(self, temp_dir):
+        """Test assert_dependency succeeds when dependency matches."""
+        manager = ExperimentManager()
+        prep_script = temp_dir / "prepare_data.py"
+        prep_script.write_text("print('prepare')")
+        train_script = temp_dir / "train_model.py"
+        train_script.write_text("print('train')")
+
+        # Create preprocessing dependency
+        dep_id = manager.create_experiment(
+            prep_script, config={}, stage_only=True, name="prep"
+        )
+
+        # Create training experiment depending on it
+        exp_id = manager.create_experiment(
+            train_script,
+            config={},
+            dependency_ids=[dep_id],
+            stage_only=True,
+            name="train",
+        )
+
+        # Set context
+        yanex._set_current_experiment_id(exp_id)
+
+        try:
+            # Should not raise - dependency from prepare_data.py exists
+            yanex.assert_dependency("prepare_data.py")
+        finally:
+            yanex._clear_current_experiment_id()
+
+    def test_assert_dependency_no_dependencies(self, temp_dir):
+        """Test assert_dependency fails when experiment has no dependencies."""
+        manager = ExperimentManager()
+        script_path = temp_dir / "test.py"
+        script_path.write_text("print('test')")
+
+        # Create experiment without dependencies
+        exp_id = manager.create_experiment(script_path, config={})
+
+        # Set context
+        yanex._set_current_experiment_id(exp_id)
+
+        try:
+            # Should call fail() which raises _ExperimentFailedException
+            with pytest.raises(yanex._ExperimentFailedException) as exc_info:
+                yanex.assert_dependency("prepare_data.py")
+
+            # Check that the failure message mentions the missing dependency
+            assert "prepare_data.py" in str(exc_info.value)
+        finally:
+            yanex._clear_current_experiment_id()
+
+    def test_assert_dependency_wrong_script(self, temp_dir):
+        """Test assert_dependency fails when dependency script doesn't match."""
+        manager = ExperimentManager()
+        prep_script = temp_dir / "prepare_data.py"
+        prep_script.write_text("print('prepare')")
+        train_script = temp_dir / "train_model.py"
+        train_script.write_text("print('train')")
+
+        # Create preprocessing dependency
+        dep_id = manager.create_experiment(
+            prep_script, config={}, stage_only=True, name="prep"
+        )
+
+        # Create training experiment depending on it
+        exp_id = manager.create_experiment(
+            train_script,
+            config={},
+            dependency_ids=[dep_id],
+            stage_only=True,
+            name="train",
+        )
+
+        # Set context
+        yanex._set_current_experiment_id(exp_id)
+
+        try:
+            # Should call fail() which raises _ExperimentFailedException
+            with pytest.raises(yanex._ExperimentFailedException) as exc_info:
+                yanex.assert_dependency("different_script.py")
+
+            # Error should mention the missing dependency
+            assert "different_script.py" in str(exc_info.value)
+        finally:
+            yanex._clear_current_experiment_id()
+
+    def test_assert_dependency_standalone_mode(self):
+        """Test assert_dependency is a no-op in standalone mode."""
+        # Clear any existing context
+        yanex._clear_current_experiment_id()
+
+        # Ensure we're in standalone mode
+        assert yanex.is_standalone()
+
+        # Should be a no-op - doesn't raise, just returns
+        yanex.assert_dependency("prepare_data.py")
+        # If we get here, test passes
+
+    def test_assert_dependency_multiple_dependencies(self, temp_dir):
+        """Test assert_dependency with multiple dependencies finds match."""
+        manager = ExperimentManager()
+        prep_script = temp_dir / "prepare_data.py"
+        prep_script.write_text("print('prepare')")
+        load_script = temp_dir / "load_model.py"
+        load_script.write_text("print('load')")
+        eval_script = temp_dir / "evaluate.py"
+        eval_script.write_text("print('evaluate')")
+
+        # Create two dependencies
+        dep1_id = manager.create_experiment(
+            prep_script, config={}, stage_only=True, name="prep"
+        )
+        dep2_id = manager.create_experiment(
+            load_script, config={}, stage_only=True, name="load"
+        )
+
+        # Create experiment depending on both
+        exp_id = manager.create_experiment(
+            eval_script,
+            config={},
+            dependency_ids=[dep1_id, dep2_id],
+            stage_only=True,
+            name="eval",
+        )
+
+        # Set context
+        yanex._set_current_experiment_id(exp_id)
+
+        try:
+            # Should find prepare_data.py in dependencies
+            yanex.assert_dependency("prepare_data.py")
+
+            # Should find load_model.py in dependencies
+            yanex.assert_dependency("load_model.py")
+
+            # Should fail for non-existent dependency
+            with pytest.raises(yanex._ExperimentFailedException) as exc_info:
+                yanex.assert_dependency("missing.py")
+
+            # Error should mention the missing dependency
+            assert "missing.py" in str(exc_info.value)
+        finally:
+            yanex._clear_current_experiment_id()
+
+    def test_assert_dependency_with_path_components(self, temp_dir):
+        """Test assert_dependency matches just the filename, not full path."""
+        manager = ExperimentManager()
+        # Create script with subdirectory
+        subdir = temp_dir / "scripts"
+        subdir.mkdir(exist_ok=True)
+        prep_script = subdir / "prepare_data.py"
+        prep_script.write_text("print('prepare')")
+        train_script = temp_dir / "train_model.py"
+        train_script.write_text("print('train')")
+
+        # Create preprocessing dependency
+        dep_id = manager.create_experiment(
+            prep_script, config={}, stage_only=True, name="prep"
+        )
+
+        # Create training experiment depending on it
+        exp_id = manager.create_experiment(
+            train_script,
+            config={},
+            dependency_ids=[dep_id],
+            stage_only=True,
+            name="train",
+        )
+
+        # Set context
+        yanex._set_current_experiment_id(exp_id)
+
+        try:
+            # Should match using just the filename
+            yanex.assert_dependency("prepare_data.py")
+        finally:
+            yanex._clear_current_experiment_id()
