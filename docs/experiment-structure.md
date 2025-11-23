@@ -115,7 +115,7 @@ Contains all files created during experiment execution, including:
 - **Plots**: Visualization files (`.png`, `.pdf`, `.svg`)
 - **Data**: Generated datasets, processed files
 - **Logs**: Custom log files created by your scripts
-- **Any file**: Added via `yanex.log_artifact()` or `yanex.log_text()`
+- **Any file**: Added via `yanex.copy_artifact()` or `yanex.save_artifact()`
 
 **Git Patch Capture:**
 When you run an experiment with uncommitted changes, Yanex automatically generates and saves a git patch file (`git_diff.patch`) containing all tracked file changes. This ensures full reproducibility even when working with uncommitted code. The metadata fields `has_uncommitted_changes` and `patch_file` indicate whether a patch was captured.

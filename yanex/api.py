@@ -232,6 +232,10 @@ def get_experiment_dir() -> Path | None:
 def get_artifacts_dir() -> Path | None:
     """Get absolute path to current experiment's artifacts directory.
 
+    In standalone mode (no experiment context), returns None.
+    Use copy_artifact(), save_artifact(), and load_artifact() which work
+    in both modes instead.
+
     Returns:
         Path to artifacts directory, or None in standalone mode
     """
@@ -240,6 +244,19 @@ def get_artifacts_dir() -> Path | None:
         return None
 
     return exp_dir / "artifacts"
+
+
+def _get_standalone_artifacts_dir() -> Path:
+    """Get artifacts directory for standalone mode.
+
+    Creates ./artifacts/ in current working directory.
+
+    Returns:
+        Path to standalone artifacts directory
+    """
+    artifacts_dir = Path.cwd() / "artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+    return artifacts_dir
 
 
 def get_metadata() -> dict[str, Any]:
@@ -309,86 +326,234 @@ def log_results(data: dict[str, Any], step: int | None = None) -> None:
     log_metrics(data, step)
 
 
-def log_artifact(name: str, file_path: Path) -> None:
-    """Log file artifact.
+def copy_artifact(src_path: Path | str, filename: str | None = None) -> None:
+    """Copy an existing file to the experiment's artifacts directory.
 
     Args:
-        name: Name for the artifact
-        file_path: Path to source file
-
-    Note:
-        Does nothing in standalone mode (no active experiment context)
-    """
-    experiment_id = _get_current_experiment_id()
-    if experiment_id is None:
-        return  # No-op in standalone mode
-
-    manager = _get_experiment_manager()
-    manager.storage.save_artifact(experiment_id, name, file_path)
-
-
-def log_text(content: str, filename: str) -> None:
-    """Save text content as an artifact.
-
-    Args:
-        content: Text content to save
-        filename: Name for the artifact file
-
-    Note:
-        Does nothing in standalone mode (no active experiment context)
-    """
-    experiment_id = _get_current_experiment_id()
-    if experiment_id is None:
-        return  # No-op in standalone mode
-
-    manager = _get_experiment_manager()
-    manager.storage.save_text_artifact(experiment_id, filename, content)
-
-
-def log_matplotlib_figure(fig, filename: str, **kwargs) -> None:
-    """Save matplotlib figure as artifact.
-
-    Args:
-        fig: Matplotlib figure object
-        filename: Name for the artifact file
-        **kwargs: Additional arguments passed to fig.savefig()
+        src_path: Path to source file
+        filename: Name to use in artifacts dir (defaults to source filename)
 
     Raises:
-        ImportError: If matplotlib is not available
+        FileNotFoundError: If source file doesn't exist
+        ValueError: If source is not a file
+
+    Examples:
+        # Copy with same name
+        yanex.copy_artifact("data/results.csv")
+
+        # Copy with different name
+        yanex.copy_artifact("output.txt", "final_output.txt")
 
     Note:
-        Does nothing in standalone mode (no active experiment context)
+        In standalone mode: Copies to ./artifacts/ directory
+        With experiment tracking: Copies to experiment artifacts directory
     """
     experiment_id = _get_current_experiment_id()
+
     if experiment_id is None:
-        return  # No-op in standalone mode
+        # Standalone mode - copy to ./artifacts/
+        from .core.artifact_io import copy_artifact_to_path
 
-    try:
-        import os
-        import tempfile
+        artifacts_dir = _get_standalone_artifacts_dir()
+        copy_artifact_to_path(src_path, artifacts_dir, filename)
+    else:
+        # Experiment mode - copy to experiment artifacts
+        manager = _get_experiment_manager()
+        manager.storage.copy_artifact(experiment_id, src_path, filename)
 
-        import matplotlib.pyplot as plt  # noqa: F401
-    except ImportError as err:
-        raise ImportError(
-            "matplotlib is required for log_matplotlib_figure. Install it with: pip install matplotlib"
-        ) from err
 
-    manager = _get_experiment_manager()
+def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
+    """Save a Python object to the experiment's artifacts directory.
 
-    # Save figure to temporary file
-    with tempfile.NamedTemporaryFile(suffix=f"_{filename}", delete=False) as temp_file:
-        temp_path = Path(temp_file.name)
+    Format is auto-detected from filename extension.
 
-        try:
-            # Save figure with provided options
-            fig.savefig(temp_path, **kwargs)
+    Args:
+        obj: Python object to save
+        filename: Name for saved artifact (extension determines format)
+        saver: Optional custom saver function (obj, path) -> None
 
-            # Copy to experiment artifacts
-            manager.storage.save_artifact(experiment_id, filename, temp_path)
-        finally:
-            # Clean up temporary file
-            if temp_path.exists():
-                os.unlink(temp_path)
+    Supported formats (auto-detected):
+        .txt        - Plain text (str.write)
+        .csv        - CSV (pandas.DataFrame.to_csv or list of dicts)
+        .json       - JSON (json.dump)
+        .jsonl      - JSON Lines (one JSON object per line)
+        .npy        - NumPy array (numpy.save)
+        .npz        - NumPy arrays (numpy.savez)
+        .pt, .pth   - PyTorch (torch.save)
+        .pkl        - Pickle (pickle.dump)
+        .png        - Matplotlib figure (fig.savefig)
+
+    Raises:
+        ValueError: If format can't be auto-detected and no custom saver provided
+        ImportError: If required library not installed (e.g., torch, pandas)
+        TypeError: If object type doesn't match expected type for extension
+
+    Examples:
+        # Text
+        yanex.save_artifact("Training complete", "status.txt")
+
+        # JSON
+        yanex.save_artifact({"acc": 0.95}, "metrics.json")
+
+        # PyTorch model
+        yanex.save_artifact(model.state_dict(), "model.pt")
+
+        # Matplotlib figure
+        yanex.save_artifact(fig, "plot.png")
+
+        # Custom format
+        def save_custom(obj, path):
+            with open(path, 'wb') as f:
+                custom_serialize(obj, f)
+
+        yanex.save_artifact(my_obj, "data.custom", saver=save_custom)
+
+    Note:
+        In standalone mode: Saves to ./artifacts/ directory
+        With experiment tracking: Saves to experiment artifacts directory
+    """
+    experiment_id = _get_current_experiment_id()
+
+    if experiment_id is None:
+        # Standalone mode - save to ./artifacts/
+        from .core.artifact_io import _validate_filename, save_artifact_to_path
+
+        # Validate filename to prevent path traversal
+        filename = _validate_filename(filename)
+
+        artifacts_dir = _get_standalone_artifacts_dir()
+        target_path = artifacts_dir / filename
+        save_artifact_to_path(obj, target_path, saver)
+    else:
+        # Experiment mode - save to experiment artifacts
+        manager = _get_experiment_manager()
+        manager.storage.save_artifact(experiment_id, obj, filename, saver)
+
+
+def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
+    """Load an artifact with automatic format detection.
+
+    Returns None if artifact doesn't exist (allows optional artifacts).
+
+    Args:
+        filename: Name of artifact to load
+        loader: Optional custom loader function (path) -> object
+
+    Supported formats (auto-detected by extension):
+        .txt        - Plain text (returns str)
+        .csv        - CSV (returns pandas.DataFrame or list[dict])
+        .json       - JSON (returns parsed dict/list)
+        .jsonl      - JSON Lines (returns list[dict])
+        .npy        - NumPy array (returns np.ndarray)
+        .npz        - NumPy arrays (returns dict of arrays)
+        .pt, .pth   - PyTorch (returns loaded object)
+        .pkl        - Pickle (returns unpickled object)
+        .png        - Image (returns PIL.Image)
+
+    Returns:
+        Loaded object, or None if artifact doesn't exist
+
+    Raises:
+        ValueError: If format can't be auto-detected and no custom loader provided
+        ImportError: If required library not installed
+
+    Examples:
+        # Load from current experiment
+        model_state = yanex.load_artifact("model.pt")
+        results = yanex.load_artifact("results.json")
+
+        # Optional artifact (returns None if missing)
+        checkpoint = yanex.load_artifact("checkpoint.pt")
+        if checkpoint is not None:
+            model.load_state_dict(checkpoint)
+
+        # Custom loader
+        def load_custom(path):
+            with open(path, 'rb') as f:
+                return custom_deserialize(f)
+
+        obj = yanex.load_artifact("data.custom", loader=load_custom)
+
+    Note:
+        In standalone mode: Loads from ./artifacts/ directory
+        With experiment tracking: Loads from experiment artifacts directory
+    """
+    experiment_id = _get_current_experiment_id()
+
+    if experiment_id is None:
+        # Standalone mode - load from ./artifacts/
+        from .core.artifact_io import load_artifact_from_path
+
+        artifacts_dir = _get_standalone_artifacts_dir()
+        artifact_path = artifacts_dir / filename
+
+        if not artifact_path.exists():
+            return None
+
+        return load_artifact_from_path(artifact_path, loader)
+    else:
+        # Experiment mode - load from experiment artifacts
+        manager = _get_experiment_manager()
+        return manager.storage.load_artifact(experiment_id, filename, loader)
+
+
+def artifact_exists(filename: str) -> bool:
+    """Check if an artifact exists without loading it.
+
+    Args:
+        filename: Name of artifact
+
+    Returns:
+        True if artifact exists, False otherwise
+
+    Examples:
+        if yanex.artifact_exists("checkpoint.pt"):
+            model.load_state_dict(yanex.load_artifact("checkpoint.pt"))
+
+    Note:
+        In standalone mode: Checks ./artifacts/ directory
+        With experiment tracking: Checks experiment artifacts directory
+    """
+    experiment_id = _get_current_experiment_id()
+
+    if experiment_id is None:
+        # Standalone mode - check ./artifacts/
+        from .core.artifact_io import artifact_exists_at_path
+
+        artifacts_dir = _get_standalone_artifacts_dir()
+        return artifact_exists_at_path(artifacts_dir, filename)
+    else:
+        # Experiment mode - check experiment artifacts
+        manager = _get_experiment_manager()
+        return manager.storage.artifact_exists(experiment_id, filename)
+
+
+def list_artifacts() -> list[str]:
+    """List all artifacts in the current experiment.
+
+    Returns:
+        List of artifact filenames (sorted)
+
+    Examples:
+        artifacts = yanex.list_artifacts()
+        # Returns: ["model.pt", "metrics.json", "plot.png"]
+
+    Note:
+        In standalone mode: Lists ./artifacts/ directory
+        With experiment tracking: Lists experiment artifacts directory
+    """
+    experiment_id = _get_current_experiment_id()
+
+    if experiment_id is None:
+        # Standalone mode - list ./artifacts/
+        from .core.artifact_io import list_artifacts_at_path
+
+        artifacts_dir = _get_standalone_artifacts_dir()
+        return list_artifacts_at_path(artifacts_dir)
+    else:
+        # Experiment mode - list experiment artifacts
+        manager = _get_experiment_manager()
+        return manager.storage.list_artifacts(experiment_id)
 
 
 def execute_bash_script(
@@ -534,11 +699,11 @@ def execute_bash_script(
             # Save stdout and stderr as artifacts if non-empty
             if stdout_lines:
                 stdout_content = "\n".join(stdout_lines)
-                log_text(stdout_content, f"{artifact_prefix}_stdout.txt")
+                save_artifact(stdout_content, f"{artifact_prefix}_stdout.txt")
 
             if stderr_lines:
                 stderr_content = "\n".join(stderr_lines)
-                log_text(stderr_content, f"{artifact_prefix}_stderr.txt")
+                save_artifact(stderr_content, f"{artifact_prefix}_stderr.txt")
 
         # Prepare return value
         execution_result = {

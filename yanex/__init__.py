@@ -13,9 +13,12 @@ from .api import (
     _get_current_experiment_id,
     # Internal functions (for testing)
     _set_current_experiment_id,
+    # Artifact management
+    artifact_exists,
     cancel,
     # Manual experiment control
     completed,
+    copy_artifact,
     create_context,
     # Experiment creation (advanced)
     create_experiment,
@@ -35,12 +38,12 @@ from .api import (
     has_context,
     # Context detection
     is_standalone,
-    log_artifact,
-    log_matplotlib_figure,
+    list_artifacts,
+    load_artifact,
     # Result logging
     log_metrics,
     log_results,
-    log_text,
+    save_artifact,
 )
 
 # Batch execution API
@@ -60,9 +63,12 @@ __all__ = [
     # Result logging
     "log_metrics",
     "log_results",
-    "log_artifact",
-    "log_text",
-    "log_matplotlib_figure",
+    # Artifact management
+    "copy_artifact",
+    "save_artifact",
+    "load_artifact",
+    "artifact_exists",
+    "list_artifacts",
     # Script execution
     "execute_bash_script",
     # Experiment information

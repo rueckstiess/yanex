@@ -487,8 +487,8 @@ class TestExperiment:
         """Test accessing experiment artifacts."""
         exp = Experiment(sample_experiment, manager)
 
-        # Get artifacts (may include git_diff.patch if there were uncommitted changes)
-        artifacts = exp.get_artifacts()
+        # List artifacts (may include git_diff.patch if there were uncommitted changes)
+        artifacts = exp.list_artifacts()
         assert isinstance(artifacts, list)
         # Artifacts may contain git_diff.patch from Phase 2 implementation
         assert len(artifacts) >= 0

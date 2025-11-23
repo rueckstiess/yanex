@@ -130,18 +130,52 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         return self.script_run_storage.load_script_runs(experiment_id, include_archived)
 
     # Artifact methods
-    def save_artifact(
-        self, experiment_id: str, artifact_name: str, source_path: Path
+    def copy_artifact(
+        self, experiment_id: str, source_path: Path | str, filename: str | None = None
     ) -> Path:
-        """Save an artifact file."""
-        return self.artifact_storage.save_artifact(
-            experiment_id, artifact_name, source_path
+        """Copy an existing file to experiment's artifacts directory."""
+        return self.artifact_storage.copy_artifact(experiment_id, source_path, filename)
+
+    def save_artifact(
+        self,
+        experiment_id: str,
+        obj: Any,
+        filename: str,
+        saver: Any | None = None,
+    ) -> Path:
+        """Save a Python object to experiment's artifacts directory."""
+        return self.artifact_storage.save_artifact(experiment_id, obj, filename, saver)
+
+    def load_artifact(
+        self,
+        experiment_id: str,
+        filename: str,
+        loader: Any | None = None,
+        include_archived: bool = False,
+    ) -> Any | None:
+        """Load an artifact from experiment's artifacts directory."""
+        return self.artifact_storage.load_artifact(
+            experiment_id, filename, loader, include_archived
         )
+
+    def artifact_exists(
+        self, experiment_id: str, filename: str, include_archived: bool = False
+    ) -> bool:
+        """Check if an artifact exists."""
+        return self.artifact_storage.artifact_exists(
+            experiment_id, filename, include_archived
+        )
+
+    def list_artifacts(
+        self, experiment_id: str, include_archived: bool = False
+    ) -> list[str]:
+        """List all artifacts in experiment's artifacts directory."""
+        return self.artifact_storage.list_artifacts(experiment_id, include_archived)
 
     def save_text_artifact(
         self, experiment_id: str, artifact_name: str, content: str
     ) -> Path:
-        """Save text content as an artifact."""
+        """Save text content as an artifact (legacy method)."""
         return self.artifact_storage.save_text_artifact(
             experiment_id, artifact_name, content
         )
