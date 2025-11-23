@@ -15,9 +15,14 @@ make install          # Install in development mode with dev dependencies
 
 ### Testing
 ```bash
-make test            # Run all tests
+make test            # Run all tests (parallel by default, 4x faster)
 make test-cov        # Run tests with coverage report (90%+ required)
 pytest path/to/test  # Run specific test file
+
+# Tests run in parallel by default using pytest-xdist (16 workers on multi-core systems)
+# This provides 4x speedup: ~17s vs ~69s for full suite
+# To run sequentially (e.g., for debugging):
+pytest -n 0          # Disables parallel execution
 ```
 
 ### Code Quality

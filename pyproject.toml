@@ -42,6 +42,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
@@ -61,11 +62,16 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Note: Tests run in parallel by default (4x faster)
+# To run sequentially: pytest -n 0
+# CI uses -n 0 to ensure consistent sequential execution
 addopts = [
     "--cov=yanex",
     "--cov-report=html",
     "--cov-report=term-missing",
-    "-v"
+    "-v",
+    "-n",
+    "auto"
 ]
 
 [tool.ruff]
