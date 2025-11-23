@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+from .dependencies import DependencyStorage
 from .storage_archive import FileSystemArchiveStorage
 from .storage_artifacts import FileSystemArtifactStorage
 from .storage_config import FileSystemConfigurationStorage
@@ -32,6 +33,7 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         self.script_run_storage = FileSystemScriptRunStorage(self.directory_manager)
         self.artifact_storage = FileSystemArtifactStorage(self.directory_manager)
         self.archive_storage = FileSystemArchiveStorage(self.directory_manager)
+        self.dependency_storage = DependencyStorage(self.directory_manager)
 
     # Directory management methods
     def create_experiment_directory(self, experiment_id: str) -> Path:

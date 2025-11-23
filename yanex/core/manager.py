@@ -393,6 +393,7 @@ class ExperimentManager:
         stage_only: bool = False,
         script_args: list[str] | None = None,
         cli_args: dict[str, Any] | None = None,
+        dependency_ids: list[str] | None = None,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -405,6 +406,7 @@ class ExperimentManager:
             stage_only: If True, create experiment with "staged" status for later execution
             script_args: Arguments to pass through to the script via sys.argv
             cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
+            dependency_ids: List of experiment IDs this experiment depends on
 
         Returns:
             Experiment ID
@@ -412,6 +414,8 @@ class ExperimentManager:
         Raises:
             ValidationError: If input parameters are invalid
             StorageError: If experiment creation fails
+            CircularDependencyError: If circular dependency detected
+            InvalidDependencyError: If dependency validation fails
         """
 
         # Set defaults
@@ -419,6 +423,8 @@ class ExperimentManager:
             config = {}
         if tags is None:
             tags = []
+        if dependency_ids is None:
+            dependency_ids = []
 
         # Validate inputs
         if name is not None:
@@ -429,6 +435,47 @@ class ExperimentManager:
 
         # Generate unique experiment ID
         experiment_id = self.generate_experiment_id()
+
+        # Resolve and validate dependencies if provided
+        resolved_dependency_ids = []
+        dependency_metadata = {}
+        if dependency_ids:
+            from .dependencies import DependencyResolver
+
+            resolver = DependencyResolver(self)
+
+            # Resolve short IDs and validate
+            resolved_dependency_ids = resolver.resolve_and_validate_dependencies(
+                dependency_ids, for_staging=stage_only, include_archived=True
+            )
+
+            # Check for circular dependencies
+            for dep_id in resolved_dependency_ids:
+                if resolver.detect_circular_dependency(
+                    experiment_id, dep_id, include_archived=True
+                ):
+                    from ..utils.exceptions import CircularDependencyError
+
+                    raise CircularDependencyError(
+                        f"Cannot add dependency on '{dep_id}'. "
+                        f"This would create a circular dependency chain."
+                    )
+
+            # Build metadata about dependencies for debugging
+            for dep_id in resolved_dependency_ids:
+                try:
+                    dep_metadata = self.storage.load_metadata(
+                        dep_id, include_archived=True
+                    )
+                    dependency_metadata[dep_id] = {
+                        "resolved_at": datetime.utcnow().isoformat(),
+                        "status_at_resolution": dep_metadata.get("status"),
+                        "script_path": dep_metadata.get("script_path"),
+                        "name": dep_metadata.get("name"),
+                    }
+                except Exception:
+                    # If we can't load metadata, just skip it
+                    pass
 
         # Create experiment directory structure
         self.storage.create_experiment_directory(experiment_id)
@@ -448,6 +495,12 @@ class ExperimentManager:
 
         # Save resolved configuration
         self.storage.save_config(experiment_id, config)
+
+        # Save dependencies if any
+        if resolved_dependency_ids:
+            self.storage.dependency_storage.save_dependencies(
+                experiment_id, resolved_dependency_ids, dependency_metadata
+            )
 
         return experiment_id
 

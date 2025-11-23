@@ -39,6 +39,13 @@ from ...core.script_executor import ScriptExecutor
 @click.option("--name", "-n", help="Experiment name")
 @click.option("--tag", "-t", multiple=True, help="Experiment tag (repeatable)")
 @click.option("--description", "-d", help="Experiment description")
+@click.option(
+    "--depends-on",
+    "-D",
+    multiple=True,
+    metavar="ID",
+    help="Experiment ID this run depends on (repeatable, supports short IDs). Can specify multiple dependencies or use comma-separated IDs.",
+)
 @click.option("--dry-run", is_flag=True, help="Validate configuration without running")
 @click.option(
     "--ignore-dirty",
@@ -72,6 +79,7 @@ def run(
     name: str | None,
     tag: list[str],
     description: str | None,
+    depends_on: tuple[str, ...],
     dry_run: bool,
     ignore_dirty: bool,
     stage: bool,
@@ -133,6 +141,19 @@ def run(
         --name "lr-tuning" \\
         --tag "hyperopt" \\
         --description "Learning rate optimization"
+
+      # Dependencies: Use artifacts from previous experiment
+      yanex run train.py -D abc12345
+
+      # Dependencies: Multiple dependencies
+      yanex run train.py -D prep1 -D prep2
+
+      # Dependencies: Comma-separated
+      yanex run train.py -D prep1,prep2,prep3
+
+      # Dependency sweep: Create one experiment per dependency
+      yanex run train.py -D prep1,prep2
+      # Creates 2 experiments: one depending on prep1, one on prep2
     """
     from .._utils import (
         load_and_merge_config,
@@ -153,6 +174,9 @@ def run(
     # Capture script-specific arguments (unknown to yanex)
     script_args = list(ctx.args) if ctx.args else []
 
+    # Parse dependencies (handle comma-separated IDs)
+    dependency_list = _parse_dependencies(depends_on)
+
     # Build parsed CLI arguments dictionary for yanex.get_cli_args()
     cli_args = {
         "script": str(script) if script else None,
@@ -162,6 +186,7 @@ def run(
         "name": name,
         "tag": list(tag),
         "description": description,
+        "depends_on": dependency_list,
         "dry_run": dry_run,
         "stage": stage,
         "staged": staged,
@@ -261,6 +286,10 @@ def run(
             return
 
         # Phase 3: Execute, stage, or execute sweep
+        # Check if we have dependency sweep (multiple dependencies) or parameter sweep
+        has_dependency_sweep = len(dependency_list) > 1
+        has_param_sweep = has_sweep_parameters(experiment_config)
+
         if resolved_stage:
             # Stage for later execution
             _stage_experiment(
@@ -269,20 +298,50 @@ def run(
                 tags=resolved_tags,
                 description=resolved_description,
                 config=experiment_config,
+                dependency_ids=dependency_list,
                 verbose=verbose,
                 script_args=script_args,
                 cli_args=cli_args,
             )
-        elif has_sweep_parameters(experiment_config):
-            # Direct sweep execution (NEW in v0.6.0)
+        elif has_dependency_sweep and has_param_sweep:
+            # Both dependency and parameter sweeps: Cartesian product
+            _execute_cartesian_sweep(
+                script=script,
+                name=resolved_name,
+                tags=resolved_tags,
+                description=resolved_description,
+                config=experiment_config,
+                dependency_ids=dependency_list,
+                verbose=verbose,
+                max_workers=parallel,
+                script_args=script_args,
+                cli_args=cli_args,
+            )
+        elif has_dependency_sweep:
+            # Dependency sweep only
+            _execute_dependency_sweep(
+                script=script,
+                name=resolved_name,
+                tags=resolved_tags,
+                description=resolved_description,
+                config=experiment_config,
+                dependency_ids=dependency_list,
+                verbose=verbose,
+                max_workers=parallel,
+                script_args=script_args,
+                cli_args=cli_args,
+            )
+        elif has_param_sweep:
+            # Parameter sweep only (existing functionality)
             _execute_sweep_experiments(
                 script=script,
                 name=resolved_name,
                 tags=resolved_tags,
                 description=resolved_description,
                 config=experiment_config,
+                dependency_ids=dependency_list,  # Pass single dependency if any
                 verbose=verbose,
-                max_workers=parallel,  # None=sequential, N=parallel
+                max_workers=parallel,
                 script_args=script_args,
                 cli_args=cli_args,
             )
@@ -294,6 +353,7 @@ def run(
                 tags=resolved_tags,
                 description=resolved_description,
                 config=experiment_config,
+                dependency_ids=dependency_list,
                 verbose=verbose,
                 script_args=script_args,
                 cli_args=cli_args,
@@ -310,6 +370,7 @@ def _execute_experiment(
     tags: list[str],
     description: str | None,
     config: dict[str, Any],
+    dependency_ids: list[str] | None = None,
     verbose: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
@@ -321,6 +382,8 @@ def _execute_experiment(
         script_args = []
     if cli_args is None:
         cli_args = []
+    if dependency_ids is None:
+        dependency_ids = []
 
     # Create experiment
     manager = ExperimentManager()
@@ -330,6 +393,7 @@ def _execute_experiment(
         config=config,
         tags=tags,
         description=description,
+        dependency_ids=dependency_ids,
         script_args=script_args,
         cli_args=cli_args,
     )
@@ -392,6 +456,7 @@ def _stage_experiment(
     tags: list[str],
     description: str | None,
     config: dict[str, Any],
+    dependency_ids: list[str] | None = None,
     verbose: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
@@ -404,6 +469,8 @@ def _stage_experiment(
         script_args = []
     if cli_args is None:
         cli_args = []
+    if dependency_ids is None:
+        dependency_ids = []
 
     # Check if this is a parameter sweep
     if has_sweep_parameters(config):
@@ -432,6 +499,7 @@ def _stage_experiment(
                 config=expanded_config,
                 tags=sweep_tags,
                 description=description,
+                dependency_ids=dependency_ids,
                 stage_only=True,
                 script_args=script_args,
                 cli_args=cli_args,
@@ -458,6 +526,7 @@ def _stage_experiment(
             config=config,
             tags=tags,
             description=description,
+            dependency_ids=dependency_ids,
             stage_only=True,
             script_args=script_args,
             cli_args=cli_args,
@@ -690,6 +759,7 @@ def _execute_sweep_experiments(
     tags: list[str],
     description: str | None,
     config: dict[str, Any],
+    dependency_ids: list[str] | None = None,
     verbose: bool = False,
     max_workers: int | None = None,
     script_args: list[str] | None = None,
@@ -706,6 +776,7 @@ def _execute_sweep_experiments(
         tags: List of experiment tags
         description: Experiment description
         config: Configuration with sweep parameters
+        dependency_ids: List of experiment IDs this run depends on
         verbose: Show verbose output
         max_workers: Maximum parallel workers. None=sequential, N=parallel
         script_args: Arguments to pass through to the script
@@ -717,6 +788,8 @@ def _execute_sweep_experiments(
         script_args = []
     if cli_args is None:
         cli_args = []
+    if dependency_ids is None:
+        dependency_ids = []
 
     # Expand parameter sweeps into individual configurations
     expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
@@ -740,6 +813,7 @@ def _execute_sweep_experiments(
             ),
             tags=sweep_tags,
             description=description,
+            dependency_ids=dependency_ids,
             script_args=script_args,
             cli_args=cli_args,
         )
@@ -761,3 +835,166 @@ def _normalize_tags(tag_value: Any) -> list[str]:
         return [str(t) for t in tag_value]
     else:
         return []
+
+
+def _parse_dependencies(depends_on: tuple[str, ...]) -> list[str]:
+    """Parse dependency IDs from CLI arguments.
+
+    Handles both multiple -D flags and comma-separated IDs.
+
+    Args:
+        depends_on: Tuple of dependency strings from CLI.
+
+    Returns:
+        Flat list of dependency IDs.
+
+    Example:
+        _parse_dependencies(("abc1", "def2,ghi3"))
+        # Returns: ["abc1", "def2", "ghi3"]
+    """
+    dependency_list = []
+    for dep_arg in depends_on:
+        # Split by comma to handle comma-separated IDs
+        ids = [dep_id.strip() for dep_id in dep_arg.split(",")]
+        dependency_list.extend(ids)
+    return dependency_list
+
+
+def _execute_dependency_sweep(
+    script: Path,
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    config: dict[str, Any],
+    dependency_ids: list[str],
+    verbose: bool = False,
+    max_workers: int | None = None,
+    script_args: list[str] | None = None,
+    cli_args: list[str] | None = None,
+) -> None:
+    """Execute dependency sweep: create one experiment per dependency.
+
+    Args:
+        script: Path to the Python script
+        name: Base experiment name
+        tags: List of experiment tags
+        description: Experiment description
+        config: Configuration (no parameter sweeps)
+        dependency_ids: List of dependency IDs (2 or more)
+        verbose: Show verbose output
+        max_workers: Maximum parallel workers
+        script_args: Arguments to pass through to the script
+        cli_args: Complete CLI arguments used to run the experiment
+    """
+    from ...executor import ExperimentSpec, run_multiple
+
+    if script_args is None:
+        script_args = []
+    if cli_args is None:
+        cli_args = []
+
+    click.echo(
+        f"✓ Dependency sweep detected: running {len(dependency_ids)} experiments"
+    )
+
+    # Add "sweep" tag for dependency sweeps
+    sweep_tags = list(tags) if tags else []
+    if "sweep" not in sweep_tags:
+        sweep_tags.append("sweep")
+
+    # Build ExperimentSpec objects (one per dependency)
+    experiments = [
+        ExperimentSpec(
+            script_path=script,
+            config=config,
+            name=name,  # Use same name for all (they'll get unique IDs)
+            tags=sweep_tags,
+            description=description,
+            dependency_ids=[dep_id],  # Each experiment gets single dependency
+            script_args=script_args,
+            cli_args=cli_args,
+        )
+        for dep_id in dependency_ids
+    ]
+
+    # Execute using shared executor
+    results = run_multiple(experiments, parallel=max_workers, verbose=verbose)
+
+    # Print summary
+    _print_sweep_summary(results, len(dependency_ids))
+
+
+def _execute_cartesian_sweep(
+    script: Path,
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    config: dict[str, Any],
+    dependency_ids: list[str],
+    verbose: bool = False,
+    max_workers: int | None = None,
+    script_args: list[str] | None = None,
+    cli_args: list[str] | None = None,
+) -> None:
+    """Execute Cartesian product sweep: dependencies × parameters.
+
+    Creates len(dependency_ids) × len(param_combinations) experiments.
+
+    Args:
+        script: Path to the Python script
+        name: Base experiment name
+        tags: List of experiment tags
+        description: Experiment description
+        config: Configuration with sweep parameters
+        dependency_ids: List of dependency IDs (2 or more)
+        verbose: Show verbose output
+        max_workers: Maximum parallel workers
+        script_args: Arguments to pass through to the script
+        cli_args: Complete CLI arguments used to run the experiment
+    """
+    from ...executor import ExperimentSpec, run_multiple
+
+    if script_args is None:
+        script_args = []
+    if cli_args is None:
+        cli_args = []
+
+    # Expand parameter sweeps
+    expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
+
+    total_experiments = len(dependency_ids) * len(expanded_configs)
+    click.echo(
+        f"✓ Cartesian sweep detected: running {total_experiments} experiments "
+        f"({len(dependency_ids)} dependencies × {len(expanded_configs)} parameter combinations)"
+    )
+
+    # Add "sweep" tag
+    sweep_tags = list(tags) if tags else []
+    if "sweep" not in sweep_tags:
+        sweep_tags.append("sweep")
+
+    # Build ExperimentSpec objects (Cartesian product)
+    experiments = []
+    for dep_id in dependency_ids:
+        for expanded_config in expanded_configs:
+            sweep_name = _generate_sweep_experiment_name(
+                name, expanded_config, sweep_param_paths
+            )
+            experiments.append(
+                ExperimentSpec(
+                    script_path=script,
+                    config=expanded_config,
+                    name=sweep_name,
+                    tags=sweep_tags,
+                    description=description,
+                    dependency_ids=[dep_id],  # Single dependency per experiment
+                    script_args=script_args,
+                    cli_args=cli_args,
+                )
+            )
+
+    # Execute using shared executor
+    results = run_multiple(experiments, parallel=max_workers, verbose=verbose)
+
+    # Print summary
+    _print_sweep_summary(results, total_experiments)
