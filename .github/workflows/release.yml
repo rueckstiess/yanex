@@ -35,7 +35,7 @@ jobs:
       run: make check
     
     - name: Run full test suite with coverage
-      run: pytest --cov=yanex --cov-report=term-missing --cov-fail-under=90
+      run: pytest --cov=yanex --cov-report=term-missing --cov-fail-under=90 -n 0
     
     - name: Validate package structure
       run: |

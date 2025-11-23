@@ -26,28 +26,34 @@ class TestParallelExecution:
         assert result.exit_code != 0
         assert "--parallel must be 0 (auto) or positive" in result.output
 
-    def test_parallel_zero_accepted(self, tmp_path, cli_runner):
+    def test_parallel_zero_accepted(
+        self, tmp_path, cli_runner, per_test_experiments_dir
+    ):
         """Test that --parallel 0 (auto) is accepted."""
         # Should not error on validation (even if no staged experiments exist)
         result = cli_runner.invoke(cli, ["run", "--staged", "--parallel", "0"])
         assert result.exit_code == 0
         assert "No staged experiments found" in result.output
 
-    def test_parallel_positive_value_accepted(self, tmp_path, cli_runner):
+    def test_parallel_positive_value_accepted(
+        self, tmp_path, cli_runner, per_test_experiments_dir
+    ):
         """Test that positive --parallel values are accepted."""
         # Should not error on validation (even if no staged experiments exist)
         result = cli_runner.invoke(cli, ["run", "--staged", "--parallel", "4"])
         assert result.exit_code == 0
         assert "No staged experiments found" in result.output
 
-    def test_parallel_short_flag(self, tmp_path, cli_runner):
+    def test_parallel_short_flag(self, tmp_path, cli_runner, per_test_experiments_dir):
         """Test that -j short flag works for --parallel."""
         # Should not error on validation
         result = cli_runner.invoke(cli, ["run", "--staged", "-j", "2"])
         assert result.exit_code == 0
         assert "No staged experiments found" in result.output
 
-    def test_sequential_execution_still_works(self, tmp_path, cli_runner):
+    def test_sequential_execution_still_works(
+        self, tmp_path, cli_runner, per_test_experiments_dir
+    ):
         """Test that sequential execution (no --parallel) still works."""
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "test_script.py", "simple"
@@ -72,7 +78,9 @@ class TestParallelExecution:
         assert result.exit_code == 0
         # Should complete successfully
 
-    def test_parallel_execution_with_staged_experiments(self, tmp_path, cli_runner):
+    def test_parallel_execution_with_staged_experiments(
+        self, tmp_path, cli_runner, per_test_experiments_dir
+    ):
         """Test parallel execution with multiple staged experiments."""
         # Create a simple test script
         script_path = TestFileHelpers.create_test_script(
