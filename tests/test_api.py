@@ -407,7 +407,6 @@ class TestExperimentAPI:
         assert saved_results[2]["step"] == 2
 
 
-
 class TestManualExperimentControl:
     """Test manual experiment control functions - improved with utilities."""
 

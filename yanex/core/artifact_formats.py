@@ -3,9 +3,10 @@
 import csv
 import json
 import pickle
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 @dataclass
@@ -302,7 +303,7 @@ def get_handler_for_save(obj: Any, filename: str) -> FormatHandler:
     matching_handlers = [h for h in FORMAT_HANDLERS if ext in h.extensions]
 
     if not matching_handlers:
-        supported = sorted(set(ext for h in FORMAT_HANDLERS for ext in h.extensions))
+        supported = sorted({ext for h in FORMAT_HANDLERS for ext in h.extensions})
         raise ValueError(
             f"Cannot auto-detect format for '{filename}'. "
             f"Supported extensions: {', '.join(supported)}. "
@@ -360,7 +361,7 @@ def get_handler_for_load(filename: str) -> FormatHandler:
             return handler
 
     # No handler found
-    supported = sorted(set(ext for h in FORMAT_HANDLERS for ext in h.extensions))
+    supported = sorted({ext for h in FORMAT_HANDLERS for ext in h.extensions})
     raise ValueError(
         f"Cannot auto-detect format for '{filename}'. "
         f"Supported extensions: {', '.join(supported)}. "

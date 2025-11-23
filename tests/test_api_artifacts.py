@@ -31,9 +31,7 @@ class TestCopyArtifact:
         script_path = tmp_path / "script.py"
         script_path.write_text("import yanex")
 
-        with yanex.create_experiment(script_path) as ctx:
-            exp_id = ctx.experiment_id
-
+        with yanex.create_experiment(script_path):
             # Copy artifact
             yanex.copy_artifact(source_file)
 

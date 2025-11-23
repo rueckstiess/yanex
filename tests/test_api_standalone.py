@@ -2,8 +2,6 @@
 Tests for experiment API standalone mode functionality.
 """
 
-import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -107,7 +105,6 @@ class TestStandaloneMode:
             getattr(yanex, log_function)(log_args[0], **log_args[1])
         else:
             getattr(yanex, log_function)(log_args[0])
-
 
     @pytest.mark.parametrize(
         "control_function,function_args,expected_error",

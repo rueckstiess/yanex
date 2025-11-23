@@ -1,8 +1,6 @@
 """Tests for Experiment artifact methods (load_artifact, artifact_exists, list_artifacts)."""
 
-import json
 import os
-from pathlib import Path
 
 import pytest
 

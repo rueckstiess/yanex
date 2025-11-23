@@ -1,8 +1,9 @@
 """Unified artifact save/load logic with automatic format detection."""
 
 import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .artifact_formats import get_handler_for_load, get_handler_for_save
 
