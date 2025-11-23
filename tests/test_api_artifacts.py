@@ -448,3 +448,113 @@ class TestArtifactIntegration:
             # List only shows tracking artifacts (filter out git_diff.patch)
             artifacts = [a for a in yanex.list_artifacts() if a != "git_diff.patch"]
             assert artifacts == ["experiment_data.txt"]
+
+
+class TestArtifactSecurity:
+    """Test security features of artifact API."""
+
+    def test_save_artifact_path_traversal_blocked(self, clean_git_repo, tmp_path):
+        """Test that path traversal attempts are blocked in save_artifact."""
+        script_path = tmp_path / "script.py"
+        script_path.write_text("import yanex")
+
+        with yanex.create_experiment(script_path):
+            # Try path traversal with .. (use valid extension)
+            with pytest.raises((ValueError, StorageError), match="path traversal"):
+                yanex.save_artifact("malicious", "../../../etc/passwd.txt")
+
+            # Try absolute path (use valid extension)
+            with pytest.raises((ValueError, StorageError), match="absolute paths not allowed"):
+                yanex.save_artifact("malicious", "/etc/passwd.txt")
+
+    def test_copy_artifact_path_traversal_blocked(self, clean_git_repo, tmp_path):
+        """Test that path traversal attempts are blocked in copy_artifact."""
+        # Create a source file
+        source_file = tmp_path / "source.txt"
+        source_file.write_text("Content")
+
+        script_path = tmp_path / "script.py"
+        script_path.write_text("import yanex")
+
+        with yanex.create_experiment(script_path):
+            # Try path traversal with custom filename
+            with pytest.raises((ValueError, StorageError), match="path traversal"):
+                yanex.copy_artifact(source_file, "../../../malicious.txt")
+
+            # Try absolute path as filename
+            with pytest.raises((ValueError, StorageError), match="absolute paths not allowed"):
+                yanex.copy_artifact(source_file, "/tmp/malicious.txt")
+
+    def test_artifact_exists_path_traversal_blocked(self, clean_git_repo, tmp_path):
+        """Test that path traversal attempts are blocked in artifact_exists."""
+        script_path = tmp_path / "script.py"
+        script_path.write_text("import yanex")
+
+        with yanex.create_experiment(script_path):
+            # Try path traversal
+            with pytest.raises((ValueError, StorageError), match="path traversal"):
+                yanex.artifact_exists("../../../etc/passwd")
+
+    def test_load_artifact_path_traversal_blocked(self, clean_git_repo, tmp_path):
+        """Test that path traversal attempts are blocked in load_artifact."""
+        script_path = tmp_path / "script.py"
+        script_path.write_text("import yanex")
+
+        with yanex.create_experiment(script_path):
+            # Try path traversal
+            with pytest.raises((ValueError, StorageError), match="path traversal"):
+                yanex.load_artifact("../../../etc/passwd")
+
+    def test_save_artifact_filename_sanitized(self, clean_git_repo, tmp_path):
+        """Test that filenames are sanitized (basename extraction)."""
+        script_path = tmp_path / "script.py"
+        script_path.write_text("import yanex")
+
+        with yanex.create_experiment(script_path):
+            # Save with path-like filename (should extract basename)
+            yanex.save_artifact("content", "subdir/file.txt")
+
+            # Should be saved as just "file.txt" in artifacts dir
+            artifacts_dir = yanex.get_artifacts_dir()
+            assert (artifacts_dir / "file.txt").exists()
+            assert not (artifacts_dir / "subdir").exists()
+
+    def test_copy_artifact_filename_sanitized(self, clean_git_repo, tmp_path):
+        """Test that filenames are sanitized in copy_artifact."""
+        source_file = tmp_path / "source.txt"
+        source_file.write_text("Content")
+
+        script_path = tmp_path / "script.py"
+        script_path.write_text("import yanex")
+
+        with yanex.create_experiment(script_path):
+            # Copy with path-like filename (should extract basename)
+            yanex.copy_artifact(source_file, "subdir/renamed.txt")
+
+            # Should be saved as just "renamed.txt" in artifacts dir
+            artifacts_dir = yanex.get_artifacts_dir()
+            assert (artifacts_dir / "renamed.txt").exists()
+            assert not (artifacts_dir / "subdir").exists()
+
+    def test_save_artifact_standalone_path_traversal_blocked(
+        self, tmp_path, monkeypatch
+    ):
+        """Test path traversal blocked in standalone mode."""
+        monkeypatch.chdir(tmp_path)
+
+        # Try path traversal in standalone mode (use valid extension)
+        with pytest.raises(ValueError, match="path traversal"):
+            yanex.save_artifact("malicious", "../../../etc/passwd.txt")
+
+    def test_copy_artifact_standalone_path_traversal_blocked(
+        self, tmp_path, monkeypatch
+    ):
+        """Test path traversal blocked in standalone mode for copy_artifact."""
+        monkeypatch.chdir(tmp_path)
+
+        source_file = tmp_path / "source.txt"
+        source_file.write_text("Content")
+
+        # Try path traversal in standalone mode
+        with pytest.raises(ValueError, match="path traversal"):
+            yanex.copy_artifact(source_file, "../../../malicious.txt")

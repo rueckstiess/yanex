@@ -6,6 +6,7 @@ from typing import Any
 
 from ..utils.exceptions import StorageError
 from .artifact_io import (
+    _validate_filename,
     artifact_exists_at_path,
     copy_artifact_to_path,
     list_artifacts_at_path,
@@ -71,6 +72,12 @@ class FileSystemArtifactStorage(ArtifactStorage):
         Raises:
             StorageError: If artifact cannot be saved
         """
+        # Validate filename to prevent path traversal
+        try:
+            filename = _validate_filename(filename)
+        except ValueError as e:
+            raise StorageError(f"Invalid artifact filename: {e}") from e
+
         exp_dir = self.directory_manager.get_experiment_directory(experiment_id)
         artifacts_dir = exp_dir / "artifacts"
         target_path = artifacts_dir / filename
@@ -103,6 +110,12 @@ class FileSystemArtifactStorage(ArtifactStorage):
         Raises:
             StorageError: If artifact cannot be loaded
         """
+        # Validate filename to prevent path traversal
+        try:
+            filename = _validate_filename(filename)
+        except ValueError as e:
+            raise StorageError(f"Invalid artifact filename: {e}") from e
+
         exp_dir = self.directory_manager.get_experiment_directory(
             experiment_id, include_archived=include_archived
         )

@@ -416,7 +416,10 @@ def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
 
     if experiment_id is None:
         # Standalone mode - save to ./artifacts/
-        from .core.artifact_io import save_artifact_to_path
+        from .core.artifact_io import _validate_filename, save_artifact_to_path
+
+        # Validate filename to prevent path traversal
+        filename = _validate_filename(filename)
 
         artifacts_dir = _get_standalone_artifacts_dir()
         target_path = artifacts_dir / filename

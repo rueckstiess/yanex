@@ -150,10 +150,30 @@ def _save_torch(obj: Any, path: Path) -> None:
 
 
 def _load_torch(path: Path) -> Any:
-    """Load object with torch.load."""
+    """Load object with torch.load.
+
+    Note: Uses weights_only=True by default for security. If you need to load
+    arbitrary Python objects, use a custom loader with weights_only=False.
+    """
     import torch
 
-    return torch.load(path, weights_only=False)
+    # Use weights_only=True for security (prevents arbitrary code execution)
+    # This is safe for model weights but not for arbitrary pickled objects
+    try:
+        return torch.load(path, weights_only=True)
+    except Exception:
+        # If weights_only=True fails, it might be an older checkpoint format
+        # Fall back to weights_only=False but warn the user
+        import warnings
+
+        warnings.warn(
+            f"Loading {path.name} with weights_only=False. "
+            "This may execute arbitrary code. "
+            "Consider re-saving with a newer PyTorch version.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return torch.load(path, weights_only=False)
 
 
 def _save_pickle(obj: Any, path: Path) -> None:
