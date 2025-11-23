@@ -290,7 +290,7 @@ class TestFindExperimentsByIdentifiers:
         with pytest.raises(click.ClickException) as exc_info:
             find_experiments_by_identifiers(filter_obj, ["abc"])
 
-        assert "Ambiguous experiment ID prefix" in str(exc_info.value)
+        assert "Ambiguous identifier" in str(exc_info.value)
 
     def test_find_by_name_exact_match(self, isolated_storage, isolated_manager):
         """Test finding by exact name."""
@@ -321,7 +321,7 @@ class TestFindExperimentsByIdentifiers:
         with pytest.raises(click.ClickException) as exc_info:
             find_experiments_by_identifiers(filter_obj, [exp_name])
 
-        assert "Ambiguous experiment name" in str(exc_info.value)
+        assert "Ambiguous identifier" in str(exc_info.value)
 
     def test_find_experiment_not_found_raises(self, isolated_storage, isolated_manager):
         """Test that nonexistent experiment raises error."""

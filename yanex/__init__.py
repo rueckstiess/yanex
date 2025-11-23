@@ -28,6 +28,8 @@ from .api import (
     # Experiment information
     get_artifacts_dir,
     get_cli_args,
+    # Dependency tracking
+    get_dependencies,
     get_experiment_dir,
     get_experiment_id,
     get_metadata,
@@ -51,6 +53,7 @@ from .core.artifact_formats import register_format
 
 # Batch execution API
 from .executor import ExperimentResult, ExperimentSpec, run_multiple
+from .results.experiment import Experiment
 
 __version__ = "0.4.0"
 __author__ = "Thomas"
@@ -81,6 +84,9 @@ __all__ = [
     "get_artifacts_dir",
     "get_status",
     "get_metadata",
+    # Dependency tracking
+    "get_dependencies",
+    "Experiment",
     # Experiment creation (advanced)
     "create_experiment",
     "create_context",

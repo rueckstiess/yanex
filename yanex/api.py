@@ -17,8 +17,13 @@ from typing import Any
 from .core.manager import ExperimentManager
 from .core.param_tracking import save_accessed_params
 from .core.tracked_dict import TrackedDict
+from .results.experiment import Experiment
 from .utils.dict_utils import get_nested_value
-from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
+from .utils.exceptions import (
+    AmbiguousArtifactError,
+    ExperimentContextError,
+    ExperimentNotFoundError,
+)
 
 # Thread-local storage for current experiment context
 _local = threading.local()
@@ -312,6 +317,80 @@ def get_metadata() -> dict[str, Any]:
     return manager.get_experiment_metadata(experiment_id)
 
 
+def get_dependencies(
+    transitive: bool = False, include_self: bool = False
+) -> list[Experiment]:
+    """Get experiment dependencies.
+
+    Returns list of Experiment objects for experiments that the current
+    experiment depends on. In standalone mode, returns empty list.
+
+    Args:
+        transitive: If True, include transitive dependencies (dependencies of dependencies)
+        include_self: If True, include current experiment in result (only with transitive=True)
+
+    Returns:
+        List of Experiment objects in topological order (dependencies before dependents)
+
+    Examples:
+        # Get direct dependencies only
+        deps = yanex.get_dependencies()
+        for dep in deps:
+            print(f"{dep.id}: {dep.name} ({dep.status})")
+
+        # Get all dependencies (transitive)
+        all_deps = yanex.get_dependencies(transitive=True)
+
+        # Load artifact from specific dependency
+        deps = yanex.get_dependencies()
+        model = deps[0].load_artifact("model.pt")
+
+        # List artifacts in all dependencies
+        for dep in yanex.get_dependencies(transitive=True):
+            print(f"{dep.id} artifacts: {dep.list_artifacts()}")
+
+    Note:
+        In standalone mode (no experiment context): Returns empty list
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return []  # Standalone mode - no dependencies
+
+    manager = _get_experiment_manager()
+
+    # Get dependency IDs
+    if transitive:
+        # Get all dependencies using DependencyResolver
+        from .core.dependencies import DependencyResolver
+
+        resolver = DependencyResolver(manager)
+        dependency_ids = resolver.get_transitive_dependencies(
+            experiment_id, include_self=include_self, include_archived=True
+        )
+    else:
+        # Get only direct dependencies
+        dep_data = manager.storage.dependency_storage.load_dependencies(
+            experiment_id, include_archived=True
+        )
+        dependency_ids = dep_data.get("dependency_ids", [])
+
+        if include_self:
+            dependency_ids = dependency_ids + [experiment_id]
+
+    # Create Experiment objects for each dependency
+    dependencies = []
+    for dep_id in dependency_ids:
+        try:
+            # Use Experiment class for consistent API
+            experiment = Experiment(dep_id, manager)
+            dependencies.append(experiment)
+        except Exception:
+            # Skip dependencies that can't be loaded (e.g., deleted)
+            continue
+
+    return dependencies
+
+
 def log_metrics(data: dict[str, Any], step: int | None = None) -> None:
     """Log experiment metrics for current step.
 
@@ -474,7 +553,8 @@ def load_artifact(
 ) -> Any | None:
     """Load an artifact with automatic format detection.
 
-    Returns None if artifact doesn't exist (allows optional artifacts).
+    Automatically searches dependencies if artifact not found in current experiment.
+    Returns None if artifact doesn't exist anywhere (allows optional artifacts).
 
     Args:
         filename: Name of artifact to load
@@ -498,9 +578,11 @@ def load_artifact(
     Raises:
         ValueError: If format can't be auto-detected and no custom loader provided
         ImportError: If required library not installed
+        AmbiguousArtifactError: If artifact found in multiple dependencies
 
     Examples:
         # Auto-detect format from extension
+        # Load from current experiment or dependencies
         model_state = yanex.load_artifact("model.pt")
         results = yanex.load_artifact("results.json")
 
@@ -519,14 +601,18 @@ def load_artifact(
 
         obj = yanex.load_artifact("data.custom", loader=load_custom)
 
+        # Explicit dependency loading (avoids ambiguity)
+        deps = yanex.get_dependencies()
+        model = deps[0].load_artifact("model.pt")
+
     Note:
-        In standalone mode: Loads from ./artifacts/ directory
-        With experiment tracking: Loads from experiment artifacts directory
+        In standalone mode: Loads from ./artifacts/ directory (no dependency search)
+        With experiment tracking: Searches current experiment + all dependencies
     """
     experiment_id = _get_current_experiment_id()
 
     if experiment_id is None:
-        # Standalone mode - load from ./artifacts/
+        # Standalone mode - load from ./artifacts/ (no dependency search)
         from .core.artifact_io import load_artifact_from_path
 
         artifacts_dir = _get_standalone_artifacts_dir()
@@ -537,11 +623,32 @@ def load_artifact(
 
         return load_artifact_from_path(artifact_path, loader, format=format)
     else:
-        # Experiment mode - load from experiment artifacts
+        # Experiment mode - search current experiment + dependencies
         manager = _get_experiment_manager()
-        return manager.storage.load_artifact(
-            experiment_id, filename, loader, format=format
+
+        # First try current experiment
+        if manager.storage.artifact_exists(experiment_id, filename):
+            return manager.storage.load_artifact(experiment_id, filename, loader)
+
+        # Not in current experiment - search dependencies
+        from .core.dependencies import DependencyResolver
+
+        resolver = DependencyResolver(manager)
+        found_in_id, all_matches = resolver.find_artifact_in_dependencies(
+            experiment_id, filename, include_archived=True
         )
+
+        if found_in_id is not None:
+            # Found uniquely in one dependency - load it
+            return manager.storage.load_artifact(
+                found_in_id, filename, loader, include_archived=True, format=format
+            )
+        elif len(all_matches) > 1:
+            # Found in multiple places - raise ambiguity error
+            raise AmbiguousArtifactError(filename, all_matches)
+        else:
+            # Not found anywhere
+            return None
 
 
 def artifact_exists(filename: str) -> bool:
