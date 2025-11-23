@@ -457,7 +457,7 @@ git checkout <commit_hash>
 git apply experiments/<exp_id>/artifacts/git_diff.patch
 
 # 3. Re-run with same config
-yanex run script.py --config experiments/<exp_id>/config.yaml
+yanex run script.py --config experiments/<exp_id>/params.yaml
 ```
 
 Or use `--clone-from`:
@@ -490,7 +490,7 @@ yanex open abc123
 
 **Parameter errors**:
 ```bash
-# Verify parameters in config.yaml
+# Verify parameters in params.yaml
 yanex show abc123
 ```
 

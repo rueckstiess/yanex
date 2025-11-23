@@ -696,7 +696,7 @@ class TestAPIParameterizedScenarios:
         ],
     )
     def test_get_params_different_config_types(
-        self, isolated_manager, config_type, expected_params
+        self, isolated_manager, config_type, expected_params, clean_api_state
     ):
         """Test getting parameters for different config types."""
         experiment_id = f"{config_type[:4].ljust(4, 'x')}cfg1"
@@ -735,6 +735,12 @@ class TestExecuteBashScript:
 
     def setup_method(self):
         """Set up test experiment context."""
+        # Clean API state before test
+        if hasattr(yanex.api._local, "experiment_id"):
+            del yanex.api._local.experiment_id
+        yanex.api._tracked_params = None
+        yanex.api._atexit_registered = False
+
         self.manager = create_isolated_manager()
         self.experiment_id = "script01"
 
@@ -761,6 +767,11 @@ class TestExecuteBashScript:
     def teardown_method(self):
         """Clean up after test."""
         yanex._clear_current_experiment_id()
+        # Clean API state after test
+        if hasattr(yanex.api._local, "experiment_id"):
+            del yanex.api._local.experiment_id
+        yanex.api._tracked_params = None
+        yanex.api._atexit_registered = False
 
     def test_execute_bash_script_standalone_mode_works(self):
         """Test that execute_bash_script works in standalone mode."""

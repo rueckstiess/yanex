@@ -7,6 +7,7 @@
 - Accessing nested params with dot notation: `get_param('model.learning_rate')`
 - Parameter hierarchy: CLI overrides > config file > code defaults
 - Loading configs with `--config`
+- **Parameter tracking**: Yanex automatically tracks which parameters your script actually uses
 
 ## Files
 
@@ -64,18 +65,19 @@ The `train-config.yaml` file organizes parameters into logical groups:
 
 ```yaml
 model:                    # Model architecture parameters
-  learning_rate: 0.001
-  hidden_size: 128
-  dropout: 0.1
+  learning_rate: 0.001    # ✅ Used by script
+  hidden_size: 128        # ❌ NOT used - won't be tracked
+  dropout: 0.1            # ❌ NOT used - won't be tracked
 
 training:                 # Training process parameters
-  epochs: 10
-  batch_size: 32
-  optimizer: adam
+  epochs: 10              # ✅ Used by script
+  batch_size: 32          # ✅ Used by script
+  optimizer: adam         # ❌ NOT used - won't be tracked
 
 data:                     # Dataset parameters
-  dataset: mnist
-  train_split: 0.8
+  dataset: mnist          # ✅ Used by script
+  train_split: 0.8        # ❌ NOT used - won't be tracked
+  validation_split: 0.2   # ❌ NOT used - won't be tracked
 ```
 
 ## Parameter Hierarchy
@@ -108,19 +110,47 @@ params = yanex.get_params()
 lr = params['model']['learning_rate']
 ```
 
+## Parameter Tracking (New!)
+
+**Yanex tracks which parameters your script actually accesses** and only saves those to the experiment record. This has several benefits:
+
+1. **Clearer experiment records**: Only parameters that affected the experiment are saved
+2. **Reduced storage**: No bloat from unused shared config parameters
+3. **Better introspection**: Easy to see which parameters actually mattered
+
+**In this example:**
+
+The script accesses only 4 parameters:
+- `model.learning_rate` ✅
+- `training.epochs` ✅
+- `training.batch_size` ✅
+- `data.dataset` ✅
+
+The following parameters are defined in `train-config.yaml` but **NOT accessed** by the script, so they won't be tracked:
+- `model.hidden_size` ❌ (defined but never read)
+- `model.dropout` ❌ (defined but never read)
+- `training.optimizer` ❌ (defined but never read)
+- `data.train_split` ❌ (defined but never read)
+- `data.validation_split` ❌ (defined but never read)
+
+After running the experiment, check `~/.yanex/experiments/<id>/params.yaml` and you'll see it contains only the 4 parameters that were actually accessed!
+
 ## What to Look For
 
 After running:
-- **View the config used**: `yanex show <id>` shows all parameters (including overrides)
-- **Check stored config**: `~/.yanex/experiments/<id>/config.json` has the resolved parameters (e.g. CLI parameter overrides)
-- **Compare experiments**: `yanex compare` shows parameter differences
+- **View the config used**: `yanex show <id>` shows the tracked parameters (only the ones your script accessed)
+- **Check stored params**: `~/.yanex/experiments/<id>/params.yaml` contains only the 4 parameters that were accessed (model.learning_rate, training.epochs, training.batch_size, data.dataset)
+- **Notice what's missing**: Parameters like `model.hidden_size` and `training.optimizer` won't be in `params.yaml` because they weren't accessed
+- **Compare experiments**: `yanex compare` shows parameter differences (only tracked parameters)
 
 ## Key Concepts
 
 - **Config files avoid repetition**: Set defaults once, override when needed
 - **Organized parameters**: Nested structure keeps configs readable
 - **CLI flexibility**: Quick parameter tweaks without editing files
-- **Reproducibility**: Config is saved with each experiment
+- **Reproducibility**: Only accessed parameters are saved with each experiment
+- **Automatic tracking**: No code changes needed - yanex tracks parameter access automatically
+- **Shared configs work great**: Define many parameters in config files, only the ones you use are tracked
 
 ## Next Steps
 

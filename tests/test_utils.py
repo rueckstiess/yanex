@@ -103,8 +103,10 @@ class TestDataFactory:
         }
 
         base_config = config_templates.get(config_type, config_templates["simple"])
-        base_config.update(overrides)
-        return base_config
+        # Return a copy to avoid mutating the template
+        result = base_config.copy()
+        result.update(overrides)
+        return result
 
     @staticmethod
     def create_experiment_results(
@@ -143,8 +145,10 @@ class TestDataFactory:
         }
 
         base_results = result_templates.get(result_type, result_templates["simple"])
-        base_results.update(overrides)
-        return base_results
+        # Return a copy to avoid mutating the template
+        result = base_results.copy()
+        result.update(overrides)
+        return result
 
     @staticmethod
     def create_result_entry(step: int, **metrics: Any) -> dict[str, Any]:
@@ -481,16 +485,16 @@ raise ValueError("Test failure")
         with (experiment_dir / "metadata.json").open("w") as f:
             json.dump(metadata, f, indent=2)
 
-        # Save config.yaml if provided
+        # Save params.yaml if provided
         if config is not None:
             try:
                 import yaml
 
-                with (experiment_dir / "config.yaml").open("w") as f:
+                with (experiment_dir / "params.yaml").open("w") as f:
                     yaml.dump(config, f, default_flow_style=False)
             except ImportError:
                 # Fallback to JSON
-                with (experiment_dir / "config.json").open("w") as f:
+                with (experiment_dir / "params.json").open("w") as f:
                     json.dump(config, f, indent=2)
 
         # Save metrics.json if provided
