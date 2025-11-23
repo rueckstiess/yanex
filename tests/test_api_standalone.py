@@ -231,7 +231,7 @@ class TestModeTransition:
     """Test transitioning between standalone and context modes."""
 
     @patch("yanex.api._get_experiment_manager")
-    def test_standalone_to_context_transition(self, mock_get_manager):
+    def test_standalone_to_context_transition(self, mock_get_manager, clean_api_state):
         """Test transition from standalone to context mode."""
         # Start in standalone mode
         assert yanex.is_standalone() is True
@@ -291,6 +291,7 @@ class TestModeTransition:
         experiment_config_type,
         test_param_name,
         test_param_value,
+        clean_api_state,
     ):
         """Test various parameter access patterns in context mode."""
         manager = create_isolated_manager()
@@ -327,7 +328,7 @@ class TestModeTransition:
             yanex._clear_current_experiment_id()
 
     @patch("yanex.api._get_experiment_manager")
-    def test_multiple_context_switches(self, mock_get_manager):
+    def test_multiple_context_switches(self, mock_get_manager, clean_api_state):
         """Test switching between multiple experiment contexts."""
         manager = create_isolated_manager()
         mock_get_manager.return_value = manager
@@ -360,6 +361,8 @@ class TestModeTransition:
                 assert not yanex.is_standalone()
 
                 yanex._clear_current_experiment_id()
+                # Clear cached params between context switches
+                yanex.api._tracked_params = None
 
                 # Should be back in standalone after clearing
                 assert yanex.is_standalone()

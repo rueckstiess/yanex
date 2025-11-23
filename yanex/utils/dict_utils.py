@@ -73,3 +73,48 @@ def unflatten_dict(flat_dict: dict[str, Any], separator: str = ".") -> dict[str,
         current[parts[-1]] = value
 
     return result
+
+
+def get_nested_value(
+    data: dict[str, Any], path: str, default: Any = None, separator: str = "."
+) -> Any:
+    """
+    Get value from nested dictionary using dot-separated path.
+
+    This function traverses a nested dictionary structure using a dot-notation
+    path string and returns the value at that location. If the path doesn't exist,
+    returns the default value.
+
+    Args:
+        data: The nested dictionary to traverse
+        path: Dot-separated path to the value (e.g., "model.train.learning_rate")
+        default: Value to return if path doesn't exist (default: None)
+        separator: Path separator (default: ".")
+
+    Returns:
+        Value at the specified path, or default if path doesn't exist
+
+    Examples:
+        >>> data = {"model": {"train": {"lr": 0.01, "epochs": 20}}, "seed": 42}
+        >>> get_nested_value(data, "model.train.lr")
+        0.01
+
+        >>> get_nested_value(data, "model.train")
+        {"lr": 0.01, "epochs": 20}
+
+        >>> get_nested_value(data, "nonexistent", default="missing")
+        'missing'
+
+        >>> get_nested_value(data, "seed")
+        42
+    """
+    keys = path.split(separator)
+    current = data
+
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return default
+
+    return current

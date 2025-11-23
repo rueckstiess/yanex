@@ -257,7 +257,7 @@ Always shown (left side of table):
 
 ### Parameter Columns
 
-Prefixed with 📊, derived from `config.yaml`:
+Prefixed with 📊, derived from `params.yaml`:
 - Automatically discovered from all experiment configs
 - Formatted based on data type (numbers, strings, booleans)
 - Missing values shown as `-`

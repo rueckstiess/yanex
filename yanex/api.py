@@ -5,6 +5,7 @@ This module provides the main interface for experiment tracking using context ma
 and thread-local storage for safe concurrent usage.
 """
 
+import atexit
 import os
 import subprocess
 import threading
@@ -14,10 +15,18 @@ from pathlib import Path
 from typing import Any
 
 from .core.manager import ExperimentManager
+from .core.param_tracking import save_accessed_params
+from .core.tracked_dict import TrackedDict
+from .utils.dict_utils import get_nested_value
 from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
 
 # Thread-local storage for current experiment context
 _local = threading.local()
+
+# Global tracking state for parameters
+_tracked_params: TrackedDict | None = None
+_atexit_registered = False
+_should_save_on_exit = True  # Flag to control atexit handler execution
 
 
 def _get_current_experiment_id() -> str | None:
@@ -77,24 +86,53 @@ def has_context() -> bool:
     return _get_current_experiment_id() is not None
 
 
+def _atexit_handler_wrapper(experiment_id: str, tracked_dict: TrackedDict) -> None:
+    """Wrapper for atexit handler that checks if saving is enabled.
+
+    This wrapper allows tests to disable parameter saving on exit by setting
+    _should_save_on_exit = False, preventing errors when storage is cleaned up
+    before the atexit handler runs.
+
+    Args:
+        experiment_id: ID of the experiment
+        tracked_dict: TrackedDict instance with tracked accesses
+    """
+    global _should_save_on_exit
+    if _should_save_on_exit:
+        try:
+            save_accessed_params(experiment_id, tracked_dict)
+        except Exception:
+            # Silently ignore errors during exit (storage may be cleaned up)
+            pass
+
+
 def get_params() -> dict[str, Any]:
-    """Get experiment parameters.
+    """Get experiment parameters with access tracking.
+
+    Returns TrackedDict in experiment mode to monitor which parameters are
+    actually used. At script end, only accessed parameters are saved.
 
     Returns:
-        Dictionary of experiment parameters (empty dict in standalone mode)
+        TrackedDict of experiment parameters (empty dict in standalone mode)
     """
+    global _tracked_params, _atexit_registered
+
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return {}
 
-    # If experiment ID comes from environment (CLI mode), read params from environment
+    # Return cached tracked params if already initialized
+    if _tracked_params is not None:
+        return _tracked_params
+
+    # Load raw params based on mode
     if hasattr(_local, "experiment_id"):
         # Direct API usage - read from storage
         manager = _get_experiment_manager()
-        return manager.storage.load_config(experiment_id)
+        raw_params = manager.storage.load_config(experiment_id)
     else:
         # CLI subprocess mode - read from environment variables
-        params = {}
+        raw_params = {}
         for key, value in os.environ.items():
             if key.startswith("YANEX_PARAM_"):
                 param_key = key[12:]  # Remove "YANEX_PARAM_" prefix
@@ -102,14 +140,25 @@ def get_params() -> dict[str, Any]:
                 try:
                     import json
 
-                    params[param_key] = json.loads(value)
+                    raw_params[param_key] = json.loads(value)
                 except (json.JSONDecodeError, ValueError):
-                    params[param_key] = value
-        return params
+                    raw_params[param_key] = value
+
+    # Wrap in TrackedDict for access tracking
+    _tracked_params = TrackedDict(raw_params)
+
+    # Register atexit handler to save accessed params (once per process)
+    if not _atexit_registered:
+        atexit.register(_atexit_handler_wrapper, experiment_id, _tracked_params)
+        _atexit_registered = True
+
+    return _tracked_params
 
 
 def get_param(key: str, default: Any = None) -> Any:
     """Get a specific experiment parameter with support for dot notation.
+
+    Access is tracked for later extraction of only used parameters.
 
     Args:
         key: Parameter key to retrieve. Supports dot notation (e.g., "model.learning_rate")
@@ -120,28 +169,18 @@ def get_param(key: str, default: Any = None) -> Any:
     """
     params = get_params()
 
-    # Handle dot notation for nested parameters
-    if "." in key:
-        keys = key.split(".")
-        current = params
+    # Use a sentinel to distinguish "not found" from "found but None"
+    _sentinel = object()
+    value = get_nested_value(params, key, default=_sentinel)
 
-        for k in keys:
-            if isinstance(current, dict) and k in current:
-                current = current[k]
-            else:
-                print(
-                    f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
-                )
-                return default
+    if value is _sentinel:
+        # Parameter not found, print warning and return default
+        print(
+            f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
+        )
+        return default
 
-        return current
-    else:
-        # Simple key access
-        if key not in params:
-            print(
-                f"Warning: Parameter '{key}' not found in config. Using default value: {default}"
-            )
-        return params.get(key, default)
+    return value
 
 
 def get_cli_args() -> dict[str, Any]:

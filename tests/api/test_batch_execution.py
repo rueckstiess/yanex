@@ -70,7 +70,7 @@ print(f"Executed with lr={yanex.get_param('learning_rate')}")
             metadata = manager.get_experiment_metadata(result.experiment_id)
             assert metadata["status"] == "completed"
 
-            # Load config separately (stored in config.yaml)
+            # Load config separately (stored in params.yaml)
             config = manager.storage.load_config(result.experiment_id)
             assert "learning_rate" in config
             assert config["learning_rate"] == expected_lr

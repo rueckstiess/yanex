@@ -108,6 +108,10 @@ import yanex
 
 params = yanex.get_params()
 
+# Access all params to ensure they're tracked
+for key in params:
+    _ = params[key]
+
 result = {
     "accuracy": 0.95,
     "loss": 0.05,
@@ -201,3 +205,40 @@ def sample_experiment_metadata():
     return TestDataFactory.create_experiment_metadata(
         experiment_id="test001", name="Test Experiment", tags=["test", "sample"]
     )
+
+
+@pytest.fixture
+def clean_api_state():
+    """Clean up yanex API global state before and after each test.
+
+    This fixture ensures that the API's cached TrackedDict and atexit handler
+    registration are cleared between tests to prevent state leakage. It also
+    disables atexit parameter saving after tests to prevent warnings when temp
+    directories are cleaned up before Python exits.
+
+    Use this fixture for any test that calls yanex.get_params() or yanex.get_param()
+    to ensure test isolation.
+
+    Example:
+        def test_something(self, clean_api_state):
+            # API state is clean at start
+            params = yanex.get_params()
+            # API state will be cleaned up after test
+    """
+    import yanex
+
+    # Clean before test
+    if hasattr(yanex.api._local, "experiment_id"):
+        del yanex.api._local.experiment_id
+    yanex.api._tracked_params = None
+    yanex.api._atexit_registered = False
+    yanex.api._should_save_on_exit = True  # Enable saving for test
+
+    yield
+
+    # Clean after test and disable atexit saving to prevent warnings
+    yanex.api._should_save_on_exit = False  # Disable to prevent atexit errors
+    if hasattr(yanex.api._local, "experiment_id"):
+        del yanex.api._local.experiment_id
+    yanex.api._tracked_params = None
+    yanex.api._atexit_registered = False

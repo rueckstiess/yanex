@@ -29,7 +29,7 @@ class FileSystemConfigurationStorage(ConfigurationStorage):
             StorageError: If configuration cannot be saved
         """
         exp_dir = self.directory_manager.get_experiment_directory(experiment_id)
-        config_path = exp_dir / "config.yaml"
+        config_path = exp_dir / "params.yaml"
 
         try:
             save_yaml_config(config, config_path)
@@ -54,7 +54,7 @@ class FileSystemConfigurationStorage(ConfigurationStorage):
         exp_dir = self.directory_manager.get_experiment_directory(
             experiment_id, include_archived
         )
-        config_path = exp_dir / "config.yaml"
+        config_path = exp_dir / "params.yaml"
 
         if not config_path.exists():
             return {}

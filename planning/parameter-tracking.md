@@ -1,8 +1,10 @@
 # Parameter Access Tracking
 
-**Status:** Planning - Implementation Ready
-**Date:** 2025-11-23
+**Status:** Ready for Implementation (Simplified - No Backward Compatibility)
+**Date:** 2025-11-23 (Updated with simplified approach)
 **Context:** Track which parameters scripts actually use, store only accessed params instead of full config
+
+**Key Simplification:** Single `params.yaml` file with two-phase save strategy (full config at creation, tracked params at script end). No backward compatibility with `config.yaml` - clean break for early-stage codebase.
 
 ## Background
 
@@ -170,17 +172,22 @@ lr = params["model"]["train"]["lr"]
 - Easy to understand what was accessed
 - Supports tools expecting nested config format
 
-### 5. Storage: params.yaml (rename from config.yaml)
+### 5. Storage: params.yaml with Overwrite Strategy
 
-**Before:**
-- `~/.yanex/experiments/{exp_id}/config.yaml` - Full config (all params)
-- Saved at experiment creation time
+**File Location:**
+- `~/.yanex/experiments/{exp_id}/params.yaml`
 
-**After:**
-- `~/.yanex/experiments/{exp_id}/params.yaml` - Only accessed params
-- Saved at script end (normal exit, exception, or cancellation)
+**Save Timing (Two-Phase Approach):**
 
-**File format - same as before, just filtered:**
+1. **At experiment creation:** Save full config to `params.yaml`
+   - Provides safety net if script crashes before completion
+   - Ensures parameters are always available for debugging
+
+2. **At script end:** Overwrite `params.yaml` with only accessed params
+   - Atexit handler replaces file with tracked parameters
+   - Works for normal exit, exception, or cancellation
+
+**File format after execution:**
 ```yaml
 # Only parameters actually accessed during execution
 model:
@@ -195,8 +202,9 @@ seed: 42
 **Rationale:**
 - Clear naming: `params.yaml` = actual parameters used
 - YAML format maintained for human readability
-- Saved at end allows tracking throughout script lifecycle
-- Smaller files, clearer experiment documentation
+- Two-phase save ensures data safety while achieving tracking goals
+- Single file (no config.yaml vs params.yaml confusion)
+- Smaller files after execution, clearer experiment documentation
 
 ### 6. Save Timing: Script Exit Handler
 
@@ -246,42 +254,7 @@ except Exception as e:
 - Ensures params saved even if script fails
 - No changes required to script code
 
-### 7. Conflict Detection with Dependencies
-
-When experiment depends on other experiments, check for parameter conflicts:
-
-```python
-# At get_dependencies() call time
-deps = yanex.get_dependencies()  # Returns list of Experiment objects
-
-current_params = _tracked_params  # Current TrackedDict
-for dep in deps:
-    dep_params = dep.get_params()  # Load dependency's params.yaml
-
-    # Find conflicts (same key path, different value)
-    conflicts = _find_param_conflicts(current_params, dep_params)
-
-    if conflicts:
-        for path, (current_val, dep_val) in conflicts.items():
-            warnings.warn(
-                f"Parameter conflict with dependency {dep.id}: "
-                f"{path} = {current_val} (current) vs {dep_val} (dependency)"
-            )
-```
-
-**Behavior:**
-- Check at `get_dependencies()` call (early warning)
-- Warn but allow execution (non-blocking)
-- Only checks accessed params from both experiments
-- Ignores params accessed by only one experiment
-
-**Rationale:**
-- Early detection helps users catch configuration mistakes
-- Non-blocking allows legitimate cases (e.g., different learning rates)
-- Only checking accessed params avoids noise from unused config sections
-- Clear warnings help debug unexpected results
-
-### 8. Mixed API Access Pattern
+### 7. Mixed API Access Pattern
 
 Both `get_param()` and `get_params()` track in shared set:
 
@@ -306,7 +279,7 @@ epochs = yanex.get_param("model.train.epochs")  # Track: "model.train.epochs"
 - No confusion about which API to use
 - Consistent behavior
 
-### 9. Edge Cases and Limitations
+### 8. Edge Cases and Limitations
 
 **Copying creates untracked dict:**
 ```python
@@ -351,11 +324,11 @@ json_str = json.dumps(params)  # Serializes but doesn't track
 2. `yanex/core/param_tracking.py` - Access tracking logic, save handler
 
 **Modified modules:**
-1. `yanex/api.py` - Update `get_params()`, `get_param()` to use TrackedDict
-2. `yanex/core/manager.py` - Remove config save at creation, add atexit handler
-3. `yanex/core/storage_*.py` - Rename config.yaml → params.yaml
-4. `yanex/results/experiment.py` - Update `get_params()` to load params.yaml
-5. `yanex/cli/commands/run.py` - Add exception handlers for saving params
+1. `yanex/api.py` - Update `get_params()`, `get_param()` to use TrackedDict, add atexit handler
+2. `yanex/core/storage_config.py` - Rename config.yaml → params.yaml
+3. `yanex/core/storage_composition.py` - Update method names for consistency
+4. `yanex/results/experiment.py` - Update to use new storage method names
+5. `yanex/utils/dict_utils.py` - Add `get_nested_value()` helper for dot notation
 
 ### Storage Changes
 
@@ -363,16 +336,13 @@ json_str = json.dumps(params)  # Serializes but doesn't track
 ```
 ~/.yanex/experiments/{exp_id}/
 ├── metadata.json
-├── params.yaml           # NEW NAME (was config.yaml), only accessed params
+├── params.yaml           # Renamed from config.yaml, contains tracked params after execution
 ├── dependencies.json
 ├── metrics.json
 └── artifacts/
 ```
 
-**Migration:**
-- For backward compatibility, check for both `params.yaml` and `config.yaml`
-- Prefer `params.yaml` if exists, fall back to `config.yaml`
-- No automatic migration (users can manually rename if desired)
+**Note:** All existing experiments using `config.yaml` will need to be manually updated or can be archived. Since this is early development with a single user, no automatic migration is provided.
 
 ## API Changes
 
@@ -431,20 +401,69 @@ param_val = exp.get_param("learning_rate")
 
 **Included in this feature:**
 - ✅ TrackedDict wrapper for automatic access tracking
-- ✅ Dot notation for nested parameter access
+- ✅ Dot notation for nested parameter access via `get_nested_value()` utility
 - ✅ Track iterations over .keys(), .values(), .items()
-- ✅ Save only accessed parameters to params.yaml
-- ✅ Save at script end (normal, exception, cancellation)
-- ✅ Conflict detection with dependency experiments
-- ✅ Backward compatibility (read config.yaml if params.yaml doesn't exist)
+- ✅ Save full config at creation, overwrite with tracked params at script end
+- ✅ Two-phase save strategy (safety + tracking)
+- ✅ Thread-safe access tracking with locks
+- ✅ Works in both CLI mode (subprocess) and API mode
 - ✅ Works with both get_param() and get_params() APIs
 
 **Explicitly OUT OF SCOPE** (future work):
+- ❌ Backward compatibility with config.yaml (breaking change, manual migration required)
 - ❌ Attribute access (`params.learning_rate`) - use bracket notation
 - ❌ Tracking access frequency or timing - only binary accessed/not accessed
-- ❌ Automatic migration of existing config.yaml to params.yaml
 - ❌ Parameter provenance tracking (which line of code accessed)
 - ❌ Required vs optional parameter validation
+- ❌ Conflict detection with dependency experiments (deferred to future dependency tracking feature)
+
+## Implementation Plan
+
+### Phase 1: Core Infrastructure
+1. Create `yanex/core/tracked_dict.py` with `TrackedDict` class
+2. Create `yanex/core/param_tracking.py` with extraction and save logic
+3. Add `get_nested_value()` to `yanex/utils/dict_utils.py`
+4. Write comprehensive unit tests for TrackedDict and param tracking
+
+### Phase 2: Storage Layer
+1. Rename `config.yaml` → `params.yaml` in `storage_config.py`
+2. Update method names for consistency (keep aliases for gradual refactor)
+3. Update storage composition layer
+4. Update storage tests to expect new filename
+
+### Phase 3: API Integration
+1. Modify `api.get_params()` to wrap in TrackedDict and register atexit
+2. Update `api.get_param()` to use `get_nested_value()` utility
+3. Add exception handling for save on KeyboardInterrupt
+4. Add comprehensive API tests for tracking behavior
+
+### Phase 4: Results API
+1. Update `results/experiment.py` to use new storage method names
+2. Update `get_param()` to use `get_nested_value()` utility
+3. Update Results API tests
+
+### Phase 5: Integration Testing
+1. End-to-end tests for full workflow
+2. Test CLI mode (subprocess execution)
+3. Test API mode (direct execution)
+4. Test staged experiments
+5. Test parallel execution
+6. Test edge cases (crashes, Ctrl+C, iterations)
+
+### Phase 6: Cleanup
+1. Global search/replace for `config.yaml` → `params.yaml` in docs/comments
+2. Update CLI help text
+3. Update documentation and examples
+4. Run full test suite and ensure 90%+ coverage
+
+### Estimated Timeline
+- **Total:** ~6 days of focused development
+- **Phase 1:** 2 days
+- **Phase 2:** 0.5 days
+- **Phase 3:** 1 day
+- **Phase 4:** 0.5 days
+- **Phase 5:** 1.5 days
+- **Phase 6:** 0.5 days
 
 ## References
 

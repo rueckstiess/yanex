@@ -19,6 +19,7 @@ else:
 
 from ..core.manager import ExperimentManager
 from ..utils.datetime_utils import parse_iso_timestamp
+from ..utils.dict_utils import get_nested_value
 from ..utils.exceptions import ExperimentNotFoundError, StorageError
 
 
@@ -186,21 +187,7 @@ class Experiment:
             Parameter value or default
         """
         params = self.get_params()
-
-        # Handle dot notation for nested parameters
-        if "." in key:
-            keys = key.split(".")
-            current = params
-
-            for k in keys:
-                if isinstance(current, dict) and k in current:
-                    current = current[k]
-                else:
-                    return default
-
-            return current
-        else:
-            return params.get(key, default)
+        return get_nested_value(params, key, default=default)
 
     def get_metrics(
         self, step: int | None = None, as_dataframe: bool = True
