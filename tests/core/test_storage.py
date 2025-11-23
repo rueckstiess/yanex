@@ -382,7 +382,7 @@ class TestSaveArtifact:
     """Test artifact saving - improved with utilities."""
 
     def test_save_file_artifact(self, temp_dir):
-        """Test saving file artifact."""
+        """Test copying file artifact."""
         storage = ExperimentStorage(temp_dir)
         experiment_id = "abc12345"
 
@@ -393,10 +393,10 @@ class TestSaveArtifact:
             temp_dir / "source.txt", "test content"
         )
 
-        # Save artifact
-        artifact_path = storage.save_artifact(experiment_id, "test.txt", source_file)
+        # Copy artifact
+        artifact_path = storage.copy_artifact(experiment_id, source_file, "test.txt")
 
-        # Check artifact was saved
+        # Check artifact was copied
         expected_path = (
             storage.get_experiment_directory(experiment_id) / "artifacts" / "test.txt"
         )
@@ -405,7 +405,7 @@ class TestSaveArtifact:
         assert artifact_path.read_text() == "test content"
 
     def test_save_artifact_nonexistent_source(self, temp_dir):
-        """Test saving nonexistent source file raises StorageError."""
+        """Test copying nonexistent source file raises StorageError."""
         storage = ExperimentStorage(temp_dir)
         experiment_id = "abc12345"
 
@@ -413,8 +413,8 @@ class TestSaveArtifact:
 
         source_file = temp_dir / "nonexistent.txt"
 
-        with pytest.raises(StorageError, match="Source path is not a file"):
-            storage.save_artifact(experiment_id, "test.txt", source_file)
+        with pytest.raises(StorageError, match="Source file not found"):
+            storage.copy_artifact(experiment_id, source_file, "test.txt")
 
     @pytest.mark.parametrize(
         "content,filename",
@@ -425,7 +425,7 @@ class TestSaveArtifact:
         ],
     )
     def test_save_artifact_different_content_types(self, temp_dir, content, filename):
-        """Test saving artifacts with different content types."""
+        """Test copying artifacts with different content types."""
         # NEW: Parametrized test for various artifact content scenarios
         storage = ExperimentStorage(temp_dir)
         experiment_id = "content_test"
@@ -436,7 +436,7 @@ class TestSaveArtifact:
             temp_dir / f"source_{filename}", content
         )
 
-        artifact_path = storage.save_artifact(experiment_id, filename, source_file)
+        artifact_path = storage.copy_artifact(experiment_id, source_file, filename)
         assert artifact_path.read_text() == content
 
 
@@ -1083,7 +1083,7 @@ class TestStorageIntegrationScenarios:
         test_file = TestFileHelpers.create_test_file(
             temp_dir / "model.pkl", "model data"
         )
-        storage.save_artifact(experiment_id, "model.pkl", test_file)
+        storage.copy_artifact(experiment_id, test_file, "model.pkl")
         storage.save_text_artifact(experiment_id, "notes.txt", "experiment notes")
 
         # 5. Verify all data is accessible

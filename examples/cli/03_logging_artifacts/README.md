@@ -2,11 +2,12 @@
 
 ## What This Example Demonstrates
 
-- Logging file artifacts: `log_artifact(name, file_path)`
-- Logging text content: `log_text(content, filename)`
-- Logging matplotlib figures: `log_matplotlib_figure(fig, filename)`
+- Copying file artifacts: `copy_artifact(src_path, filename)`
+- Saving text content: `save_artifact(text, filename)`
+- Saving matplotlib figures: `save_artifact(fig, filename)`
+- Automatic format detection based on file extension
 - How artifacts are organized in the experiment directory
-- Working with temporary files (create → log → clean up)
+- Working with temporary files (create → save → clean up)
 
 ## Files
 
@@ -30,11 +31,11 @@ yanex run analyze.py -p num_samples=200 --name "large-dataset-analysis"
 ```
 Analyzing 50 data points...
 Analysis complete: avg=54.32, max=98.45, min=12.67
-✓ Logged CSV artifact
-✓ Logged text summary
-✓ Logged matplotlib figure
+✓ Saved CSV artifact
+✓ Saved text summary
+✓ Saved matplotlib figure
 
-All artifacts logged successfully!
+All artifacts saved successfully!
 ```
 
 ## Generated Artifacts
@@ -59,9 +60,9 @@ yanex open <id>
 
 ## Artifact Types Explained
 
-### 1. File Artifacts (`log_artifact`)
+### 1. Copying Files (`copy_artifact`)
 
-For existing files you want to preserve:
+For existing files you want to copy to the experiment:
 
 ```python
 # Create a file locally
@@ -70,8 +71,8 @@ with open(csv_file, 'w') as f:
     f.write("index,value\n")
     # ... write data ...
 
-# Log it to experiment artifacts
-yanex.log_artifact("results.csv", csv_file)
+# Copy it to experiment artifacts
+yanex.copy_artifact(csv_file, "results.csv")
 
 # Clean up local file (optional)
 csv_file.unlink()
@@ -79,26 +80,22 @@ csv_file.unlink()
 
 **Use cases**: CSV files, model checkpoints, processed datasets, configuration dumps
 
-### 2. Text Artifacts (`log_text`)
+### 2. Saving Python Objects (`save_artifact`)
 
-For generating text content directly:
+For saving Python objects with automatic format detection:
 
+**Text content:**
 ```python
 # Create text content
 summary = f"""Analysis Summary
 Results: {results}
 """
 
-# Save directly as artifact (no intermediate file needed)
-yanex.log_text(summary, "summary.txt")
+# Save directly as artifact (format auto-detected from .txt extension)
+yanex.save_artifact(summary, "summary.txt")
 ```
 
-**Use cases**: Summary reports, logs, JSON/YAML data, error messages
-
-### 3. Matplotlib Figures (`log_matplotlib_figure`)
-
-For saving plots and visualizations:
-
+**Matplotlib figures:**
 ```python
 import matplotlib.pyplot as plt
 
@@ -107,12 +104,25 @@ fig, ax = plt.subplots()
 ax.plot(x_data, y_data)
 ax.set_title("Results")
 
-# Save as artifact
-yanex.log_matplotlib_figure(fig, "plot.png", dpi=150)
+# Save as artifact (format auto-detected from .png extension)
+yanex.save_artifact(fig, "plot.png")
 plt.close(fig)  # Clean up
 ```
 
-**Use cases**: Charts, graphs, training curves, diagnostic plots
+**Other formats:**
+```python
+# JSON (auto-detected from .json extension)
+yanex.save_artifact({"accuracy": 0.95}, "metrics.json")
+
+# PyTorch model (auto-detected from .pt extension)
+yanex.save_artifact(model.state_dict(), "model.pt")
+
+# Pandas DataFrame as CSV (auto-detected from .csv extension)
+import pandas as pd
+yanex.save_artifact(df, "results.csv")
+```
+
+**Use cases**: Text reports, JSON/YAML data, plots, PyTorch models, pandas DataFrames, numpy arrays
 
 ## Artifact Storage
 
@@ -133,10 +143,13 @@ All artifacts are stored in the experiment's `artifacts/` directory:
 ## Key Concepts
 
 - **Artifacts are copied**: Files are copied to the experiment directory, so you can delete the originals
-- **No-op in standalone mode**: All logging functions (`log_artifact()`, `log_text()`, `log_matplotlib_figure()`) do nothing when run without yanex - your script still works!
+- **Standalone mode support**: Artifact functions work in both modes:
+  - **With tracking** (`yanex run`): Saves to experiment directory
+  - **Standalone** (direct `python`): Saves to `./artifacts/` directory
+- **Automatic format detection**: File extension determines how to save/load (`.txt`, `.json`, `.pt`, `.png`, etc.)
 - **Mode detection**: Use `yanex.is_standalone()` to check if running with or without yanex tracking
 - **Automatic stdout/stderr**: Yanex automatically captures script output as artifacts
-- **Any file type**: Log CSVs, images, models, configs - anything you want to preserve
+- **Any file type**: Save CSVs, images, models, configs - anything you want to preserve
 
 ## Next Steps
 

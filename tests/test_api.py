@@ -406,67 +406,6 @@ class TestExperimentAPI:
         assert saved_results[1]["step"] == 1
         assert saved_results[2]["step"] == 2
 
-    @patch("yanex.api._get_experiment_manager")
-    def test_log_artifact(self, mock_get_manager):
-        """Test artifact logging."""
-        mock_get_manager.return_value = self.manager
-
-        # Create a test file in the isolated environment
-        test_file = self.manager.storage.experiments_dir / "test_artifact.txt"
-        test_file.write_text("test content")
-
-        yanex.log_artifact("test.txt", test_file)
-
-        # Verify artifact was saved
-        artifact_path = (
-            self.manager.storage.experiments_dir
-            / self.experiment_id
-            / "artifacts"
-            / "test.txt"
-        )
-        assert artifact_path.exists()
-        assert artifact_path.read_text() == "test content"
-
-    @patch("yanex.api._get_experiment_manager")
-    def test_log_text(self, mock_get_manager):
-        """Test text artifact logging."""
-        mock_get_manager.return_value = self.manager
-
-        content = "This is test content"
-        yanex.log_text(content, "output.txt")
-
-        # Verify text artifact was saved
-        artifact_path = (
-            self.manager.storage.experiments_dir
-            / self.experiment_id
-            / "artifacts"
-            / "output.txt"
-        )
-        assert artifact_path.exists()
-        assert artifact_path.read_text() == content
-
-    @patch("yanex.api._get_experiment_manager")
-    def test_log_matplotlib_figure(self, mock_get_manager):
-        """Test matplotlib figure logging."""
-        del mock_get_manager  # Unused parameter
-        # Skip this test for now due to complex mocking requirements
-        pytest.skip("Complex matplotlib mocking - tested in integration")
-
-    def test_log_matplotlib_figure_no_matplotlib(self):
-        """Test matplotlib figure logging without matplotlib installed."""
-        # Mock the import inside the function to raise ImportError
-        import builtins
-
-        real_import = builtins.__import__
-
-        def mock_import(name, *args, **kwargs):
-            if name == "matplotlib.pyplot":
-                raise ImportError("No module named 'matplotlib'")
-            return real_import(name, *args, **kwargs)
-
-        with patch("builtins.__import__", side_effect=mock_import):
-            with pytest.raises(ImportError, match="matplotlib is required"):
-                yanex.log_matplotlib_figure(None, "plot.png")
 
 
 class TestManualExperimentControl:

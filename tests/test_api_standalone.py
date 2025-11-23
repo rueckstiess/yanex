@@ -108,24 +108,6 @@ class TestStandaloneMode:
         else:
             getattr(yanex, log_function)(log_args[0])
 
-    def test_log_artifact_standalone(self):
-        """Test log_artifact is no-op in standalone mode."""
-        with tempfile.NamedTemporaryFile() as temp_file:
-            temp_path = Path(temp_file.name)
-            # Should not raise any exceptions
-            yanex.log_artifact("test.txt", temp_path)
-
-    @pytest.mark.parametrize(
-        "log_function,log_args",
-        [
-            ("log_text", ("Hello standalone", "test.txt")),
-            ("log_matplotlib_figure", (None, "plot.png")),
-        ],
-    )
-    def test_log_functions_standalone(self, log_function, log_args):
-        """Test log functions are no-op in standalone mode."""
-        # Should not raise any exceptions
-        getattr(yanex, log_function)(*log_args)
 
     @pytest.mark.parametrize(
         "control_function,function_args,expected_error",

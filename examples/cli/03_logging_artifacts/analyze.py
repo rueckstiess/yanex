@@ -9,7 +9,6 @@ This example demonstrates how to log different types of artifacts:
 
 import random
 import time
-from pathlib import Path
 
 import yanex
 
@@ -45,16 +44,11 @@ data_points, avg, max_val, min_val = analyze_data(num_samples)
 
 print(f"Analysis complete: avg={avg:.2f}, max={max_val:.2f}, min={min_val:.2f}")
 
-# 1. Log CSV file as artifact
-csv_file = Path("data_results.csv")
-with open(csv_file, "w") as f:
-    f.write("index,value\n")
-    for idx, value in data_points:
-        f.write(f"{idx},{value:.2f}\n")
-
-yanex.log_artifact("results.csv", csv_file)
-csv_file.unlink()  # Clean up local file
-print("✓ Logged CSV artifact")
+# 1. Save CSV artifact directly (automatic format detection)
+# Convert data to list of dicts for CSV format
+csv_data = [{"index": idx, "value": value} for idx, value in data_points]
+yanex.save_artifact(csv_data, "results.csv")
+print("✓ Saved CSV artifact")
 
 # 2. Log text summary as artifact
 summary = f"""Data Analysis Summary
@@ -66,8 +60,8 @@ Minimum value: {min_val:.2f}
 Range: {max_val - min_val:.2f}
 """
 
-yanex.log_text(summary, "summary.txt")
-print("✓ Logged text summary")
+yanex.save_artifact(summary, "summary.txt")
+print("✓ Saved text summary")
 
 # 3. Log matplotlib figure as artifact (if available)
 if HAS_MATPLOTLIB:
@@ -83,9 +77,9 @@ if HAS_MATPLOTLIB:
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    yanex.log_matplotlib_figure(fig, "analysis_plot.png", dpi=150)
+    yanex.save_artifact(fig, "analysis_plot.png")
     plt.close(fig)
-    print("✓ Logged matplotlib figure")
+    print("✓ Saved matplotlib figure")
 
 # Log final metrics
 yanex.log_metrics(

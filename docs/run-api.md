@@ -88,10 +88,10 @@ with yanex.create_experiment(
     
     # Your experiment code
     accuracy = train_model()
-    
+
     # Log results using context manager methods
     yanex.log_metrics({"accuracy": accuracy})
-    yanex.log_artifact("model.pth", "path/to/model.pth")
+    yanex.copy_artifact("path/to/model.pth", "model.pth")
 ```
 
 > **Important:** Don't mix patterns! If you use `yanex.create_experiment()` in a script, don't run it with `yanex run` - this will raise an error.
@@ -278,70 +278,155 @@ Log experiment results. No-op in standalone mode. This function now shows a depr
 - `data` (dict): Results data to log
 - `step` (int, optional): Step number (auto-incremented if None)
 
-#### `yanex.log_artifact(name, file_path)`
+### Artifact Management
 
-Log file artifact. No-op in standalone mode.
+#### `yanex.copy_artifact(src_path, filename=None)`
+
+Copy an existing file to the experiment's artifacts directory.
 
 ```python
 from pathlib import Path
 
-# Log model files
-yanex.log_artifact("model.pth", Path("./model.pth"))
+# Copy with same name
+yanex.copy_artifact("data/results.csv")
 
-# Log any file type
-yanex.log_artifact("config.json", Path("config.json"))
-yanex.log_artifact("results.csv", Path("outputs/results.csv"))
+# Copy with different name
+yanex.copy_artifact("output.txt", "final_output.txt")
+
+# Works with Path objects
+yanex.copy_artifact(Path("./model.pth"), "trained_model.pth")
 ```
 
 **Parameters:**
-- `name` (str): Name for the artifact
-- `file_path` (Path): Path to source file
+- `src_path` (Path | str): Path to source file
+- `filename` (str, optional): Name to use in artifacts dir (defaults to source filename)
 
-#### `yanex.log_text(content, filename)`
+**Note:** In standalone mode, copies to `./artifacts/` directory. With experiment tracking, copies to experiment artifacts directory.
 
-Save text content as artifact. No-op in standalone mode.
+#### `yanex.save_artifact(obj, filename, saver=None)`
 
-```python
-# Log training summary
-summary = f"Training completed. Final accuracy: {accuracy}"
-yanex.log_text(summary, "training_summary.txt")
+Save a Python object to the experiment's artifacts directory with automatic format detection.
 
-# Log configuration as text
-import json
-config_text = json.dumps(params, indent=2)
-yanex.log_text(config_text, "config.json")
-```
+Format is auto-detected from filename extension:
 
-**Parameters:**
-- `content` (str): Text content to save
-- `filename` (str): Name for the artifact file
-
-#### `yanex.log_matplotlib_figure(fig, filename, **kwargs)`
-
-Save matplotlib figure as artifact. No-op in standalone mode.
+**Supported formats:**
+- `.txt` - Plain text (str)
+- `.csv` - CSV (pandas.DataFrame or list of dicts)
+- `.json` - JSON (dict, list, etc.)
+- `.jsonl` - JSON Lines (list of dicts)
+- `.npy` - NumPy array
+- `.npz` - NumPy arrays (dict)
+- `.pt`, `.pth` - PyTorch objects
+- `.pkl` - Pickle (any Python object)
+- `.png` - Matplotlib figures or PIL images
 
 ```python
+# Text
+yanex.save_artifact("Training complete", "status.txt")
+
+# JSON
+yanex.save_artifact({"acc": 0.95, "loss": 0.05}, "metrics.json")
+
+# PyTorch model
+yanex.save_artifact(model.state_dict(), "model.pt")
+
+# Matplotlib figure
 import matplotlib.pyplot as plt
-
-# Create and save plot
 fig, ax = plt.subplots()
 ax.plot(losses)
-ax.set_title("Training Loss")
-yanex.log_matplotlib_figure(fig, "loss_curve.png", dpi=300)
+yanex.save_artifact(fig, "loss_curve.png")
 
-# Additional savefig arguments
-yanex.log_matplotlib_figure(
-    fig, 
-    "detailed_plot.pdf", 
-    bbox_inches='tight',
-    transparent=True
-)
+# Pandas DataFrame as CSV
+import pandas as pd
+df = pd.DataFrame(results)
+yanex.save_artifact(df, "results.csv")
+
+# Custom format with custom saver
+def save_custom(obj, path):
+    with open(path, 'wb') as f:
+        custom_serialize(obj, f)
+
+yanex.save_artifact(my_obj, "data.custom", saver=save_custom)
 ```
 
 **Parameters:**
-- `fig`: Matplotlib figure object
-- `filename` (str): Name for the artifact file
-- `**kwargs`: Additional arguments passed to `fig.savefig()`
+- `obj` (Any): Python object to save
+- `filename` (str): Name for saved artifact (extension determines format)
+- `saver` (callable, optional): Custom saver function `(obj, path) -> None`
+
+**Raises:**
+- `ValueError`: If format can't be auto-detected and no custom saver provided
+- `ImportError`: If required library not installed (e.g., torch, pandas)
+- `TypeError`: If object type doesn't match expected type for extension
+
+**Note:** In standalone mode, saves to `./artifacts/` directory. With experiment tracking, saves to experiment artifacts directory.
+
+#### `yanex.load_artifact(filename, loader=None)`
+
+Load an artifact with automatic format detection. Returns None if artifact doesn't exist (allows optional artifacts).
+
+```python
+# Load from current experiment
+model_state = yanex.load_artifact("model.pt")
+results = yanex.load_artifact("results.json")
+
+# Optional artifact (returns None if missing)
+checkpoint = yanex.load_artifact("checkpoint.pt")
+if checkpoint is not None:
+    model.load_state_dict(checkpoint)
+
+# Custom loader
+def load_custom(path):
+    with open(path, 'rb') as f:
+        return custom_deserialize(f)
+
+obj = yanex.load_artifact("data.custom", loader=load_custom)
+```
+
+**Parameters:**
+- `filename` (str): Name of artifact to load
+- `loader` (callable, optional): Custom loader function `(path) -> object`
+
+**Returns:**
+- Loaded object, or None if artifact doesn't exist
+
+**Supported formats:** Same as `save_artifact()` (auto-detected by extension)
+
+**Note:** In standalone mode, loads from `./artifacts/` directory. With experiment tracking, loads from experiment artifacts directory.
+
+#### `yanex.artifact_exists(filename)`
+
+Check if an artifact exists without loading it.
+
+```python
+if yanex.artifact_exists("checkpoint.pt"):
+    model.load_state_dict(yanex.load_artifact("checkpoint.pt"))
+```
+
+**Parameters:**
+- `filename` (str): Name of artifact
+
+**Returns:**
+- `bool`: True if artifact exists, False otherwise
+
+**Note:** In standalone mode, checks `./artifacts/` directory. With experiment tracking, checks experiment artifacts directory.
+
+#### `yanex.list_artifacts()`
+
+List all artifacts in the current experiment.
+
+```python
+artifacts = yanex.list_artifacts()
+# Returns: ["model.pt", "metrics.json", "plot.png"]
+
+for artifact_name in yanex.list_artifacts():
+    print(f"Found: {artifact_name}")
+```
+
+**Returns:**
+- `list[str]`: List of artifact filenames (sorted)
+
+**Note:** In standalone mode, lists `./artifacts/` directory. With experiment tracking, lists experiment artifacts directory.
 
 ### Experiment Information
 
@@ -423,7 +508,7 @@ if artifacts_dir:
 **Returns:**
 - `Path` or `None`: Absolute path to artifacts directory (`{experiment_dir}/artifacts`)
 
-**Note:** This is a convenience method equivalent to `get_experiment_dir() / "artifacts"`. Use `log_artifact()` for automatic artifact logging with yanex tracking.
+**Note:** This is a convenience method equivalent to `get_experiment_dir() / "artifacts"`. Use `copy_artifact()`, `save_artifact()`, and `load_artifact()` for automatic artifact management with yanex tracking.
 
 #### `yanex.execute_bash_script(command, timeout=None, raise_on_error=False, stream_output=True, working_dir=None)`
 

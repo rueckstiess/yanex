@@ -340,28 +340,91 @@ class Experiment:
         else:
             return values
 
-    def get_artifacts(self) -> list[Path]:
+    def load_artifact(self, filename: str, loader: Any | None = None) -> Any | None:
         """
-        Get list of artifact paths.
+        Load an artifact with automatic format detection.
+
+        Returns None if artifact doesn't exist (allows optional artifacts).
+
+        Args:
+            filename: Name of artifact to load
+            loader: Optional custom loader function (path) -> object
+
+        Supported formats (auto-detected by extension):
+            .txt        - Plain text (returns str)
+            .csv        - CSV (returns pandas.DataFrame)
+            .json       - JSON (returns parsed dict/list)
+            .jsonl      - JSON Lines (returns list[dict])
+            .npy        - NumPy array (returns np.ndarray)
+            .npz        - NumPy arrays (returns dict of arrays)
+            .pt, .pth   - PyTorch (returns loaded object)
+            .pkl        - Pickle (returns unpickled object)
+            .png        - Image (returns PIL.Image)
 
         Returns:
-            List of paths to experiment artifacts
+            Loaded object, or None if artifact doesn't exist
+
+        Raises:
+            ValueError: If format can't be auto-detected and no custom loader provided
+            ImportError: If required library not installed
+            StorageError: If artifact cannot be loaded
+
+        Examples:
+            # Auto-loading with format detection
+            model = exp.load_artifact("model.pt")  # Returns loaded object
+            data = exp.load_artifact("data.json")  # Returns parsed dict
+
+            # Optional artifact
+            checkpoint = exp.load_artifact("checkpoint.pt")
+            if checkpoint is not None:
+                model.load_state_dict(checkpoint)
+
+            # Custom loader
+            def load_custom(path):
+                with open(path, 'rb') as f:
+                    return custom_deserialize(f)
+
+            obj = exp.load_artifact("data.custom", loader=load_custom)
         """
-        try:
-            artifacts_dir = self.artifacts_dir
+        return self._manager.storage.load_artifact(
+            self._experiment_id, filename, loader, include_archived=self.archived
+        )
 
-            if not artifacts_dir.exists():
-                return []
+    def artifact_exists(self, filename: str) -> bool:
+        """
+        Check if an artifact exists without loading it.
 
-            artifacts = []
-            for artifact_path in artifacts_dir.iterdir():
-                if artifact_path.is_file():
-                    artifacts.append(artifact_path)
+        Args:
+            filename: Name of artifact to check
 
-            return sorted(artifacts)
+        Returns:
+            True if artifact exists, False otherwise
 
-        except Exception:
-            return []
+        Examples:
+            if exp.artifact_exists("checkpoint.pt"):
+                checkpoint = exp.load_artifact("checkpoint.pt")
+        """
+        return self._manager.storage.artifact_exists(
+            self._experiment_id, filename, include_archived=self.archived
+        )
+
+    def list_artifacts(self) -> list[str]:
+        """
+        List all artifacts in the experiment.
+
+        Returns:
+            List of artifact filenames (sorted)
+
+        Examples:
+            artifacts = exp.list_artifacts()
+            # Returns: ["model.pt", "metrics.json", "plot.png"]
+
+            for artifact_name in exp.list_artifacts():
+                print(f"Found artifact: {artifact_name}")
+        """
+        return self._manager.storage.list_artifacts(
+            self._experiment_id, include_archived=self.archived
+        )
 
     def get_script_runs(self) -> list[dict[str, Any]]:
         """
@@ -510,7 +573,7 @@ class Experiment:
             "archived": self.archived,
             "params": self.get_params(),
             "metrics": self.get_metrics(as_dataframe=False),
-            "artifacts": [str(p) for p in self.get_artifacts()],
+            "artifacts": self.list_artifacts(),
             "script_runs": self.get_script_runs(),
         }
 

@@ -151,7 +151,7 @@ if yanex.has_context():
     params = yanex.get_params()
     model = train_production_model(params)
     yanex.log_metrics({"final_accuracy": model.accuracy})
-    yanex.log_artifact("model.pkl", model.save_path)
+    yanex.copy_artifact(model.save_path, "model.pkl")
 else:
     # Standalone mode - basic logging
     model = train_production_model()

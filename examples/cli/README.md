@@ -21,7 +21,7 @@ Organize parameters in YAML config files with nested structures and CLI override
 ### [03: Logging Artifacts](03_logging_artifacts/README.md)
 Save experiment outputs as artifacts: CSV files, text reports, matplotlib figures. Access artifacts in experiment directories.
 
-**Concepts**: `log_artifact()`, `log_text()`, `log_matplotlib_figure()`, artifact storage
+**Concepts**: `copy_artifact()`, `save_artifact()`, `load_artifact()`, automatic format detection, artifact storage
 
 ---
 
