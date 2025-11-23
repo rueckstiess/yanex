@@ -32,9 +32,7 @@ def _validate_filename(filename: str) -> str:
 
     # Check for absolute paths
     if filename.startswith("/") or (len(filename) > 1 and filename[1] == ":"):
-        raise ValueError(
-            f"Invalid filename '{filename}': absolute paths not allowed"
-        )
+        raise ValueError(f"Invalid filename '{filename}': absolute paths not allowed")
 
     # Extract basename to ensure we only get the filename
     basename = os.path.basename(filename)

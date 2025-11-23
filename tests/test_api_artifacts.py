@@ -464,7 +464,9 @@ class TestArtifactSecurity:
                 yanex.save_artifact("malicious", "../../../etc/passwd.txt")
 
             # Try absolute path (use valid extension)
-            with pytest.raises((ValueError, StorageError), match="absolute paths not allowed"):
+            with pytest.raises(
+                (ValueError, StorageError), match="absolute paths not allowed"
+            ):
                 yanex.save_artifact("malicious", "/etc/passwd.txt")
 
     def test_copy_artifact_path_traversal_blocked(self, clean_git_repo, tmp_path):
@@ -482,7 +484,9 @@ class TestArtifactSecurity:
                 yanex.copy_artifact(source_file, "../../../malicious.txt")
 
             # Try absolute path as filename
-            with pytest.raises((ValueError, StorageError), match="absolute paths not allowed"):
+            with pytest.raises(
+                (ValueError, StorageError), match="absolute paths not allowed"
+            ):
                 yanex.copy_artifact(source_file, "/tmp/malicious.txt")
 
     def test_artifact_exists_path_traversal_blocked(self, clean_git_repo, tmp_path):
