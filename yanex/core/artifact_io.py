@@ -114,12 +114,14 @@ def save_artifact_to_path(
 def load_artifact_from_path(
     source_path: Path,
     loader: Callable[[Path], Any] | None = None,
+    format: str | None = None,
 ) -> Any:
     """Load an artifact from a specific path with automatic format detection.
 
     Args:
         source_path: Path to artifact to load
         loader: Optional custom loader function (path) -> object
+        format: Optional format name for explicit format selection
 
     Returns:
         Loaded object
@@ -137,7 +139,7 @@ def load_artifact_from_path(
         return loader(source_path)
     else:
         # Auto-detect and use format handler
-        handler = get_handler_for_load(source_path.name)
+        handler = get_handler_for_load(source_path.name, format=format)
         return handler.loader(source_path)
 
 

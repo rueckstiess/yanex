@@ -152,10 +152,11 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         filename: str,
         loader: Any | None = None,
         include_archived: bool = False,
+        format: str | None = None,
     ) -> Any | None:
         """Load an artifact from experiment's artifacts directory."""
         return self.artifact_storage.load_artifact(
-            experiment_id, filename, loader, include_archived
+            experiment_id, filename, loader, include_archived, format
         )
 
     def artifact_exists(

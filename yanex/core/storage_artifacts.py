@@ -95,6 +95,7 @@ class FileSystemArtifactStorage(ArtifactStorage):
         filename: str,
         loader: Callable[[Path], Any] | None = None,
         include_archived: bool = False,
+        format: str | None = None,
     ) -> Any | None:
         """Load an artifact from experiment's artifacts directory.
 
@@ -103,6 +104,7 @@ class FileSystemArtifactStorage(ArtifactStorage):
             filename: Name of artifact to load
             loader: Optional custom loader function (path) -> object
             include_archived: Whether to check archived experiments
+            format: Optional format name for explicit format selection
 
         Returns:
             Loaded object, or None if artifact doesn't exist
@@ -126,7 +128,7 @@ class FileSystemArtifactStorage(ArtifactStorage):
             return None
 
         try:
-            return load_artifact_from_path(artifact_path, loader)
+            return load_artifact_from_path(artifact_path, loader, format=format)
         except Exception as e:
             raise StorageError(f"Failed to load artifact: {e}") from e
 

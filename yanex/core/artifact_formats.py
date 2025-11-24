@@ -13,6 +13,7 @@ from typing import Any
 class FormatHandler:
     """Handler for a specific artifact format."""
 
+    name: str
     extensions: list[str]
     type_check: Callable[[Any], bool]
     saver: Callable[[Any, Path], None]
@@ -224,6 +225,7 @@ def _load_image(path: Path) -> Any:
 FORMAT_HANDLERS = [
     # Text
     FormatHandler(
+        name="text",
         extensions=[".txt"],
         type_check=lambda obj: isinstance(obj, str),
         saver=_save_text,
@@ -231,6 +233,7 @@ FORMAT_HANDLERS = [
     ),
     # CSV with pandas
     FormatHandler(
+        name="csv-pandas",
         extensions=[".csv"],
         type_check=lambda obj: type(obj).__name__ == "DataFrame",
         saver=_save_csv_pandas,
@@ -239,6 +242,7 @@ FORMAT_HANDLERS = [
     ),
     # CSV with list of dicts
     FormatHandler(
+        name="csv-list",
         extensions=[".csv"],
         type_check=lambda obj: isinstance(obj, list)
         and (not obj or isinstance(obj[0], dict)),
@@ -248,6 +252,7 @@ FORMAT_HANDLERS = [
     ),
     # JSON
     FormatHandler(
+        name="json",
         extensions=[".json"],
         type_check=lambda obj: True,  # JSON handles many types
         saver=_save_json,
@@ -255,6 +260,7 @@ FORMAT_HANDLERS = [
     ),
     # JSON Lines
     FormatHandler(
+        name="jsonl",
         extensions=[".jsonl"],
         type_check=lambda obj: isinstance(obj, list),
         saver=_save_jsonl,
@@ -262,6 +268,7 @@ FORMAT_HANDLERS = [
     ),
     # NumPy array
     FormatHandler(
+        name="npy",
         extensions=[".npy"],
         type_check=lambda obj: type(obj).__name__ == "ndarray",
         saver=_save_npy,
@@ -270,6 +277,7 @@ FORMAT_HANDLERS = [
     ),
     # NumPy arrays dict
     FormatHandler(
+        name="npz",
         extensions=[".npz"],
         type_check=lambda obj: isinstance(obj, dict)
         and all(type(v).__name__ == "ndarray" for v in obj.values()),
@@ -279,6 +287,7 @@ FORMAT_HANDLERS = [
     ),
     # PyTorch
     FormatHandler(
+        name="torch",
         extensions=[".pt", ".pth"],
         type_check=lambda obj: True,  # torch.save handles any object
         saver=_save_torch,
@@ -287,6 +296,7 @@ FORMAT_HANDLERS = [
     ),
     # Pickle (fallback for any object)
     FormatHandler(
+        name="pickle",
         extensions=[".pkl"],
         type_check=lambda obj: True,  # Pickle handles any object
         saver=_save_pickle,
@@ -294,6 +304,7 @@ FORMAT_HANDLERS = [
     ),
     # Matplotlib figure / PNG image
     FormatHandler(
+        name="png",
         extensions=[".png"],
         type_check=lambda obj: type(obj).__name__ == "Figure",
         saver=_save_matplotlib_figure,
@@ -351,19 +362,46 @@ def get_handler_for_save(obj: Any, filename: str) -> FormatHandler:
     )
 
 
-def get_handler_for_load(filename: str) -> FormatHandler:
-    """Find appropriate handler for loading based on filename extension.
+def get_handler_for_load(filename: str, format: str | None = None) -> FormatHandler:
+    """Find appropriate handler for loading based on filename extension or explicit format.
+
+    Lookup order:
+    1. If format specified, find by name
+    2. Otherwise, find by extension (existing behavior)
 
     Args:
-        filename: Filename to load (extension determines format)
+        filename: Filename to load (extension determines format if format not specified)
+        format: Optional format name for explicit lookup
 
     Returns:
         FormatHandler for the filename
 
     Raises:
-        ValueError: If no handler found for the extension
+        ValueError: If format not found or no handler found for the extension
         ImportError: If required package is not installed
     """
+    if format:
+        # Explicit format - find by name
+        for handler in FORMAT_HANDLERS:
+            if handler.name == format:
+                # Check if required package is available
+                if handler.required_package:
+                    try:
+                        __import__(handler.required_package)
+                    except ImportError as err:
+                        raise ImportError(
+                            f"Loading with format '{format}' requires {handler.required_package}. "
+                            f"Install with: pip install {handler.required_package}"
+                        ) from err
+                return handler
+
+        # Format not found
+        available = sorted(h.name for h in FORMAT_HANDLERS)
+        raise ValueError(
+            f"Unknown format: '{format}'. Available formats: {', '.join(available)}"
+        )
+
+    # Auto-detect from extension
     ext = Path(filename).suffix.lower()
 
     # Find first handler that matches the extension
@@ -399,3 +437,71 @@ def get_supported_extensions() -> list[str]:
     for handler in FORMAT_HANDLERS:
         extensions.update(handler.extensions)
     return sorted(extensions)
+
+
+def register_format(
+    name: str,
+    extensions: list[str],
+    type_check: Callable[[Any], bool],
+    saver: Callable[[Any, Path], None],
+    loader: Callable[[Path], Any],
+    required_package: str | None = None,
+) -> None:
+    """Register a custom artifact format handler.
+
+    Registered handlers are checked before built-in handlers during save operations,
+    allowing custom types to override default behavior for specific extensions.
+
+    Args:
+        name: Format identifier for explicit loading (e.g., "workload")
+        extensions: File extensions this handler supports (e.g., [".jsonl"])
+        type_check: Function to check if object matches this handler
+        saver: Function to save object to path: (obj, path) -> None
+        loader: Function to load object from path: (path) -> object
+        required_package: Optional package name required for this handler
+
+    Raises:
+        ValueError: If format name already registered or no extensions provided
+
+    Examples:
+        # Register workload format
+        yanex.register_format(
+            name="workload",
+            extensions=[".jsonl"],
+            type_check=lambda obj: isinstance(obj, Workload),
+            saver=lambda obj, path: obj.save(str(path)),
+            loader=lambda path: Workload.load(str(path)),
+        )
+
+        # Register format requiring optional dependency
+        yanex.register_format(
+            name="parquet",
+            extensions=[".parquet"],
+            type_check=lambda obj: isinstance(obj, pd.DataFrame),
+            saver=lambda obj, path: obj.to_parquet(path),
+            loader=lambda path: pd.read_parquet(path),
+            required_package="pyarrow",
+        )
+
+        # Use registered handler
+        yanex.save_artifact(workload, "data.jsonl")  # Auto-detects Workload type
+        loaded = yanex.load_artifact("data.jsonl", format="workload")
+    """
+    # Validate name is unique
+    if any(h.name == name for h in FORMAT_HANDLERS):
+        raise ValueError(f"Format '{name}' is already registered")
+
+    # Validate extensions
+    if not extensions:
+        raise ValueError("At least one extension must be provided")
+
+    # Add to registry (prepend for priority over built-in handlers)
+    handler = FormatHandler(
+        name=name,
+        extensions=extensions,
+        type_check=type_check,
+        saver=saver,
+        loader=loader,
+        required_package=required_package,
+    )
+    FORMAT_HANDLERS.insert(0, handler)

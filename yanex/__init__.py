@@ -46,6 +46,9 @@ from .api import (
     save_artifact,
 )
 
+# Custom artifact format registration
+from .core.artifact_formats import register_format
+
 # Batch execution API
 from .executor import ExperimentResult, ExperimentSpec, run_multiple
 
@@ -69,6 +72,7 @@ __all__ = [
     "load_artifact",
     "artifact_exists",
     "list_artifacts",
+    "register_format",
     # Script execution
     "execute_bash_script",
     # Experiment information

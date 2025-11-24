@@ -469,7 +469,9 @@ def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
         manager.storage.save_artifact(experiment_id, obj, filename, saver)
 
 
-def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
+def load_artifact(
+    filename: str, loader: Any | None = None, format: str | None = None
+) -> Any | None:
     """Load an artifact with automatic format detection.
 
     Returns None if artifact doesn't exist (allows optional artifacts).
@@ -477,6 +479,7 @@ def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
     Args:
         filename: Name of artifact to load
         loader: Optional custom loader function (path) -> object
+        format: Optional format name for explicit format selection
 
     Supported formats (auto-detected by extension):
         .txt        - Plain text (returns str)
@@ -497,9 +500,12 @@ def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
         ImportError: If required library not installed
 
     Examples:
-        # Load from current experiment
+        # Auto-detect format from extension
         model_state = yanex.load_artifact("model.pt")
         results = yanex.load_artifact("results.json")
+
+        # Explicit format for ambiguous extensions
+        workload = yanex.load_artifact("data.jsonl", format="workload")
 
         # Optional artifact (returns None if missing)
         checkpoint = yanex.load_artifact("checkpoint.pt")
@@ -529,11 +535,13 @@ def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
         if not artifact_path.exists():
             return None
 
-        return load_artifact_from_path(artifact_path, loader)
+        return load_artifact_from_path(artifact_path, loader, format=format)
     else:
         # Experiment mode - load from experiment artifacts
         manager = _get_experiment_manager()
-        return manager.storage.load_artifact(experiment_id, filename, loader)
+        return manager.storage.load_artifact(
+            experiment_id, filename, loader, format=format
+        )
 
 
 def artifact_exists(filename: str) -> bool:
