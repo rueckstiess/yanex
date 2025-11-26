@@ -1,7 +1,7 @@
 """Dependency resolution and validation for experiment workflows."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from graphlib import CycleError, TopologicalSorter
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +9,7 @@ from ..utils.exceptions import (
     CircularDependencyError,
     ExperimentNotFoundError,
     InvalidDependencyError,
+    StorageError,
 )
 from ..utils.id_resolution import resolve_experiment_id
 
@@ -46,7 +47,7 @@ class DependencyStorage:
 
         data = {
             "dependency_ids": dependency_ids,
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "metadata": metadata or {},
         }
 
@@ -106,7 +107,7 @@ class DependencyStorage:
             )
             dependencies_file = exp_dir / "dependencies.json"
             return dependencies_file.exists()
-        except Exception:
+        except StorageError:
             return False
 
 
