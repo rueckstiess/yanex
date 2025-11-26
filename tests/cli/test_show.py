@@ -165,7 +165,7 @@ class TestFormatterHelperMethods:
             mock_datetime.fromisoformat = datetime.fromisoformat
 
             result = self.formatter._calculate_duration(start_time, None)
-            assert "(ongoing)" in result
+            assert "+" in result
 
     @pytest.mark.parametrize(
         "file_size,expected_output",

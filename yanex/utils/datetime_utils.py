@@ -93,7 +93,7 @@ def format_duration(start_time: datetime, end_time: datetime | None = None) -> s
         "2m 34s"
 
         >>> format_duration(start, None)  # Still running
-        "5m 12s (ongoing)"
+        "+ 5m 12s"
     """
     if end_time is None:
         end_time = datetime.now(timezone.utc)
@@ -129,7 +129,7 @@ def format_duration(start_time: datetime, end_time: datetime | None = None) -> s
         result = f"{days}d {hours}h"
 
     if is_ongoing:
-        result += " (ongoing)"
+        result = "+ " + result
 
     return result
 
