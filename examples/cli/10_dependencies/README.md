@@ -2,7 +2,7 @@
 
 ## What This Example Demonstrates
 
-- Creating multi-stage ML pipelines with experiment dependencies
+- Creating multi-stage pipelines with experiment dependencies
 - Linear pipelines: preprocessing → training → evaluation
 - Dependency sweeps: running experiments with multiple dependencies
 - Cartesian products: dependencies × parameters

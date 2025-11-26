@@ -11,7 +11,7 @@ class TestSweepExperimentNaming:
     """Test sweep experiment naming functionality."""
 
     @pytest.mark.parametrize(
-        "base_name,config,sweep_param_paths,dependency_id,expected_name",
+        "base_name,config,sweep_param_paths,dependency_ids,expected_name",
         [
             # No sweep params or dependencies - name unchanged
             ("train-model", {"lr": 0.001}, None, None, "train-model"),
@@ -38,32 +38,40 @@ class TestSweepExperimentNaming:
                 None,
                 "train-0-1-0-9",
             ),
-            # Dependency sweep (no params)
-            ("model", {}, None, "abc12345", "model-abc12345"),
-            (None, {}, None, "def67890", "sweep-def67890"),
+            # Dependency sweep (no params) - dependency_ids is now a list
+            ("model", {}, None, ["abc12345"], "model-abc12345"),
+            (None, {}, None, ["def67890"], "sweep-def67890"),
             # Dependency + parameter sweep
             (
                 "model",
                 {"lr": 0.01},
                 ["lr"],
-                "abc12345",
+                ["abc12345"],
                 "model-abc12345-0-01",
             ),
             (
                 "train",
                 {"lr": 0.1, "batch_size": 32},
                 ["lr", "batch_size"],
-                "xyz98765",
+                ["xyz98765"],
                 "train-xyz98765-0-1-32",
+            ),
+            # Multiple dependencies
+            (
+                "model",
+                {"lr": 0.01},
+                ["lr"],
+                ["abc12345", "def67890"],
+                "model-abc12345-def67890-0-01",
             ),
         ],
     )
     def test_basic_naming_patterns(
-        self, base_name, config, sweep_param_paths, dependency_id, expected_name
+        self, base_name, config, sweep_param_paths, dependency_ids, expected_name
     ):
         """Test basic parameter sweep naming patterns."""
         result = _generate_sweep_experiment_name(
-            base_name, config, sweep_param_paths, dependency_id
+            base_name, config, sweep_param_paths, dependency_ids
         )
         assert result == expected_name
 
@@ -185,15 +193,22 @@ class TestSweepExperimentNaming:
     def test_multiple_dependency_sweep(self):
         """Test naming with dependency sweep."""
         config = {}
-        # Different dependency IDs
-        dep_id_1 = "abc12345"
-        dep_id_2 = "def67890"
+        # Different dependency ID combinations
+        dep_ids_1 = ["abc12345"]
+        dep_ids_2 = ["def67890"]
+        dep_ids_both = ["abc12345", "def67890"]
 
-        result_1 = _generate_sweep_experiment_name("model", config, None, dep_id_1)
+        result_1 = _generate_sweep_experiment_name("model", config, None, dep_ids_1)
         assert result_1 == "model-abc12345"
 
-        result_2 = _generate_sweep_experiment_name("model", config, None, dep_id_2)
+        result_2 = _generate_sweep_experiment_name("model", config, None, dep_ids_2)
         assert result_2 == "model-def67890"
+
+        # Test with multiple dependencies (one from each group)
+        result_both = _generate_sweep_experiment_name(
+            "model", config, None, dep_ids_both
+        )
+        assert result_both == "model-abc12345-def67890"
 
     def test_cartesian_sweep(self):
         """Test naming for cartesian product sweep (dependency × parameter)."""
@@ -201,29 +216,36 @@ class TestSweepExperimentNaming:
         config_2 = {"lr": 0.1}
         sweep_paths = ["lr"]
 
-        dep_id_1 = "abc12345"
-        dep_id_2 = "def67890"
+        dep_ids_1 = ["abc12345"]
+        dep_ids_2 = ["def67890"]
+        dep_ids_both = ["abc12345", "def67890"]
 
-        # Should generate: model-abc12345-0.01, model-abc12345-0.1, model-def67890-0.01, model-def67890-0.1
+        # Should generate names with dependency IDs and parameter values
         result_1_1 = _generate_sweep_experiment_name(
-            "model", config_1, sweep_paths, dep_id_1
+            "model", config_1, sweep_paths, dep_ids_1
         )
         assert result_1_1 == "model-abc12345-0-01"
 
         result_1_2 = _generate_sweep_experiment_name(
-            "model", config_2, sweep_paths, dep_id_1
+            "model", config_2, sweep_paths, dep_ids_1
         )
         assert result_1_2 == "model-abc12345-0-1"
 
         result_2_1 = _generate_sweep_experiment_name(
-            "model", config_1, sweep_paths, dep_id_2
+            "model", config_1, sweep_paths, dep_ids_2
         )
         assert result_2_1 == "model-def67890-0-01"
 
         result_2_2 = _generate_sweep_experiment_name(
-            "model", config_2, sweep_paths, dep_id_2
+            "model", config_2, sweep_paths, dep_ids_2
         )
         assert result_2_2 == "model-def67890-0-1"
+
+        # Test with multiple dependencies (cross-product result)
+        result_both = _generate_sweep_experiment_name(
+            "model", config_1, sweep_paths, dep_ids_both
+        )
+        assert result_both == "model-abc12345-def67890-0-01"
 
     def test_empty_sweep_paths(self):
         """Test behavior with empty sweep paths list."""
@@ -260,9 +282,16 @@ class TestSweepExperimentNaming:
     def test_no_base_name_with_dependency(self):
         """Test default 'sweep' name with dependency sweep."""
         config = {}
-        dep_id = "abc12345"
-        result = _generate_sweep_experiment_name(None, config, None, dep_id)
+        dep_ids = ["abc12345"]
+        result = _generate_sweep_experiment_name(None, config, None, dep_ids)
         assert result == "sweep-abc12345"
+
+        # Test with multiple dependencies
+        dep_ids_multi = ["abc12345", "def67890"]
+        result_multi = _generate_sweep_experiment_name(
+            None, config, None, dep_ids_multi
+        )
+        assert result_multi == "sweep-abc12345-def67890"
 
     def test_complex_nested_structure(self):
         """Test with complex nested parameter structure."""

@@ -111,7 +111,12 @@ class TestBasicDependencyUsage:
         )
 
     def test_multiple_d_flags(self, tmp_path, cli_runner):
-        """Test multiple -D flags for dependencies."""
+        """Test multiple -D flags for combined dependencies (not sweep).
+
+        Multiple -D flags mean the experiment depends on ALL specified dependencies.
+        This is NOT a sweep - it creates 1 experiment with multiple dependencies.
+        Use comma-separation within a single -D flag for sweeps.
+        """
         script_path = TestFileHelpers.create_test_script(
             tmp_path, "test_script.py", "simple"
         )
@@ -121,17 +126,15 @@ class TestBasicDependencyUsage:
             create_completed_experiment(script_path, {}, f"dep-{i}") for i in range(2)
         ]
 
-        # Run with multiple -D flags
+        # Run with multiple -D flags - should create 1 experiment with 2 dependencies
         result = cli_runner.invoke(
             cli,
             ["run", str(script_path), "-D", dep_ids[0], "-D", dep_ids[1]],
         )
         assert result.exit_code == 0
-        # Should create dependency sweep
-        assert (
-            "✓ Sweep detected: running 2 experiments" in result.output
-            or "Sweep execution completed" in result.output
-        )
+        # Should NOT be a sweep - single experiment with both dependencies
+        assert "Sweep detected" not in result.output
+        assert "Experiment completed successfully" in result.output
 
     def test_short_id_resolution(self, tmp_path, cli_runner):
         """Test using short IDs (prefixes) for dependencies."""
@@ -256,6 +259,126 @@ class TestDependencySweeps:
         )
         assert result.exit_code == 0
         assert "✓ Sweep detected" in result.output
+
+
+class TestDependencyGroupCrossProduct:
+    """Test cross-product of dependency groups (multiple -D flags with sweeps)."""
+
+    def test_two_groups_basic(self, tmp_path, cli_runner):
+        """Test -D a,b -D c creates 2 experiments: [a,c] and [b,c]."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "test_script.py", "simple"
+        )
+
+        # Create 3 completed dependencies
+        dep_ids = [
+            create_completed_experiment(script_path, {}, f"dep-{i}") for i in range(3)
+        ]
+
+        # Run with -D a,b -D c (first group has sweep, second is single)
+        # Should create 2 experiments: [dep-0, dep-2] and [dep-1, dep-2]
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "-D",
+                f"{dep_ids[0]},{dep_ids[1]}",  # Group 1: sweep over dep-0 and dep-1
+                "-D",
+                dep_ids[2],  # Group 2: single dep-2
+            ],
+        )
+        assert result.exit_code == 0
+        assert "✓ Sweep detected: running 2 experiments" in result.output
+        assert "Sweep execution completed" in result.output
+
+    def test_two_groups_cross_product(self, tmp_path, cli_runner):
+        """Test -D a,b -D c,d creates 4 experiments (2x2 cross-product)."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "test_script.py", "simple"
+        )
+
+        # Create 4 completed dependencies
+        dep_ids = [
+            create_completed_experiment(script_path, {}, f"dep-{i}") for i in range(4)
+        ]
+
+        # Run with -D a,b -D c,d (both groups are sweeps)
+        # Should create 4 experiments: [a,c], [a,d], [b,c], [b,d]
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "-D",
+                f"{dep_ids[0]},{dep_ids[1]}",  # Group 1: sweep
+                "-D",
+                f"{dep_ids[2]},{dep_ids[3]}",  # Group 2: sweep
+            ],
+        )
+        assert result.exit_code == 0
+        assert "✓ Sweep detected: running 4 experiments" in result.output
+        assert "Sweep execution completed" in result.output
+
+    def test_three_groups_cross_product(self, tmp_path, cli_runner):
+        """Test -D a -D b,c -D d creates 2 experiments."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "test_script.py", "simple"
+        )
+
+        # Create 4 completed dependencies
+        dep_ids = [
+            create_completed_experiment(script_path, {}, f"dep-{i}") for i in range(4)
+        ]
+
+        # Run with -D a -D b,c -D d
+        # Should create 2 experiments: [a,b,d] and [a,c,d]
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "-D",
+                dep_ids[0],  # Group 1: single
+                "-D",
+                f"{dep_ids[1]},{dep_ids[2]}",  # Group 2: sweep
+                "-D",
+                dep_ids[3],  # Group 3: single
+            ],
+        )
+        assert result.exit_code == 0
+        assert "✓ Sweep detected: running 2 experiments" in result.output
+        assert "Sweep execution completed" in result.output
+
+    def test_cross_product_with_params(self, tmp_path, cli_runner):
+        """Test -D a,b -D c -p lr=0.1,0.2 creates 4 experiments."""
+        script_path = TestFileHelpers.create_test_script(
+            tmp_path, "test_script.py", "simple"
+        )
+
+        # Create 3 completed dependencies
+        dep_ids = [
+            create_completed_experiment(script_path, {}, f"dep-{i}") for i in range(3)
+        ]
+
+        # Run with dep sweep + param sweep
+        # 2 dep combos ([a,c], [b,c]) × 2 param values (0.1, 0.2) = 4 experiments
+        result = cli_runner.invoke(
+            cli,
+            [
+                "run",
+                str(script_path),
+                "-D",
+                f"{dep_ids[0]},{dep_ids[1]}",
+                "-D",
+                dep_ids[2],
+                "--param",
+                "lr=list(0.1,0.2)",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "✓ Sweep detected: running 4 experiments" in result.output
+        assert "Sweep execution completed" in result.output
 
 
 class TestCartesianProducts:
