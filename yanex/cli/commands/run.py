@@ -399,28 +399,97 @@ def _print_sweep_summary(results: list, total: int) -> None:
         click.echo(f"  Failed: {len(failed)}")
 
 
+def _format_value_for_name(value: Any) -> str:
+    """
+    Format a parameter value for use in experiment name.
+
+    Args:
+        value: Parameter value (primitive, list, dict, or other)
+
+    Returns:
+        Formatted string representation of the value
+    """
+    if isinstance(value, list):
+        # Join list elements with dash
+        formatted_items = [_format_value_for_name(item) for item in value]
+        result = "-".join(formatted_items)
+    elif isinstance(value, dict):
+        # Interleave keys and values: {a: 1, b: 2} -> "a-1-b-2"
+        parts = []
+        for k, v in value.items():
+            parts.append(_format_value_for_name(k))
+            parts.append(_format_value_for_name(v))
+        result = "-".join(parts)
+    else:
+        # Convert to string
+        result = str(value)
+
+    # Sanitize: replace whitespace and special chars with dash, lowercase
+    import re
+
+    result = result.lower()
+    result = re.sub(r"[^a-z0-9]+", "-", result)
+    # Remove leading/trailing dashes
+    result = result.strip("-")
+
+    return result
+
+
+def _extract_value_from_config(config: dict[str, Any], param_path: str) -> Any:
+    """
+    Extract a value from nested config dict using dotted path.
+
+    Args:
+        config: Configuration dictionary
+        param_path: Dotted path to parameter (e.g., "model.dropout")
+
+    Returns:
+        The value at the specified path
+    """
+    parts = param_path.split(".")
+    value = config
+    for part in parts:
+        value = value[part]
+    return value
+
+
 def _generate_sweep_experiment_name(
     base_name: str | None,
     config: dict[str, Any],
     sweep_param_paths: list[str] | None = None,
+    dependency_id: str | None = None,
 ) -> str:
     """
     Generate experiment name for a sweep experiment.
 
+    Appends dependency ID and sweep parameter values to base name.
+    Format: <base_name>-<dep_id>-<val1>-<val2>
+
     Args:
         base_name: Base experiment name (can be None)
-        config: Configuration dictionary with parameter values (unused, kept for compatibility)
-        sweep_param_paths: List of parameter paths that were sweep parameters (unused, kept for compatibility)
+        config: Configuration dictionary with parameter values
+        sweep_param_paths: List of parameter paths that were sweep parameters
+        dependency_id: Experiment ID of dependency (for dependency sweeps)
 
     Returns:
-        Base experiment name or "sweep" if no name provided
+        Generated experiment name
     """
-    # Return the base name as-is, without appending parameter values
-    # Parameter values are now tracked via the "sweep" tag instead
-    if base_name:
-        return base_name
-    else:
-        return "sweep"
+    # Start with base name or "sweep" if not provided
+    name_parts = [base_name if base_name else "sweep"]
+
+    # Add dependency ID if present
+    if dependency_id:
+        name_parts.append(dependency_id)
+
+    # Add sweep parameter values if present
+    if sweep_param_paths:
+        for param_path in sweep_param_paths:
+            value = _extract_value_from_config(config, param_path)
+            formatted_value = _format_value_for_name(value)
+            name_parts.append(formatted_value)
+
+    # Join all parts with dash
+    return "-".join(name_parts)
 
 
 def _build_parameter_sweep_specs(
@@ -459,7 +528,10 @@ def _build_parameter_sweep_specs(
             script_path=script,
             config=expanded_config,
             name=_generate_sweep_experiment_name(
-                name, expanded_config, sweep_param_paths
+                name,
+                expanded_config,
+                sweep_param_paths,
+                dependency_id=None,  # No dependency sweep in this function
             ),
             tags=tags,
             description=description,
@@ -505,7 +577,9 @@ def _build_dependency_sweep_specs(
         ExperimentSpec(
             script_path=script,
             config=config,
-            name=name,  # Use same name for all (they'll get unique IDs)
+            name=_generate_sweep_experiment_name(
+                name, config, sweep_param_paths=None, dependency_id=dep_id
+            ),
             tags=tags,
             description=description,
             dependency_ids=[dep_id],  # Each experiment gets single dependency
@@ -553,7 +627,7 @@ def _build_cartesian_sweep_specs(
     for dep_id in dependency_ids:
         for expanded_config in expanded_configs:
             sweep_name = _generate_sweep_experiment_name(
-                name, expanded_config, sweep_param_paths
+                name, expanded_config, sweep_param_paths, dependency_id=dep_id
             )
             experiments.append(
                 ExperimentSpec(
