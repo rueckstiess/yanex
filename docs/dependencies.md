@@ -65,6 +65,48 @@ yanex run train.py -p model=vgg16 --name "vgg-v1"          # Returns: ccc333
 yanex run ensemble.py -D aaa111,bbb222,ccc333 --name "ensemble-eval"
 ```
 
+### Dependency Sweeps vs Combined Dependencies
+
+There are two ways to specify multiple dependencies, with different meanings:
+
+| Syntax | Meaning | Result |
+|--------|---------|--------|
+| `-D exp1,exp2` | Sweep over alternatives | 2 experiments, each with 1 dependency |
+| `-D exp1 -D exp2` | Combined dependencies | 1 experiment with both dependencies |
+
+**Comma-separated (sweep):** Creates multiple experiments, each using a different dependency:
+
+```bash
+# Run experiment once for each model (3 separate runs)
+yanex run evaluate.py -D aaa111,bbb222,ccc333
+# Creates 3 experiments: one using aaa111, one using bbb222, one using ccc333
+```
+
+**Multiple -D flags (combined):** Creates one experiment that depends on all:
+
+```bash
+# Run ensemble that needs ALL three models
+yanex run ensemble.py -D aaa111 -D bbb222 -D ccc333
+# Creates 1 experiment with 3 dependencies
+```
+
+**Cross-product:** Combine both for more complex scenarios:
+
+```bash
+# Two data preprocessing runs
+yanex run preprocess.py --name "data-v1"  # Returns: data1
+yanex run preprocess.py --name "data-v2"  # Returns: data2
+
+# Two model architectures
+yanex run train.py --name "resnet"  # Returns: model1
+yanex run train.py --name "vgg"     # Returns: model2
+
+# Evaluate all combinations: 2 datasets × 2 models = 4 experiments
+yanex run evaluate.py -D data1,data2 -D model1,model2
+# Creates 4 experiments:
+#   [data1, model1], [data1, model2], [data2, model1], [data2, model2]
+```
+
 ## Accessing Dependencies in Scripts
 
 ### Get Dependencies
