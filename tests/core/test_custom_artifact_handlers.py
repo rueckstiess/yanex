@@ -320,6 +320,21 @@ class TestEdgeCases:
 class TestExperimentMode:
     """Test custom handlers in experiment mode."""
 
+    def setup_method(self):
+        """Clear CLI context to allow create_experiment() to work."""
+        import os
+
+        # Save and clear YANEX_CLI_ACTIVE to ensure non-CLI context
+        self._saved_cli_active = os.environ.pop("YANEX_CLI_ACTIVE", None)
+
+    def teardown_method(self):
+        """Restore CLI context after test."""
+        import os
+
+        # Restore YANEX_CLI_ACTIVE if it was set
+        if self._saved_cli_active is not None:
+            os.environ["YANEX_CLI_ACTIVE"] = self._saved_cli_active
+
     def test_custom_handler_in_experiment_context(self, temp_dir, git_repo):
         """Test custom handlers work within experiment context."""
         # Register custom format
