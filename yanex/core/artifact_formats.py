@@ -16,16 +16,21 @@ class FormatHandler:
     name: str
     extensions: list[str]
     type_check: Callable[[Any], bool]
-    saver: Callable[[Any, Path], None]
+    saver: Callable[..., None]  # (obj, path, **kwargs) -> None
     loader: Callable[[Path], Any]
     required_package: str | None = None
 
 
-def _save_text(obj: Any, path: Path) -> None:
-    """Save string as text file."""
+def _save_text(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save string as text file.
+
+    Supported kwargs:
+        encoding: Text encoding (default: "utf-8")
+    """
     if not isinstance(obj, str):
         raise TypeError(f"Expected str for .txt file, got {type(obj).__name__}")
-    path.write_text(obj, encoding="utf-8")
+    encoding = kwargs.get("encoding", "utf-8")
+    path.write_text(obj, encoding=encoding)
 
 
 def _load_text(path: Path) -> str:
@@ -33,10 +38,21 @@ def _load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _save_json(obj: Any, path: Path) -> None:
-    """Save object as JSON."""
+def _save_json(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save object as JSON.
+
+    Supported kwargs:
+        indent: Indentation level (default: 2)
+        ensure_ascii: Escape non-ASCII characters (default: True)
+        sort_keys: Sort dictionary keys (default: False)
+    """
+    # Extract JSON-specific kwargs with defaults
+    indent = kwargs.get("indent", 2)
+    ensure_ascii = kwargs.get("ensure_ascii", True)
+    sort_keys = kwargs.get("sort_keys", False)
+
     with path.open("w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2)
+        json.dump(obj, f, indent=indent, ensure_ascii=ensure_ascii, sort_keys=sort_keys)
 
 
 def _load_json(path: Path) -> Any:
@@ -45,13 +61,18 @@ def _load_json(path: Path) -> Any:
         return json.load(f)
 
 
-def _save_jsonl(obj: Any, path: Path) -> None:
-    """Save list of objects as JSON Lines."""
+def _save_jsonl(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save list of objects as JSON Lines.
+
+    Supported kwargs:
+        ensure_ascii: Escape non-ASCII characters (default: True)
+    """
     if not isinstance(obj, list):
         raise TypeError(f"Expected list for .jsonl file, got {type(obj).__name__}")
+    ensure_ascii = kwargs.get("ensure_ascii", True)
     with path.open("w", encoding="utf-8") as f:
         for item in obj:
-            f.write(json.dumps(item) + "\n")
+            f.write(json.dumps(item, ensure_ascii=ensure_ascii) + "\n")
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -65,15 +86,24 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return items
 
 
-def _save_csv_pandas(obj: Any, path: Path) -> None:
-    """Save pandas DataFrame as CSV."""
+def _save_csv_pandas(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save pandas DataFrame as CSV.
+
+    Supported kwargs:
+        index: Write row names (default: False)
+        sep: Field separator (default: ",")
+        All other kwargs are passed to DataFrame.to_csv()
+    """
     import pandas as pd
 
     if not isinstance(obj, pd.DataFrame):
         raise TypeError(
             f"Expected pandas.DataFrame for .csv file, got {type(obj).__name__}"
         )
-    obj.to_csv(path, index=False)
+    # Set default for index if not provided
+    if "index" not in kwargs:
+        kwargs["index"] = False
+    obj.to_csv(path, **kwargs)
 
 
 def _load_csv_pandas(path: Path) -> Any:
@@ -83,8 +113,12 @@ def _load_csv_pandas(path: Path) -> Any:
     return pd.read_csv(path)
 
 
-def _save_csv_list(obj: Any, path: Path) -> None:
-    """Save list of dicts as CSV."""
+def _save_csv_list(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save list of dicts as CSV.
+
+    Supported kwargs:
+        delimiter: Field delimiter (default: ",")
+    """
     if not isinstance(obj, list):
         raise TypeError(f"Expected list for .csv file, got {type(obj).__name__}")
     if not obj:
@@ -96,21 +130,27 @@ def _save_csv_list(obj: Any, path: Path) -> None:
             f"Expected list of dicts for .csv file, got list of {type(obj[0]).__name__}"
         )
 
+    delimiter = kwargs.get("delimiter", ",")
     with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=obj[0].keys())
+        writer = csv.DictWriter(f, fieldnames=obj[0].keys(), delimiter=delimiter)
         writer.writeheader()
         writer.writerows(obj)
 
 
-def _save_npy(obj: Any, path: Path) -> None:
-    """Save numpy array as .npy."""
+def _save_npy(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save numpy array as .npy.
+
+    Supported kwargs:
+        allow_pickle: Allow saving object arrays using pickle (default: True)
+    """
     import numpy as np
 
     if not isinstance(obj, np.ndarray):
         raise TypeError(
             f"Expected numpy.ndarray for .npy file, got {type(obj).__name__}"
         )
-    np.save(path, obj)
+    allow_pickle = kwargs.get("allow_pickle", True)
+    np.save(path, obj, allow_pickle=allow_pickle)
 
 
 def _load_npy(path: Path) -> Any:
@@ -120,8 +160,12 @@ def _load_npy(path: Path) -> Any:
     return np.load(path)
 
 
-def _save_npz(obj: Any, path: Path) -> None:
-    """Save dict of numpy arrays as .npz."""
+def _save_npz(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save dict of numpy arrays as .npz.
+
+    Supported kwargs:
+        compressed: Use compression (default: False)
+    """
     import numpy as np
 
     if not isinstance(obj, dict):
@@ -132,22 +176,31 @@ def _save_npz(obj: Any, path: Path) -> None:
             raise TypeError(
                 f"Expected dict of numpy arrays for .npz file, got dict with {type(value).__name__} at key '{key}'"
             )
-    np.savez(path, **obj)
+    compressed = kwargs.get("compressed", False)
+    if compressed:
+        np.savez_compressed(path, **obj)
+    else:
+        np.savez(path, **obj)
 
 
 def _load_npz(path: Path) -> dict[str, Any]:
     """Load .npz file as dict of numpy arrays."""
     import numpy as np
 
-    loaded = np.load(path)
+    loaded = np.load(path, allow_pickle=True)
     return {key: loaded[key] for key in loaded.files}
 
 
-def _save_torch(obj: Any, path: Path) -> None:
-    """Save object with torch.save."""
+def _save_torch(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save object with torch.save.
+
+    Supported kwargs:
+        pickle_protocol: Pickle protocol version (default: torch default)
+        All other kwargs are passed to torch.save()
+    """
     import torch
 
-    torch.save(obj, path)
+    torch.save(obj, path, **kwargs)
 
 
 def _load_torch(path: Path) -> Any:
@@ -177,10 +230,15 @@ def _load_torch(path: Path) -> Any:
         return torch.load(path, weights_only=False)
 
 
-def _save_pickle(obj: Any, path: Path) -> None:
-    """Save object with pickle."""
+def _save_pickle(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save object with pickle.
+
+    Supported kwargs:
+        protocol: Pickle protocol version (default: pickle.HIGHEST_PROTOCOL)
+    """
+    protocol = kwargs.get("protocol", pickle.HIGHEST_PROTOCOL)
     with path.open("wb") as f:
-        pickle.dump(obj, f)
+        pickle.dump(obj, f, protocol=protocol)
 
 
 def _load_pickle(path: Path) -> Any:
@@ -189,8 +247,16 @@ def _load_pickle(path: Path) -> Any:
         return pickle.load(f)
 
 
-def _save_matplotlib_figure(obj: Any, path: Path) -> None:
-    """Save matplotlib figure as image."""
+def _save_matplotlib_figure(obj: Any, path: Path, **kwargs: Any) -> None:
+    """Save matplotlib figure as image.
+
+    Supported kwargs:
+        dpi: Resolution in dots per inch (default: matplotlib's default)
+        bbox_inches: Bounding box (default: None, use "tight" to trim whitespace)
+        facecolor: Figure facecolor
+        transparent: Make background transparent (default: False)
+        All other kwargs are passed to Figure.savefig()
+    """
     # Check if it's a matplotlib figure
     try:
         import matplotlib.figure
@@ -204,7 +270,7 @@ def _save_matplotlib_figure(obj: Any, path: Path) -> None:
         raise TypeError(
             f"Expected matplotlib.figure.Figure for .png file, got {type(obj).__name__}"
         )
-    obj.savefig(path)
+    obj.savefig(path, **kwargs)
 
 
 def _load_image(path: Path) -> Any:

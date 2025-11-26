@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -101,9 +102,14 @@ class ArtifactStorage(ABC):
 
     @abstractmethod
     def save_artifact(
-        self, experiment_id: str, artifact_name: str, source_path: Path
+        self,
+        experiment_id: str,
+        obj: Any,
+        filename: str,
+        saver: Callable[..., None] | None = None,
+        **kwargs: Any,
     ) -> Path:
-        """Save an artifact file."""
+        """Save a Python object to experiment's artifacts directory."""
 
     @abstractmethod
     def save_text_artifact(

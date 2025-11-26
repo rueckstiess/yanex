@@ -399,3 +399,158 @@ class TestMatplotlibHandlers:
 
         assert img is not None
         plt.close(fig)
+
+
+class TestKwargsPassthrough:
+    """Test kwargs passthrough to underlying save functions."""
+
+    def test_json_indent_kwarg(self, tmp_path):
+        """Test JSON indent kwarg."""
+        data = {"key": "value"}
+        path = tmp_path / "test.json"
+
+        handler = get_handler_for_save(data, "test.json")
+
+        # Save with indent=4 (default is 2)
+        handler.saver(data, path, indent=4)
+
+        content = path.read_text()
+        # With indent=4, "key" should be indented by 4 spaces
+        assert '    "key"' in content
+
+    def test_json_no_indent_kwarg(self, tmp_path):
+        """Test JSON without indentation."""
+        data = {"key": "value", "num": 42}
+        path = tmp_path / "test.json"
+
+        handler = get_handler_for_save(data, "test.json")
+
+        # Save with indent=None for compact output
+        handler.saver(data, path, indent=None)
+
+        content = path.read_text()
+        # Without indent, should be on single line
+        assert "\n" not in content.strip()
+
+    def test_json_sort_keys_kwarg(self, tmp_path):
+        """Test JSON sort_keys kwarg."""
+        data = {"zebra": 1, "apple": 2, "mango": 3}
+        path = tmp_path / "test.json"
+
+        handler = get_handler_for_save(data, "test.json")
+        handler.saver(data, path, sort_keys=True)
+
+        content = path.read_text()
+        # Keys should appear in alphabetical order
+        apple_pos = content.find("apple")
+        mango_pos = content.find("mango")
+        zebra_pos = content.find("zebra")
+        assert apple_pos < mango_pos < zebra_pos
+
+    def test_csv_list_delimiter_kwarg(self, tmp_path):
+        """Test CSV list delimiter kwarg."""
+        pytest.importorskip("pandas")
+
+        data = [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}]
+        path = tmp_path / "test.csv"
+
+        handler = get_handler_for_save(data, "test.csv")
+        handler.saver(data, path, delimiter=";")
+
+        content = path.read_text()
+        # Should use semicolon as delimiter
+        assert "name;age" in content
+        assert "Alice;30" in content
+
+    def test_csv_pandas_sep_kwarg(self, tmp_path):
+        """Test CSV pandas sep kwarg."""
+        pd = pytest.importorskip("pandas")
+
+        df = pd.DataFrame({"name": ["Alice", "Bob"], "age": [30, 25]})
+        path = tmp_path / "test.csv"
+
+        handler = get_handler_for_save(df, "test.csv")
+        handler.saver(df, path, sep="\t")
+
+        content = path.read_text()
+        # Should use tab as separator
+        assert "name\tage" in content
+
+    def test_pickle_protocol_kwarg(self, tmp_path):
+        """Test pickle protocol kwarg."""
+        data = {"key": "value"}
+        path = tmp_path / "test.pkl"
+
+        handler = get_handler_for_save(data, "test.pkl")
+        # Use protocol 4 explicitly
+        handler.saver(data, path, protocol=4)
+
+        # Verify file was created and is valid pickle
+        load_handler = get_handler_for_load("test.pkl")
+        loaded = load_handler.loader(path)
+        assert loaded == data
+
+    def test_npz_compressed_kwarg(self, tmp_path):
+        """Test npz compressed kwarg."""
+        np = pytest.importorskip("numpy")
+
+        data = {"arr": np.random.randn(100, 100)}
+
+        # Save uncompressed
+        path_uncompressed = tmp_path / "uncompressed.npz"
+        handler = get_handler_for_save(data, "test.npz")
+        handler.saver(data, path_uncompressed, compressed=False)
+
+        # Save compressed
+        path_compressed = tmp_path / "compressed.npz"
+        handler.saver(data, path_compressed, compressed=True)
+
+        # Compressed should be smaller (usually)
+        # Both should be valid and loadable
+        load_handler = get_handler_for_load("test.npz")
+        loaded_uncompressed = load_handler.loader(path_uncompressed)
+        loaded_compressed = load_handler.loader(path_compressed)
+
+        assert np.array_equal(loaded_uncompressed["arr"], data["arr"])
+        assert np.array_equal(loaded_compressed["arr"], data["arr"])
+
+    def test_matplotlib_dpi_kwarg(self, tmp_path):
+        """Test matplotlib dpi kwarg."""
+        pytest.importorskip("matplotlib")
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(2, 2))
+        ax.plot([1, 2, 3], [1, 4, 9])
+
+        # Save with low DPI
+        path_low = tmp_path / "low_dpi.png"
+        handler = get_handler_for_save(fig, "plot.png")
+        handler.saver(fig, path_low, dpi=50)
+
+        # Save with high DPI
+        path_high = tmp_path / "high_dpi.png"
+        handler.saver(fig, path_high, dpi=200)
+
+        # High DPI should produce larger file
+        assert path_high.stat().st_size > path_low.stat().st_size
+
+        plt.close(fig)
+
+    def test_matplotlib_bbox_inches_kwarg(self, tmp_path):
+        """Test matplotlib bbox_inches kwarg."""
+        pytest.importorskip("matplotlib")
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        ax.plot([1, 2, 3], [1, 4, 9])
+        ax.set_title("Test Plot")
+
+        path = tmp_path / "plot.png"
+        handler = get_handler_for_save(fig, "plot.png")
+        handler.saver(fig, path, bbox_inches="tight")
+
+        # Verify file was created
+        assert path.exists()
+        assert path.stat().st_size > 0
+
+        plt.close(fig)

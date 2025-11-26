@@ -144,9 +144,12 @@ class CompositeExperimentStorage(ExperimentStorageInterface):
         obj: Any,
         filename: str,
         saver: Any | None = None,
+        **kwargs: Any,
     ) -> Path:
         """Save a Python object to experiment's artifacts directory."""
-        return self.artifact_storage.save_artifact(experiment_id, obj, filename, saver)
+        return self.artifact_storage.save_artifact(
+            experiment_id, obj, filename, saver, **kwargs
+        )
 
     def load_artifact(
         self,

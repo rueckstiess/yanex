@@ -8,6 +8,19 @@ import yanex
 from yanex.core.artifact_formats import FORMAT_HANDLERS, register_format
 
 
+@pytest.fixture(autouse=True)
+def cleanup_format_handlers():
+    """Restore FORMAT_HANDLERS to original state after each test.
+
+    This prevents custom handlers registered in one test from affecting other tests,
+    which is especially important when tests run in parallel.
+    """
+    original_handlers = FORMAT_HANDLERS.copy()
+    yield
+    FORMAT_HANDLERS.clear()
+    FORMAT_HANDLERS.extend(original_handlers)
+
+
 class CustomObject:
     """Test custom object with save/load methods."""
 

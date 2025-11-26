@@ -56,7 +56,8 @@ class FileSystemArtifactStorage(ArtifactStorage):
         experiment_id: str,
         obj: Any,
         filename: str,
-        saver: Callable[[Any, Path], None] | None = None,
+        saver: Callable[..., None] | None = None,
+        **kwargs: Any,
     ) -> Path:
         """Save a Python object to experiment's artifacts directory.
 
@@ -64,7 +65,8 @@ class FileSystemArtifactStorage(ArtifactStorage):
             experiment_id: Experiment identifier
             obj: Python object to save
             filename: Name for saved artifact
-            saver: Optional custom saver function (obj, path) -> None
+            saver: Optional custom saver function (obj, path, **kwargs) -> None
+            **kwargs: Additional arguments passed to the underlying save function
 
         Returns:
             Path where artifact was saved
@@ -83,7 +85,7 @@ class FileSystemArtifactStorage(ArtifactStorage):
         target_path = artifacts_dir / filename
 
         try:
-            save_artifact_to_path(obj, target_path, saver)
+            save_artifact_to_path(obj, target_path, saver, **kwargs)
         except Exception as e:
             raise StorageError(f"Failed to save artifact: {e}") from e
 
