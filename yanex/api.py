@@ -529,7 +529,9 @@ def copy_artifact(src_path: Path | str, filename: str | None = None) -> None:
         manager.storage.copy_artifact(experiment_id, src_path, filename)
 
 
-def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
+def save_artifact(
+    obj: Any, filename: str, saver: Any | None = None, **kwargs: Any
+) -> None:
     """Save a Python object to the experiment's artifacts directory.
 
     Format is auto-detected from filename extension.
@@ -537,7 +539,15 @@ def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
     Args:
         obj: Python object to save
         filename: Name for saved artifact (extension determines format)
-        saver: Optional custom saver function (obj, path) -> None
+        saver: Optional custom saver function (obj, path, **kwargs) -> None
+        **kwargs: Additional arguments passed to the underlying save function.
+            Common examples by format:
+            - Matplotlib (.png): dpi, bbox_inches, facecolor, transparent
+            - JSON (.json): indent, ensure_ascii, sort_keys
+            - CSV (.csv): index, sep (pandas), delimiter (list of dicts)
+            - Pickle (.pkl): protocol
+            - NumPy (.npz): compressed
+            - PyTorch (.pt, .pth): pickle_protocol
 
     Supported formats (auto-detected):
         .txt        - Plain text (str.write)
@@ -559,17 +569,17 @@ def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
         # Text
         yanex.save_artifact("Training complete", "status.txt")
 
-        # JSON
-        yanex.save_artifact({"acc": 0.95}, "metrics.json")
+        # JSON with custom indent
+        yanex.save_artifact({"acc": 0.95}, "metrics.json", indent=4)
 
         # PyTorch model
         yanex.save_artifact(model.state_dict(), "model.pt")
 
-        # Matplotlib figure
-        yanex.save_artifact(fig, "plot.png")
+        # Matplotlib figure with high DPI
+        yanex.save_artifact(fig, "plot.png", dpi=300, bbox_inches="tight")
 
         # Custom format
-        def save_custom(obj, path):
+        def save_custom(obj, path, **kwargs):
             with open(path, 'wb') as f:
                 custom_serialize(obj, f)
 
@@ -590,11 +600,11 @@ def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
 
         artifacts_dir = _get_standalone_artifacts_dir()
         target_path = artifacts_dir / filename
-        save_artifact_to_path(obj, target_path, saver)
+        save_artifact_to_path(obj, target_path, saver, **kwargs)
     else:
         # Experiment mode - save to experiment artifacts
         manager = _get_experiment_manager()
-        manager.storage.save_artifact(experiment_id, obj, filename, saver)
+        manager.storage.save_artifact(experiment_id, obj, filename, saver, **kwargs)
 
 
 def load_artifact(
@@ -731,19 +741,32 @@ def artifact_exists(filename: str) -> bool:
         return manager.storage.artifact_exists(experiment_id, filename)
 
 
-def list_artifacts() -> list[str]:
+def list_artifacts(
+    transitive: bool = False,
+) -> list[str] | dict[str, list[str]]:
     """List all artifacts in the current experiment.
 
+    Args:
+        transitive: If True, include artifacts from all dependencies.
+                   Returns dict mapping experiment ID to artifact list.
+
     Returns:
-        List of artifact filenames (sorted)
+        If transitive=False: List of artifact filenames (sorted)
+        If transitive=True: Dict mapping experiment ID to artifact list
 
     Examples:
+        # List current experiment's artifacts
         artifacts = yanex.list_artifacts()
         # Returns: ["model.pt", "metrics.json", "plot.png"]
+
+        # List artifacts from current experiment and all dependencies
+        all_artifacts = yanex.list_artifacts(transitive=True)
+        # Returns: {"abc123": ["model.pt"], "def456": ["data.csv"]}
 
     Note:
         In standalone mode: Lists ./artifacts/ directory
         With experiment tracking: Lists experiment artifacts directory
+        In standalone mode with transitive=True: Returns {"local": [...]}
     """
     experiment_id = _get_current_experiment_id()
 
@@ -752,11 +775,25 @@ def list_artifacts() -> list[str]:
         from .core.artifact_io import list_artifacts_at_path
 
         artifacts_dir = _get_standalone_artifacts_dir()
-        return list_artifacts_at_path(artifacts_dir)
-    else:
-        # Experiment mode - list experiment artifacts
-        manager = _get_experiment_manager()
+        artifacts = list_artifacts_at_path(artifacts_dir)
+
+        if transitive:
+            return {"local": artifacts}
+        return artifacts
+
+    # Experiment mode
+    manager = _get_experiment_manager()
+
+    if not transitive:
         return manager.storage.list_artifacts(experiment_id)
+
+    # Transitive: get current + all dependencies
+    result = {}
+    deps = get_dependencies(transitive=True, include_self=True)
+    for dep in deps:
+        result[dep.id] = dep.list_artifacts()
+
+    return result
 
 
 def execute_bash_script(
