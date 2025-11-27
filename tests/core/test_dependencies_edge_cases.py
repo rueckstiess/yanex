@@ -24,14 +24,16 @@ class TestDependencyStorageErrorHandling:
             manager.storage.get_experiment_directory(exp_id) / "dependencies.json"
         )
         # First save some dependencies to create the file
-        manager.storage.dependency_storage.save_dependencies(exp_id, ["abc12345"], {})
+        manager.storage.dependency_storage.save_dependencies(
+            exp_id, {"dep1": "abc12345"}, {}
+        )
 
         # Now corrupt it with malformed JSON
         dep_file.write_text("{malformed json")
 
         # Should return empty dependencies instead of crashing
         loaded = manager.storage.dependency_storage.load_dependencies(exp_id)
-        assert loaded["dependency_ids"] == []
+        assert loaded["dependencies"] == {}
 
     def test_load_dependencies_missing_dependencies_file(self, temp_dir):
         """Test loading dependencies when dependencies.json doesn't exist."""
@@ -51,7 +53,7 @@ class TestDependencyStorageErrorHandling:
 
         # Should return empty dependencies
         loaded = manager.storage.dependency_storage.load_dependencies(exp_id)
-        assert loaded["dependency_ids"] == []
+        assert loaded["dependencies"] == {}
 
     def test_dependency_file_exists_with_exception(self, temp_dir):
         """Test dependency_file_exists error handling."""
@@ -88,8 +90,8 @@ class TestDependencyResolverErrorHandling:
         )
 
         # Manually create circular dependency: A -> B, B -> A
-        manager.storage.dependency_storage.save_dependencies(exp_a, [exp_b], {})
-        manager.storage.dependency_storage.save_dependencies(exp_b, [exp_a], {})
+        manager.storage.dependency_storage.save_dependencies(exp_a, {"dep1": exp_b}, {})
+        manager.storage.dependency_storage.save_dependencies(exp_b, {"dep1": exp_a}, {})
 
         # Try to get transitive dependencies (should raise CircularDependencyError)
         resolver = DependencyResolver(manager)
@@ -109,7 +111,7 @@ class TestDependencyResolverErrorHandling:
         exp_a = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_b],
+            dependencies={"dep1": exp_b},
             stage_only=True,
             name="exp-a",
         )
@@ -177,7 +179,7 @@ class TestArtifactFindingEdgeCases:
         exp_id = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[dep1_id, dep2_id],
+            dependencies={"data": dep1_id, "model": dep2_id},
             stage_only=True,
         )
 
@@ -209,14 +211,14 @@ class TestTransitiveDependenciesEdgeCases:
         exp_b = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_c],
+            dependencies={"dep1": exp_c},
             stage_only=True,
             name="exp-b",
         )
         exp_a = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_b],
+            dependencies={"dep1": exp_b},
             stage_only=True,
             name="exp-a",
         )
@@ -247,14 +249,14 @@ class TestTransitiveDependenciesEdgeCases:
         exp_b = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_c],
+            dependencies={"dep1": exp_c},
             stage_only=True,
             name="exp-b",
         )
         exp_a = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_b],
+            dependencies={"dep1": exp_b},
             stage_only=True,
             name="exp-a",
         )

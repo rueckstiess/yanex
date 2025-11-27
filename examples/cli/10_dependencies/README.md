@@ -3,6 +3,8 @@
 ## What This Example Demonstrates
 
 - Creating multi-stage pipelines with experiment dependencies
+- **Named dependency slots**: Using `-D data=<id>` syntax for clear dependency semantics
+- **Accessing dependencies by name**: Using `yanex.get_dependency("data")` in scripts
 - Linear pipelines: preprocessing → training → evaluation
 - Dependency sweeps: running experiments with multiple dependencies
 - Cartesian products: dependencies × parameters
@@ -46,24 +48,29 @@ yanex run prepare_data.py -p dataset=mnist -p samples=1000
 ### Step 2: Train model using preprocessed data
 
 ```bash
-# Depends on preprocessing (use the experiment ID from step 1)
-yanex run train_model.py -D abc12345 -p learning_rate=0.01
+# Depends on preprocessing with named slot "data"
+yanex run train_model.py -D data=abc12345 -p learning_rate=0.01
 # Output: ✓ Experiment completed successfully: def67890
 ```
 
 ### Step 3: Evaluate the trained model
 
 ```bash
-# Depends on training (use the experiment ID from step 2)
-yanex run evaluate_model.py -D def67890
+# Depends on training with named slot "model"
+yanex run evaluate_model.py -D model=def67890
 # Output: ✓ Experiment completed successfully: ghi11111
 ```
 
 **Result**: Complete pipeline tracked with full lineage!
 
+**Why named slots?** Using `-D data=abc12345` instead of just `-D abc12345`:
+- Makes scripts self-documenting (clear what each dependency is for)
+- Enables `yanex.get_dependency("data")` for direct access by name
+- Prevents confusion when experiments have multiple dependencies
+
 ## Dependency Sweeps: Multiple Parents
 
-Run the same experiment with **multiple dependencies**:
+Run the same experiment with **multiple dependencies** using comma-separated IDs:
 
 ```bash
 # Step 1: Create multiple preprocessing runs
@@ -71,11 +78,11 @@ yanex run prepare_data.py -p "dataset=mnist,cifar10"
 # Creates 2 experiments: abc12345 (mnist), def67890 (cifar10)
 
 # Step 2: Train model on BOTH datasets (dependency sweep)
-yanex run train_model.py -D abc12345,def67890 -p learning_rate=0.01
+yanex run train_model.py -D "data=abc12345,def67890" -p learning_rate=0.01
 # ✓ Sweep detected: running 2 experiments
 # Creates:
-#   - Experiment 1: depends on abc12345 (mnist)
-#   - Experiment 2: depends on def67890 (cifar10)
+#   - Experiment 1: depends on abc12345 (mnist), slot "data"
+#   - Experiment 2: depends on def67890 (cifar10), slot "data"
 ```
 
 **Use cases**:
@@ -94,12 +101,12 @@ yanex run prepare_data.py -p "dataset=mnist,cifar10"
 
 # Step 2: Train with 2 deps × 3 learning rates = 6 experiments
 yanex run train_model.py \
-  -D abc12345,def67890 \
+  -D "data=abc12345,def67890" \
   -p "learning_rate=0.001,0.01,0.1"
 # ✓ Sweep detected: running 6 experiments
 # Creates all combinations:
-#   mnist + lr=0.001, mnist + lr=0.01, mnist + lr=0.1
-#   cifar10 + lr=0.001, cifar10 + lr=0.01, cifar10 + lr=0.1
+#   data=mnist + lr=0.001, data=mnist + lr=0.01, data=mnist + lr=0.1
+#   data=cifar10 + lr=0.001, data=cifar10 + lr=0.01, data=cifar10 + lr=0.1
 ```
 
 ## Incremental Pipeline Staging
@@ -121,7 +128,7 @@ yanex list --status staged
 # Step 3: Stage training depending on STAGED preprocessing
 # This is the "incremental staging" pattern
 yanex run train_model.py \
-  -D abc12345,def67890 \
+  -D "data=abc12345,def67890" \
   -p "learning_rate=0.001,0.01,0.1" \
   --stage \
   --name training
@@ -148,7 +155,7 @@ Dependency sweeps support parallel execution:
 yanex run prepare_data.py -p "samples=100,500,1000,5000"
 
 # Train on all 4 in parallel with 4 workers
-yanex run train_model.py -D <ids> --parallel 4
+yanex run train_model.py -D "data=<ids>" --parallel 4
 # Each training run executes independently
 ```
 
@@ -158,32 +165,41 @@ Yanex resolves ID prefixes automatically:
 
 ```bash
 # Full ID
-yanex run train_model.py -D abc12345
+yanex run train_model.py -D data=abc12345
 
 # Short ID (first 4+ characters, if unique)
-yanex run train_model.py -D abc1
+yanex run train_model.py -D data=abc1
 
-# Multiple short IDs
-yanex run train_model.py -D abc1,def6,ghi1
+# Multiple short IDs with sweep
+yanex run train_model.py -D "data=abc1,def6,ghi1"
 ```
 
-## Accessing Dependency Artifacts
+## Accessing Dependencies in Scripts
 
-Child experiments can **automatically load** artifacts from dependencies:
+Child experiments can access dependencies **by slot name**:
 
 ```python
 # train_model.py
 import yanex
 
-# Get dependencies (returns list of Experiment objects)
-deps = yanex.get_dependencies()
-prep = deps[0]
+# Get specific dependency by slot name (recommended)
+data_exp = yanex.get_dependency("data")  # Returns Experiment or None
 
-# Load artifact from dependency
-data = prep.load_artifact("processed_data.pkl")
+if data_exp:
+    # Access dependency's params to see what data was used
+    dep_params = data_exp.get_params()
+    print(f"Training on dataset: {dep_params.get('dataset')}")
+
+    # Load artifact directly from the dependency
+    data = data_exp.load_artifact("processed_data.pkl")
 
 # Or use yanex.load_artifact() which searches dependencies automatically
 data = yanex.load_artifact("processed_data.pkl")
+
+# Get all dependencies as dict (slot -> Experiment)
+all_deps = yanex.get_dependencies()
+for slot, exp in all_deps.items():
+    print(f"Slot '{slot}': experiment {exp.id}")
 ```
 
 ## Viewing Pipeline Lineage
@@ -194,8 +210,8 @@ yanex show ghi11111
 
 # Output includes:
 # Dependencies:
-#   - def67890: training run (completed)
-#   - abc12345: preprocessing (completed) [transitive]
+#   model: def67890 - training run (completed)
+#   data: abc12345 - preprocessing (completed) [transitive]
 ```
 
 ## Example Workflows
@@ -206,11 +222,11 @@ yanex show ghi11111
 # 1. Preprocess
 prep_id=$(yanex run prepare_data.py -p dataset=mnist | grep -o '[a-f0-9]\{8\}')
 
-# 2. Train
-train_id=$(yanex run train_model.py -D $prep_id -p lr=0.01 | grep -o '[a-f0-9]\{8\}')
+# 2. Train (with named slot "data")
+train_id=$(yanex run train_model.py -D data=$prep_id -p lr=0.01 | grep -o '[a-f0-9]\{8\}')
 
-# 3. Evaluate
-yanex run evaluate_model.py -D $train_id
+# 3. Evaluate (with named slot "model")
+yanex run evaluate_model.py -D model=$train_id
 ```
 
 ### Hyperparameter Search
@@ -222,7 +238,7 @@ yanex run prepare_data.py -p dataset=mnist -p samples=5000
 
 # 2. Grid search over learning rates (3 experiments, all use same preprocessing)
 yanex run train_model.py \
-  -D abc12345 \
+  -D data=abc12345 \
   -p "learning_rate=0.001,0.01,0.1" \
   --parallel 3
 
@@ -235,14 +251,14 @@ yanex compare --tag training
 ```bash
 # 1. Prepare multiple datasets
 yanex run prepare_data.py -p "dataset=mnist,cifar10,fashion"
-# Creates 3 experiments
+# Creates 3 experiments: abc12345, def67890, ghi11111
 
 # 2. Train same model on each (dependency sweep)
-yanex run train_model.py -D <ids-from-step-1> -p lr=0.01
+yanex run train_model.py -D "data=abc12345,def67890,ghi11111" -p lr=0.01
 # Creates 3 training experiments
 
-# 3. Evaluate all models
-yanex run evaluate_model.py -D <ids-from-step-2>
+# 3. Evaluate all models (get IDs from step 2)
+yanex run evaluate_model.py -D "model=<train-ids>"
 # Creates 3 evaluation experiments
 ```
 
@@ -254,11 +270,11 @@ yanex run prepare_data.py --stage -p "dataset=mnist,cifar10"
 # ✓ Staged 2 sweep experiments: prep1, prep2
 
 # Stage training (depends on staged preprocessing)
-yanex run train_model.py --stage -D prep1,prep2 -p "lr=0.01,0.1"
+yanex run train_model.py --stage -D "data=prep1,prep2" -p "lr=0.01,0.1"
 # ✓ Staged 4 sweep experiments (2 deps × 2 lrs): train1-4
 
 # Stage evaluation (depends on staged training)
-yanex run evaluate_model.py --stage -D train1,train2,train3,train4
+yanex run evaluate_model.py --stage -D "model=train1,train2,train3,train4"
 # ✓ Staged 4 experiments: eval1-4
 
 # Execute entire pipeline
@@ -277,16 +293,30 @@ $ yanex run prepare_data.py -p dataset=mnist
   Train/test split: 800/200
 ✓ Experiment completed successfully: abc12345
 
-$ yanex run train_model.py -D abc12345 -p learning_rate=0.01
+$ yanex run train_model.py -D data=abc12345 -p learning_rate=0.01
 📦 Loading preprocessed data from dependency abc12345
+  Dependency dataset: mnist
+  Dataset: mnist
+  Training samples: 800
+  Features: 784
+
 🤖 Training model with lr=0.01
   Epoch 1/10: loss=0.5234
   Epoch 5/10: loss=0.2341
   Epoch 10/10: loss=0.1123
 ✓ Experiment completed successfully: def67890
 
-$ yanex run evaluate_model.py -D def67890
+$ yanex run evaluate_model.py -D model=def67890
 📦 Loading trained model from dependency def67890
+  Model trained with lr=0.01
+  Model learning rate: 0.01
+  Training epochs: 10
+  Training loss: 0.1123
+
+📊 Full pipeline: 2 dependencies
+  1. def67890 (training)
+  2. abc12345 (preprocessing)
+
 📈 Evaluating model...
   Test accuracy: 92.5%
   Test loss: 0.1534
@@ -295,13 +325,13 @@ $ yanex run evaluate_model.py -D def67890
 
 ### Dependency Sweep
 ```
-$ yanex run train_model.py -D abc12345,def67890 -p learning_rate=0.01
+$ yanex run train_model.py -D "data=abc12345,def67890" -p learning_rate=0.01
 ✓ Sweep detected: running 2 experiments
 
-Experiment 1/2 (dependency: abc12345)...
+Experiment 1/2 (data: abc12345)...
 ✓ Experiment completed successfully: train001
 
-Experiment 2/2 (dependency: def67890)...
+Experiment 2/2 (data: def67890)...
 ✓ Experiment completed successfully: train002
 
 ✓ Sweep execution completed
@@ -311,7 +341,7 @@ Experiment 2/2 (dependency: def67890)...
 
 ### Cartesian Product
 ```
-$ yanex run train_model.py -D abc1,def6 -p "learning_rate=0.001,0.01,0.1"
+$ yanex run train_model.py -D "data=abc1,def6" -p "learning_rate=0.001,0.01,0.1"
 ✓ Sweep detected: running 6 experiments
 Running 6 experiments with 4 parallel workers...
 ✓ Completed 6/6 experiments
@@ -325,7 +355,7 @@ Running 6 experiments with 4 parallel workers...
 prep=$(yanex run prepare_data.py ...)
 
 # Run multiple training experiments with same data
-yanex run train_model.py -D $prep -p "lr=0.001,0.01,0.1"
+yanex run train_model.py -D data=$prep -p "lr=0.001,0.01,0.1"
 ```
 
 ### Pattern 2: Compare Preprocessing Methods
@@ -334,8 +364,8 @@ yanex run train_model.py -D $prep -p "lr=0.001,0.01,0.1"
 yanex run prepare_data.py -p "method=standard,minmax,robust"
 # Get IDs: prep1, prep2, prep3
 
-# Train same model on each
-yanex run train_model.py -D prep1,prep2,prep3 -p lr=0.01
+# Train same model on each (sweep over data slot)
+yanex run train_model.py -D "data=prep1,prep2,prep3" -p lr=0.01
 ```
 
 ### Pattern 3: Multi-Stage Grid Search
@@ -344,7 +374,7 @@ yanex run train_model.py -D prep1,prep2,prep3 -p lr=0.01
 yanex run prepare_data.py -p "samples=1000,5000" --stage
 
 # Training grid (depends on preprocessing)
-yanex run train_model.py -D <prep-ids> \
+yanex run train_model.py -D "data=<prep-ids>" \
   -p "lr=0.001,0.01,0.1" \
   -p "batch_size=32,64,128" \
   --stage
@@ -355,8 +385,10 @@ yanex run --staged --parallel 8
 
 ## Key Concepts
 
-- **`-D` / `--depends-on`**: Link experiment to dependencies
-- **Dependency sweeps**: Multiple dependencies create multiple experiments
+- **`-D slot=id`**: Link experiment to named dependency (e.g., `-D data=abc12345`)
+- **Named slots**: Use meaningful names like `data`, `model` for clarity
+- **`yanex.get_dependency("slot")`**: Access specific dependency by slot name in scripts
+- **Dependency sweeps**: Multiple dependencies create multiple experiments (`-D "data=id1,id2"`)
 - **Cartesian products**: Dependencies × Parameters = all combinations
 - **Incremental staging**: Stage each pipeline step before execution
 - **Artifact loading**: Automatic access to dependency artifacts
@@ -364,25 +396,34 @@ yanex run --staged --parallel 8
 
 ## Best Practices
 
+### Use Named Dependency Slots
+```bash
+# Good: Clear what the dependency is for
+yanex run train_model.py -D data=abc12345
+
+# Less clear: What is abc12345?
+yanex run train_model.py -D abc12345
+```
+
 ### Use Descriptive Names
 ```bash
 yanex run prepare_data.py --name "mnist-preprocessing" ...
-yanex run train_model.py -D <id> --name "resnet-training" ...
+yanex run train_model.py -D data=<id> --name "resnet-training" ...
 ```
 
 ### Tag Pipeline Stages
 ```bash
 yanex run prepare_data.py --tag preprocessing ...
-yanex run train_model.py -D <id> --tag training ...
-yanex run evaluate_model.py -D <id> --tag evaluation ...
+yanex run train_model.py -D data=<id> --tag training ...
+yanex run evaluate_model.py -D model=<id> --tag evaluation ...
 ```
 
 ### Validate Dependencies Before Scaling
 ```bash
 # Test pipeline with small data first
 yanex run prepare_data.py -p samples=100
-yanex run train_model.py -D <id> -p epochs=1
-yanex run evaluate_model.py -D <id>
+yanex run train_model.py -D data=<id> -p epochs=1
+yanex run evaluate_model.py -D model=<id>
 
 # Then scale up
 yanex run prepare_data.py -p "samples=1000,5000,10000" --stage
@@ -391,7 +432,7 @@ yanex run prepare_data.py -p "samples=1000,5000,10000" --stage
 ### Use Parallel Execution for Independent Branches
 ```bash
 # These can run in parallel (different preprocessing)
-yanex run train_model.py -D prep1,prep2,prep3 --parallel 3
+yanex run train_model.py -D "data=prep1,prep2,prep3" --parallel 3
 ```
 
 ## Troubleshooting
@@ -414,12 +455,12 @@ yanex show <dep-id>  # Check status
 Use `--stage` flag - yanex allows depending on staged experiments when creating staged experiments:
 ```bash
 yanex run prepare_data.py --stage  # Creates staged experiment
-yanex run train_model.py -D <staged-id> --stage  # OK! Incremental staging
+yanex run train_model.py -D data=<staged-id> --stage  # OK! Incremental staging
 ```
 
 ## Next Steps
 
 - Run a full pipeline and examine with `yanex show <final-id>`
 - Try `yanex compare` to compare different dependency branches
-- Explore `yanex.get_dependencies()` API for programmatic access
+- Explore `yanex.get_dependency("slot")` API for programmatic access
 - See example 07 for parameter sweeps and example 09 for staged execution

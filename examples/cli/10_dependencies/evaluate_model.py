@@ -2,8 +2,8 @@
 Model evaluation simulation with dependency on training.
 
 Usage:
-    yanex run evaluate_model.py -D <training-id>
-    yanex run evaluate_model.py -D <id1>,<id2>,<id3> --parallel 3
+    yanex run evaluate_model.py -D model=<training-id>
+    yanex run evaluate_model.py -D "model=<id1>,<id2>,<id3>" --parallel 3
 """
 
 import time
@@ -12,14 +12,17 @@ import yanex
 
 # Assert that we have a training dependency
 # This will fail the experiment if the dependency is missing
-yanex.assert_dependency("train_model.py")
+yanex.assert_dependency("train_model.py", slot="model")
 
-# Get dependencies (training experiment)
-deps = yanex.get_dependencies()
+# Get specific dependency by slot name (recommended approach)
+model_exp = yanex.get_dependency("model")
 
-if deps:
-    train_exp = deps[0]
-    print(f"📦 Loading trained model from dependency {train_exp.id}")
+if model_exp:
+    print(f"📦 Loading trained model from dependency {model_exp.id}")
+    # Show training info from the dependency's params
+    dep_params = model_exp.get_params()
+    if dep_params:
+        print(f"  Model trained with lr={dep_params.get('learning_rate', 'unknown')}")
 
 # Load trained model artifact from dependency
 model = yanex.load_artifact("trained_model.pkl")
@@ -68,8 +71,8 @@ eval_metrics = {
     "false_negatives": fn,
     "true_negatives": tn,
 }
-if deps:
-    eval_metrics["training_id"] = deps[0].id
+if model_exp:
+    eval_metrics["training_id"] = model_exp.id
 
 yanex.log_metrics(eval_metrics)
 

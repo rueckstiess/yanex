@@ -15,12 +15,12 @@ class TestGetDependencies:
     """Test yanex.get_dependencies() API function."""
 
     def test_get_dependencies_no_context(self):
-        """Test get_dependencies in standalone mode returns empty list."""
+        """Test get_dependencies in standalone mode returns empty dict."""
         # Clear any existing context
         yanex._clear_current_experiment_id()
 
         deps = yanex.get_dependencies()
-        assert deps == []
+        assert deps == {}
 
     def test_get_dependencies_no_dependencies(self, temp_dir):
         """Test get_dependencies with experiment that has no dependencies."""
@@ -37,7 +37,7 @@ class TestGetDependencies:
 
         try:
             deps = yanex.get_dependencies()
-            assert deps == []
+            assert deps == {}
         finally:
             yanex._clear_current_experiment_id()
 
@@ -54,14 +54,14 @@ class TestGetDependencies:
         exp_b = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_c],
+            dependencies={"dep1": exp_c},
             stage_only=True,
             name="exp-b",
         )
         exp_a = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_b],
+            dependencies={"dep1": exp_b},
             stage_only=True,
             name="exp-a",
         )
@@ -72,11 +72,12 @@ class TestGetDependencies:
         try:
             deps = yanex.get_dependencies(transitive=False)
 
-            # Should return only B (direct dependency)
+            # Should return dict with slot -> Experiment (only B)
             assert len(deps) == 1
-            assert deps[0].id == exp_b
-            assert deps[0].name == "exp-b"
-            assert deps[0].status == "staged"
+            assert "dep1" in deps
+            assert deps["dep1"].id == exp_b
+            assert deps["dep1"].name == "exp-b"
+            assert deps["dep1"].status == "staged"
         finally:
             yanex._clear_current_experiment_id()
 
@@ -93,14 +94,14 @@ class TestGetDependencies:
         exp_b = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_c],
+            dependencies={"dep1": exp_c},
             stage_only=True,
             name="exp-b",
         )
         exp_a = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_b],
+            dependencies={"dep1": exp_b},
             stage_only=True,
             name="exp-a",
         )
@@ -134,7 +135,7 @@ class TestGetDependencies:
         exp_a = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_b],
+            dependencies={"dep1": exp_b},
             stage_only=True,
             name="exp-a",
         )
@@ -172,7 +173,7 @@ class TestGetDependencies:
 
         # Create experiment depending on it
         exp_id = manager.create_experiment(
-            script_path, config={}, dependency_ids=[dep_id], stage_only=True
+            script_path, config={}, dependencies={"dep1": dep_id}, stage_only=True
         )
 
         # Set context
@@ -180,7 +181,7 @@ class TestGetDependencies:
 
         try:
             deps = yanex.get_dependencies()
-            dep = deps[0]
+            dep = deps["dep1"]
 
             # Test list_artifacts()
             artifacts = dep.list_artifacts()
@@ -236,7 +237,7 @@ class TestLoadArtifactWithDependencies:
 
         # Create experiment depending on it (staged for testing)
         exp_id = manager.create_experiment(
-            script_path, config={}, dependency_ids=[dep_id], stage_only=True
+            script_path, config={}, dependencies={"dep1": dep_id}, stage_only=True
         )
 
         # Set context
@@ -262,10 +263,10 @@ class TestLoadArtifactWithDependencies:
         (c_artifacts_dir / "model.txt").write_text("model data")
 
         exp_b = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_c], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_c}, stage_only=True
         )
         exp_a = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_b], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_b}, stage_only=True
         )
 
         # Set context to A
@@ -322,7 +323,7 @@ class TestLoadArtifactWithDependencies:
         exp_id = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[dep1_id, dep2_id],
+            dependencies={"dep1": dep1_id, "dep2": dep2_id},
             stage_only=True,
         )
 
@@ -357,7 +358,7 @@ class TestLoadArtifactWithDependencies:
 
         # Create experiment with same artifact (staged for testing)
         exp_id = manager.create_experiment(
-            script_path, config={}, dependency_ids=[dep_id], stage_only=True
+            script_path, config={}, dependencies={"dep1": dep_id}, stage_only=True
         )
         exp_artifacts_dir = (
             manager.storage.get_experiment_directory(exp_id) / "artifacts"
@@ -408,7 +409,7 @@ class TestAssertDependency:
         exp_id = manager.create_experiment(
             train_script,
             config={},
-            dependency_ids=[dep_id],
+            dependencies={"dep1": dep_id},
             stage_only=True,
             name="train",
         )
@@ -461,7 +462,7 @@ class TestAssertDependency:
         exp_id = manager.create_experiment(
             train_script,
             config={},
-            dependency_ids=[dep_id],
+            dependencies={"dep1": dep_id},
             stage_only=True,
             name="train",
         )
@@ -513,7 +514,7 @@ class TestAssertDependency:
         exp_id = manager.create_experiment(
             eval_script,
             config={},
-            dependency_ids=[dep1_id, dep2_id],
+            dependencies={"dep1": dep1_id, "dep2": dep2_id},
             stage_only=True,
             name="eval",
         )
@@ -557,7 +558,7 @@ class TestAssertDependency:
         exp_id = manager.create_experiment(
             train_script,
             config={},
-            dependency_ids=[dep_id],
+            dependencies={"dep1": dep_id},
             stage_only=True,
             name="train",
         )

@@ -174,12 +174,12 @@ def run(
     # Capture script-specific arguments (unknown to yanex)
     script_args = list(ctx.args) if ctx.args else []
 
-    # Parse dependencies (handle comma-separated IDs), preserving groups
-    dependency_groups = _parse_dependencies(depends_on)
+    # Parse dependencies (handle comma-separated IDs and slot names)
+    dependency_slots = _parse_dependencies(depends_on)
 
     # Build parsed CLI arguments dictionary for yanex.get_cli_args()
-    # Flatten dependency groups for cli_args (stores what was passed on CLI)
-    flat_dependency_ids = [dep for group in dependency_groups for dep in group]
+    # Flatten dependency slots for cli_args (stores what was passed on CLI)
+    flat_dependency_ids = [dep for _, ids in dependency_slots for dep in ids]
     cli_args = {
         "script": str(script) if script else None,
         "config": [str(c) for c in config] if config else [],
@@ -288,8 +288,8 @@ def run(
             return
 
         # Phase 3: Execute, stage, or execute sweep
-        # Check if we have dependency sweep (any group has >1 item) or parameter sweep
-        has_dep_sweep = _has_dependency_sweep(dependency_groups)
+        # Check if we have dependency sweep (any slot has >1 ID) or parameter sweep
+        has_dep_sweep = _has_dependency_sweep(dependency_slots)
         has_param_sweep = has_sweep_parameters(experiment_config)
         has_any_sweep = has_dep_sweep or has_param_sweep
 
@@ -301,7 +301,7 @@ def run(
                 tags=resolved_tags,
                 description=resolved_description,
                 config=experiment_config,
-                dependency_groups=dependency_groups,
+                dependency_slots=dependency_slots,
                 verbose=verbose,
                 script_args=script_args,
                 cli_args=cli_args,
@@ -314,7 +314,7 @@ def run(
                 tags=resolved_tags,
                 description=resolved_description,
                 config=experiment_config,
-                dependency_groups=dependency_groups,
+                dependency_slots=dependency_slots,
                 verbose=verbose,
                 max_workers=parallel,
                 script_args=script_args,
@@ -328,7 +328,7 @@ def run(
                 tags=resolved_tags,
                 description=resolved_description,
                 config=experiment_config,
-                dependency_groups=dependency_groups,
+                dependency_slots=dependency_slots,
                 verbose=verbose,
                 script_args=script_args,
                 cli_args=cli_args,
@@ -345,7 +345,7 @@ def _execute_experiment(
     tags: list[str],
     description: str | None,
     config: dict[str, Any],
-    dependency_groups: list[list[str]] | None = None,
+    dependency_slots: list[tuple[str, list[str]]] | None = None,
     verbose: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
@@ -357,12 +357,12 @@ def _execute_experiment(
         script_args = []
     if cli_args is None:
         cli_args = []
-    if dependency_groups is None:
-        dependency_groups = []
+    if dependency_slots is None:
+        dependency_slots = []
 
-    # For single experiment, expand dependency groups to get the single combination
-    # (one dep from each group). Returns [[]] if no deps, so [0] gives [] or [dep1, dep2, ...]
-    dependency_ids = expand_dependency_groups(dependency_groups)[0]
+    # For single experiment, expand dependency slots to get the single combination
+    # (one dep from each slot). Returns [{}] if no deps, so [0] gives {} or {slot: dep_id, ...}
+    dependencies = expand_dependency_slots(dependency_slots)[0]
 
     # Create experiment
     manager = ExperimentManager()
@@ -372,7 +372,7 @@ def _execute_experiment(
         config=config,
         tags=tags,
         description=description,
-        dependency_ids=dependency_ids,
+        dependencies=dependencies,
         script_args=script_args,
         cli_args=cli_args,
     )
@@ -463,19 +463,19 @@ def _generate_sweep_experiment_name(
     base_name: str | None,
     config: dict[str, Any],
     sweep_param_paths: list[str] | None = None,
-    dependency_ids: list[str] | None = None,
+    dependency_slots: dict[str, str] | None = None,
 ) -> str:
     """
     Generate experiment name for a sweep experiment.
 
-    Appends dependency IDs and sweep parameter values to base name.
-    Format: <base_name>-<dep_id1>-<dep_id2>-<val1>-<val2>
+    Appends slot-name-dep_id pairs and sweep parameter values to base name.
+    Format: <base_name>-<slot>-<dep_id>-<slot>-<dep_id>-<val1>-<val2>
 
     Args:
         base_name: Base experiment name (can be None)
         config: Configuration dictionary with parameter values
         sweep_param_paths: List of parameter paths that were sweep parameters
-        dependency_ids: List of dependency IDs (for dependency sweeps)
+        dependency_slots: Dict mapping slot names to dependency IDs (for dependency sweeps)
 
     Returns:
         Generated experiment name
@@ -483,9 +483,10 @@ def _generate_sweep_experiment_name(
     # Start with base name or "sweep" if not provided
     name_parts = [base_name if base_name else "sweep"]
 
-    # Add dependency IDs if present
-    if dependency_ids:
-        name_parts.extend(dependency_ids)
+    # Add slot-name-dep_id pairs if present
+    if dependency_slots:
+        for slot, dep_id in dependency_slots.items():
+            name_parts.append(f"{slot}-{dep_id}")
 
     # Add sweep parameter values if present
     if sweep_param_paths:
@@ -504,7 +505,7 @@ def _build_parameter_sweep_specs(
     name: str | None,
     tags: list[str],
     description: str | None,
-    dependency_groups: list[list[str]],
+    dependency_slots: list[tuple[str, list[str]]],
     script_args: list[str],
     cli_args: list[str],
 ) -> list:
@@ -516,7 +517,7 @@ def _build_parameter_sweep_specs(
         name: Base experiment name
         tags: List of experiment tags
         description: Experiment description
-        dependency_groups: List of dependency groups (no sweep, just pass-through)
+        dependency_slots: List of (slot_name, [exp_ids]) tuples (no sweep, just pass-through)
         script_args: Arguments to pass through to the script
         cli_args: Complete CLI arguments used to run the experiment
 
@@ -528,9 +529,9 @@ def _build_parameter_sweep_specs(
     # Expand parameter sweeps into individual configurations
     expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
 
-    # For parameter-only sweep, expand dependency groups to get the single combination
+    # For parameter-only sweep, expand dependency slots to get the single combination
     # (all experiments share the same dependencies)
-    dependency_ids = expand_dependency_groups(dependency_groups)[0]
+    dependencies = expand_dependency_slots(dependency_slots)[0]
 
     # Build ExperimentSpec objects for each configuration
     experiments = [
@@ -541,11 +542,11 @@ def _build_parameter_sweep_specs(
                 name,
                 expanded_config,
                 sweep_param_paths,
-                dependency_ids=None,  # No dependency sweep in this function
+                dependency_slots=None,  # No dependency sweep in this function
             ),
             tags=tags,
             description=description,
-            dependency_ids=dependency_ids,
+            dependencies=dependencies,
             script_args=script_args,
             cli_args=cli_args,
         )
@@ -561,14 +562,14 @@ def _build_dependency_sweep_specs(
     name: str | None,
     tags: list[str],
     description: str | None,
-    dependency_groups: list[list[str]],
+    dependency_slots: list[tuple[str, list[str]]],
     script_args: list[str],
     cli_args: list[str],
 ) -> list:
     """Build ExperimentSpec objects for dependency sweep.
 
-    Creates cross-product of dependency groups. Each experiment gets one
-    dependency from each group.
+    Creates cross-product of dependency slots. Each experiment gets one
+    dependency from each slot.
 
     Args:
         script: Path to the Python script
@@ -576,7 +577,7 @@ def _build_dependency_sweep_specs(
         name: Base experiment name
         tags: List of experiment tags
         description: Experiment description
-        dependency_groups: List of dependency groups (each from one -D flag)
+        dependency_slots: List of (slot_name, [exp_ids]) tuples (each from one -D flag)
         script_args: Arguments to pass through to the script
         cli_args: Complete CLI arguments used to run the experiment
 
@@ -585,8 +586,8 @@ def _build_dependency_sweep_specs(
     """
     from ...executor import ExperimentSpec
 
-    # Expand dependency groups into all combinations (cross-product)
-    dep_combinations = expand_dependency_groups(dependency_groups)
+    # Expand dependency slots into all combinations (cross-product)
+    dep_combinations = expand_dependency_slots(dependency_slots)
 
     # Build ExperimentSpec objects (one per combination)
     experiments = [
@@ -594,11 +595,11 @@ def _build_dependency_sweep_specs(
             script_path=script,
             config=config,
             name=_generate_sweep_experiment_name(
-                name, config, sweep_param_paths=None, dependency_ids=dep_combo
+                name, config, sweep_param_paths=None, dependency_slots=dep_combo
             ),
             tags=tags,
             description=description,
-            dependency_ids=dep_combo,  # Full combination (one from each group)
+            dependencies=dep_combo,  # Full combination (one from each slot)
             script_args=script_args,
             cli_args=cli_args,
         )
@@ -614,7 +615,7 @@ def _build_cartesian_sweep_specs(
     name: str | None,
     tags: list[str],
     description: str | None,
-    dependency_groups: list[list[str]],
+    dependency_slots: list[tuple[str, list[str]]],
     script_args: list[str],
     cli_args: list[str],
 ) -> list:
@@ -628,7 +629,7 @@ def _build_cartesian_sweep_specs(
         name: Base experiment name
         tags: List of experiment tags
         description: Experiment description
-        dependency_groups: List of dependency groups (each from one -D flag)
+        dependency_slots: List of (slot_name, [exp_ids]) tuples (each from one -D flag)
         script_args: Arguments to pass through to the script
         cli_args: Complete CLI arguments used to run the experiment
 
@@ -638,7 +639,7 @@ def _build_cartesian_sweep_specs(
     from ...executor import ExperimentSpec
 
     # Expand both dimensions
-    dep_combinations = expand_dependency_groups(dependency_groups)
+    dep_combinations = expand_dependency_slots(dependency_slots)
     expanded_configs, sweep_param_paths = expand_parameter_sweeps(config)
 
     # Build ExperimentSpec objects (full Cartesian product)
@@ -646,7 +647,7 @@ def _build_cartesian_sweep_specs(
     for dep_combo in dep_combinations:
         for expanded_config in expanded_configs:
             sweep_name = _generate_sweep_experiment_name(
-                name, expanded_config, sweep_param_paths, dependency_ids=dep_combo
+                name, expanded_config, sweep_param_paths, dependency_slots=dep_combo
             )
             experiments.append(
                 ExperimentSpec(
@@ -655,7 +656,7 @@ def _build_cartesian_sweep_specs(
                     name=sweep_name,
                     tags=tags,
                     description=description,
-                    dependency_ids=dep_combo,  # Full combination (one from each group)
+                    dependencies=dep_combo,  # Full combination (one from each slot)
                     script_args=script_args,
                     cli_args=cli_args,
                 )
@@ -667,7 +668,7 @@ def _build_cartesian_sweep_specs(
 def _build_sweep_experiment_specs(
     script: Path,
     config: dict[str, Any],
-    dependency_groups: list[list[str]],
+    dependency_slots: list[tuple[str, list[str]]],
     name: str | None,
     tags: list[str],
     description: str | None,
@@ -678,13 +679,13 @@ def _build_sweep_experiment_specs(
 
     Unified spec builder that handles all sweep types:
     - Parameter sweeps
-    - Dependency sweeps (cross-product of dependency groups)
+    - Dependency sweeps (cross-product of dependency slots)
     - Cartesian product (dependency combinations × parameter combinations)
 
     Args:
         script: Path to the Python script
         config: Configuration dictionary
-        dependency_groups: List of dependency groups (each group from one -D flag)
+        dependency_slots: List of (slot_name, [exp_ids]) tuples (each from one -D flag)
         name: Base experiment name
         tags: List of experiment tags (without "sweep" tag)
         description: Experiment description
@@ -694,7 +695,7 @@ def _build_sweep_experiment_specs(
     Returns:
         List of ExperimentSpec objects, or empty list if no sweep detected
     """
-    has_dep_sweep = _has_dependency_sweep(dependency_groups)
+    has_dep_sweep = _has_dependency_sweep(dependency_slots)
     has_param_sweep = has_sweep_parameters(config)
 
     # Add "sweep" tag to all sweep experiments
@@ -710,7 +711,7 @@ def _build_sweep_experiment_specs(
             name=name,
             tags=sweep_tags,
             description=description,
-            dependency_groups=dependency_groups,
+            dependency_slots=dependency_slots,
             script_args=script_args,
             cli_args=cli_args,
         )
@@ -722,7 +723,7 @@ def _build_sweep_experiment_specs(
             name=name,
             tags=sweep_tags,
             description=description,
-            dependency_groups=dependency_groups,
+            dependency_slots=dependency_slots,
             script_args=script_args,
             cli_args=cli_args,
         )
@@ -734,7 +735,7 @@ def _build_sweep_experiment_specs(
             name=name,
             tags=sweep_tags,
             description=description,
-            dependency_groups=dependency_groups,
+            dependency_slots=dependency_slots,
             script_args=script_args,
             cli_args=cli_args,
         )
@@ -749,7 +750,7 @@ def _stage_experiment(
     tags: list[str],
     description: str | None,
     config: dict[str, Any],
-    dependency_groups: list[list[str]] | None = None,
+    dependency_slots: list[tuple[str, list[str]]] | None = None,
     verbose: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
@@ -762,11 +763,11 @@ def _stage_experiment(
         script_args = []
     if cli_args is None:
         cli_args = []
-    if dependency_groups is None:
-        dependency_groups = []
+    if dependency_slots is None:
+        dependency_slots = []
 
     # Check if this is any type of sweep
-    has_dep_sweep = _has_dependency_sweep(dependency_groups)
+    has_dep_sweep = _has_dependency_sweep(dependency_slots)
     has_param_sweep = has_sweep_parameters(config)
 
     if has_dep_sweep or has_param_sweep:
@@ -774,7 +775,7 @@ def _stage_experiment(
         sweep_specs = _build_sweep_experiment_specs(
             script=script,
             config=config,
-            dependency_groups=dependency_groups,
+            dependency_slots=dependency_slots,
             name=name,
             tags=tags,
             description=description,
@@ -792,7 +793,7 @@ def _stage_experiment(
                 config=spec.config,
                 tags=spec.tags,
                 description=spec.description,
-                dependency_ids=spec.dependency_ids,
+                dependencies=spec.dependencies,
                 stage_only=True,
                 script_args=spec.script_args,
                 cli_args=spec.cli_args,
@@ -813,15 +814,15 @@ def _stage_experiment(
 
     else:
         # Single experiment (no sweeps)
-        # Expand dependency groups to get flat list (one from each group)
-        dependency_ids = expand_dependency_groups(dependency_groups)[0]
+        # Expand dependency slots to get dict (one from each slot)
+        dependencies = expand_dependency_slots(dependency_slots)[0]
         experiment_id = manager.create_experiment(
             script_path=script,
             name=name,
             config=config,
             tags=tags,
             description=description,
-            dependency_ids=dependency_ids,
+            dependencies=dependencies,
             stage_only=True,
             script_args=script_args,
             cli_args=cli_args,
@@ -1054,7 +1055,7 @@ def _execute_sweep(
     tags: list[str],
     description: str | None,
     config: dict[str, Any],
-    dependency_groups: list[list[str]] | None = None,
+    dependency_slots: list[tuple[str, list[str]]] | None = None,
     verbose: bool = False,
     max_workers: int | None = None,
     script_args: list[str] | None = None,
@@ -1072,7 +1073,7 @@ def _execute_sweep(
         tags: List of experiment tags
         description: Experiment description
         config: Configuration (may have sweep parameters)
-        dependency_groups: List of dependency groups (each group from one -D flag)
+        dependency_slots: List of (slot_name, [exp_ids]) tuples (each from one -D flag)
         verbose: Show verbose output
         max_workers: Maximum parallel workers. None=sequential, N=parallel
         script_args: Arguments to pass through to the script
@@ -1084,14 +1085,14 @@ def _execute_sweep(
         script_args = []
     if cli_args is None:
         cli_args = []
-    if dependency_groups is None:
-        dependency_groups = []
+    if dependency_slots is None:
+        dependency_slots = []
 
     # Use shared spec builder for all sweep types
     sweep_specs = _build_sweep_experiment_specs(
         script=script,
         config=config,
-        dependency_groups=dependency_groups,
+        dependency_slots=dependency_slots,
         name=name,
         tags=tags,
         description=description,
@@ -1119,68 +1120,109 @@ def _normalize_tags(tag_value: Any) -> list[str]:
         return []
 
 
-def _parse_dependencies(depends_on: tuple[str, ...]) -> list[list[str]]:
-    """Parse dependency IDs from CLI arguments, preserving groups.
+def _parse_dependencies(depends_on: tuple[str, ...]) -> list[tuple[str, list[str]]]:
+    """Parse dependency IDs with optional slot names.
 
-    Each -D flag becomes a group. Comma-separated IDs within a flag
-    are sweep values for that group.
+    Each -D flag becomes a slot. Comma-separated IDs within a flag
+    are sweep values for that slot.
+
+    Syntax:
+        -D exp1           -> slot "dep1" with ["exp1"]
+        -D train=exp1     -> slot "train" with ["exp1"]
+        -D exp1,exp2      -> slot "dep1" with ["exp1", "exp2"] (sweep)
+        -D train=exp1,exp2 -> slot "train" with ["exp1", "exp2"] (sweep)
 
     Args:
         depends_on: Tuple of dependency strings from CLI.
 
     Returns:
-        List of dependency groups. Each group contains IDs from one -D flag.
+        List of (slot_name, [experiment_ids]) tuples.
+
+    Raises:
+        click.ClickException: If duplicate slot names are detected.
 
     Example:
-        _parse_dependencies(("abc1,def2", "ghi3"))
-        # Returns: [["abc1", "def2"], ["ghi3"]]
+        _parse_dependencies(("abc1,def2", "model=ghi3"))
+        # Returns: [("dep1", ["abc1", "def2"]), ("model", ["ghi3"])]
 
-        This means: sweep over abc1/def2 for first dep, ghi3 for second dep.
-        Creates 2 experiments: [abc1, ghi3] and [def2, ghi3]
+        This means: sweep over abc1/def2 for slot "dep1", ghi3 for slot "model".
+        Creates 2 experiments with dependencies: {"dep1": "abc1", "model": "ghi3"}
+        and {"dep1": "def2", "model": "ghi3"}
     """
-    dependency_groups = []
-    for dep_arg in depends_on:
-        # Split by comma to handle comma-separated IDs within this group
-        ids = [dep_id.strip() for dep_id in dep_arg.split(",")]
+    dependency_slots = []
+    seen_slots: dict[str, int] = {}  # slot_name -> index of first occurrence
+
+    for i, dep_arg in enumerate(depends_on):
+        default_slot = f"dep{i + 1}"
+
+        if "=" in dep_arg:
+            slot_name, ids_str = dep_arg.split("=", 1)
+            slot_name = slot_name.strip()
+        else:
+            slot_name = default_slot
+            ids_str = dep_arg
+
+        ids = [dep_id.strip() for dep_id in ids_str.split(",")]
         ids = [dep_id for dep_id in ids if dep_id]  # Filter empty strings
+
         if ids:
-            dependency_groups.append(ids)
-    return dependency_groups
+            # Check for duplicate slot names
+            if slot_name in seen_slots:
+                first_idx = seen_slots[slot_name]
+                raise click.ClickException(
+                    f"Duplicate dependency slot name '{slot_name}' "
+                    f"(used in -D flag {first_idx + 1} and {i + 1}).\n\n"
+                    f"Each -D flag must use a unique slot name. Options:\n"
+                    f"  - Use different slot names: -D {slot_name}1=... -D {slot_name}2=...\n"
+                    f"  - Combine into a sweep: -D {slot_name}=id1,id2"
+                )
+            seen_slots[slot_name] = i
+            dependency_slots.append((slot_name, ids))
+
+    return dependency_slots
 
 
-def expand_dependency_groups(dependency_groups: list[list[str]]) -> list[list[str]]:
-    """Expand dependency groups into combinations via cross-product.
+def expand_dependency_slots(
+    dependency_slots: list[tuple[str, list[str]]],
+) -> list[dict[str, str]]:
+    """Expand dependency slots into combinations via cross-product.
 
-    Each -D flag represents a dependency "slot". This function generates
+    Each -D flag represents a named dependency slot. This function generates
     all combinations, taking one dependency from each slot.
 
     Args:
-        dependency_groups: List of groups, each group is a list of dep IDs.
-                          E.g., [["exp1", "exp2"], ["exp3", "exp4"]]
+        dependency_slots: List of (slot_name, [exp_ids]) tuples.
+                          E.g., [("data", ["exp1", "exp2"]), ("model", ["exp3"])]
 
     Returns:
-        List of dependency combinations, each is a list of dep IDs.
-        E.g., [["exp1", "exp3"], ["exp1", "exp4"], ["exp2", "exp3"], ["exp2", "exp4"]]
+        List of {slot_name: exp_id} dicts, one per experiment.
+        E.g., [{"data": "exp1", "model": "exp3"}, {"data": "exp2", "model": "exp3"}]
 
     Example:
-        expand_dependency_groups([["a", "b"], ["c"]])
-        # Returns: [["a", "c"], ["b", "c"]]
+        expand_dependency_slots([("data", ["a", "b"]), ("model", ["c"])])
+        # Returns: [{"data": "a", "model": "c"}, {"data": "b", "model": "c"}]
     """
-    if not dependency_groups:
-        return [[]]  # Single experiment with no dependencies
+    if not dependency_slots:
+        return [{}]  # Single experiment with no dependencies
 
     import itertools
 
-    return [list(combo) for combo in itertools.product(*dependency_groups)]
+    slot_names = [slot for slot, _ in dependency_slots]
+    id_lists = [ids for _, ids in dependency_slots]
+
+    return [
+        dict(zip(slot_names, combo, strict=True))
+        for combo in itertools.product(*id_lists)
+    ]
 
 
-def _has_dependency_sweep(dependency_groups: list[list[str]]) -> bool:
-    """Check if dependency groups contain a sweep (any group has >1 item).
+def _has_dependency_sweep(dependency_slots: list[tuple[str, list[str]]]) -> bool:
+    """Check if dependency slots contain a sweep (any slot has >1 ID).
 
     Args:
-        dependency_groups: List of dependency groups from _parse_dependencies().
+        dependency_slots: List of (slot_name, [exp_ids]) tuples from _parse_dependencies().
 
     Returns:
-        True if any group has more than one dependency ID (indicating a sweep).
+        True if any slot has more than one dependency ID (indicating a sweep).
     """
-    return any(len(group) > 1 for group in dependency_groups)
+    return any(len(ids) > 1 for _, ids in dependency_slots)

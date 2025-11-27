@@ -8,8 +8,8 @@ from typing import Any
 
 from .artifact_formats import get_handler_for_load, get_handler_for_save
 
-# Default maximum file size for artifacts (100MB)
-DEFAULT_MAX_FILE_SIZE = 100 * 1024 * 1024
+# Default maximum file size for artifacts (1000MB)
+DEFAULT_MAX_FILE_SIZE = 1000 * 1024 * 1024
 
 
 def _validate_filename(filename: str) -> str:

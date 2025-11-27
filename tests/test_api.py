@@ -1307,7 +1307,7 @@ class TestListArtifactsTransitive:
         )
         manager.storage.save_metadata(exp2_id, metadata2)
         # Save dependency on exp1
-        manager.storage.dependency_storage.save_dependencies(exp2_id, [exp1_id])
+        manager.storage.dependency_storage.save_dependencies(exp2_id, {"dep1": exp1_id})
 
         # exp3: depends on exp2 (current, running)
         exp3_id = "dep3curr"
@@ -1320,7 +1320,7 @@ class TestListArtifactsTransitive:
         )
         manager.storage.save_metadata(exp3_id, metadata3)
         # Save dependency on exp2
-        manager.storage.dependency_storage.save_dependencies(exp3_id, [exp2_id])
+        manager.storage.dependency_storage.save_dependencies(exp3_id, {"dep1": exp2_id})
 
         yanex._set_current_experiment_id(exp3_id)
 

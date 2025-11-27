@@ -393,7 +393,7 @@ class ExperimentManager:
         stage_only: bool = False,
         script_args: list[str] | None = None,
         cli_args: dict[str, Any] | None = None,
-        dependency_ids: list[str] | None = None,
+        dependencies: dict[str, str] | None = None,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -406,7 +406,7 @@ class ExperimentManager:
             stage_only: If True, create experiment with "staged" status for later execution
             script_args: Arguments to pass through to the script via sys.argv
             cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
-            dependency_ids: List of experiment IDs this experiment depends on
+            dependencies: Dict mapping slot names to experiment IDs this depends on
 
         Returns:
             Experiment ID
@@ -423,8 +423,8 @@ class ExperimentManager:
             config = {}
         if tags is None:
             tags = []
-        if dependency_ids is None:
-            dependency_ids = []
+        if dependencies is None:
+            dependencies = {}
 
         # Validate inputs
         if name is not None:
@@ -437,20 +437,20 @@ class ExperimentManager:
         experiment_id = self.generate_experiment_id()
 
         # Resolve and validate dependencies if provided
-        resolved_dependency_ids = []
+        resolved_dependencies: dict[str, str] = {}
         dependency_metadata = {}
-        if dependency_ids:
+        if dependencies:
             from .dependencies import DependencyResolver
 
             resolver = DependencyResolver(self)
 
             # Resolve short IDs and validate
-            resolved_dependency_ids = resolver.resolve_and_validate_dependencies(
-                dependency_ids, for_staging=stage_only, include_archived=True
+            resolved_dependencies = resolver.resolve_and_validate_dependencies(
+                dependencies, for_staging=stage_only, include_archived=True
             )
 
             # Check for circular dependencies
-            for dep_id in resolved_dependency_ids:
+            for dep_id in resolved_dependencies.values():
                 if resolver.detect_circular_dependency(
                     experiment_id, dep_id, include_archived=True
                 ):
@@ -462,7 +462,7 @@ class ExperimentManager:
                     )
 
             # Build metadata about dependencies for debugging
-            for dep_id in resolved_dependency_ids:
+            for dep_id in resolved_dependencies.values():
                 try:
                     dep_metadata = self.storage.load_metadata(
                         dep_id, include_archived=True
@@ -497,9 +497,9 @@ class ExperimentManager:
         self.storage.save_config(experiment_id, config)
 
         # Save dependencies if any
-        if resolved_dependency_ids:
+        if resolved_dependencies:
             self.storage.dependency_storage.save_dependencies(
-                experiment_id, resolved_dependency_ids, dependency_metadata
+                experiment_id, resolved_dependencies, dependency_metadata
             )
 
         return experiment_id

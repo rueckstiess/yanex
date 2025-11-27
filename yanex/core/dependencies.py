@@ -32,21 +32,21 @@ class DependencyStorage:
     def save_dependencies(
         self,
         experiment_id: str,
-        dependency_ids: list[str],
+        dependencies: dict[str, str],
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Save dependencies.json file.
 
         Args:
             experiment_id: Experiment ID to save dependencies for.
-            dependency_ids: List of full experiment IDs this experiment depends on.
+            dependencies: Dict mapping slot names to full experiment IDs.
             metadata: Optional metadata about each dependency.
         """
         exp_dir = self.directory_manager.get_experiment_directory(experiment_id)
         dependencies_file = exp_dir / "dependencies.json"
 
         data = {
-            "dependency_ids": dependency_ids,
+            "dependencies": dependencies,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "metadata": metadata or {},
         }
@@ -66,8 +66,8 @@ class DependencyStorage:
             include_archived: Whether to search archived experiments.
 
         Returns:
-            Dict with keys: dependency_ids, created_at, metadata.
-            Returns empty dict with empty dependency_ids list if file doesn't exist.
+            Dict with keys: dependencies (dict), created_at, metadata.
+            Returns empty dict with empty dependencies dict if file doesn't exist.
         """
         try:
             exp_dir = self.directory_manager.get_experiment_directory(
@@ -76,16 +76,16 @@ class DependencyStorage:
             dependencies_file = exp_dir / "dependencies.json"
 
             if not dependencies_file.exists():
-                return {"dependency_ids": [], "created_at": None, "metadata": {}}
+                return {"dependencies": {}, "created_at": None, "metadata": {}}
 
             with open(dependencies_file) as f:
                 data = json.load(f)
                 return data
         except FileNotFoundError:
-            return {"dependency_ids": [], "created_at": None, "metadata": {}}
+            return {"dependencies": {}, "created_at": None, "metadata": {}}
         except json.JSONDecodeError:
             # Malformed file - return empty
-            return {"dependency_ids": [], "created_at": None, "metadata": {}}
+            return {"dependencies": {}, "created_at": None, "metadata": {}}
 
     def dependency_file_exists(
         self,
@@ -191,28 +191,28 @@ class DependencyResolver:
 
     def resolve_and_validate_dependencies(
         self,
-        dependency_ids: list[str],
+        dependencies: dict[str, str],
         for_staging: bool = False,
         include_archived: bool = True,
-    ) -> list[str]:
+    ) -> dict[str, str]:
         """Resolve short IDs and validate all dependencies.
 
         Args:
-            dependency_ids: List of experiment IDs (may be short IDs).
+            dependencies: Dict mapping slot names to experiment IDs (may be short IDs).
             for_staging: If True, allow dependencies with status="staged".
             include_archived: Whether to allow archived experiments as dependencies.
 
         Returns:
-            List of full experiment IDs.
+            Dict mapping slot names to full experiment IDs.
 
         Raises:
             ExperimentNotFoundError: Dependency doesn't exist.
             AmbiguousIDError: Short ID matches multiple experiments.
             InvalidDependencyError: Dependency has invalid status.
         """
-        resolved_ids = []
+        resolved = {}
 
-        for dep_id in dependency_ids:
+        for slot, dep_id in dependencies.items():
             # Resolve short ID to full ID
             full_id = self.resolve_short_id(dep_id, include_archived=include_archived)
 
@@ -221,9 +221,9 @@ class DependencyResolver:
                 full_id, for_staging=for_staging, include_archived=include_archived
             )
 
-            resolved_ids.append(full_id)
+            resolved[slot] = full_id
 
-        return resolved_ids
+        return resolved
 
     def get_transitive_dependencies(
         self,
@@ -266,9 +266,11 @@ class DependencyResolver:
                 )
             else:
                 # Fallback for testing or if storage doesn't have dependency_storage yet
-                dep_data = {"dependency_ids": []}
+                dep_data = {"dependencies": {}}
 
-            dep_ids = dep_data.get("dependency_ids", [])
+            # Extract dependency IDs from dict (values are the exp IDs)
+            deps_dict = dep_data.get("dependencies", {})
+            dep_ids = list(deps_dict.values())
             graph[exp_id] = dep_ids
 
             # Add dependencies to visit queue

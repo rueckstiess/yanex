@@ -31,6 +31,7 @@ from .api import (
     get_artifacts_dir,
     get_cli_args,
     get_dependencies,
+    get_dependency,
     get_experiment_dir,
     get_experiment_id,
     get_metadata,
@@ -87,6 +88,7 @@ __all__ = [
     "get_metadata",
     # Dependency tracking
     "get_dependencies",
+    "get_dependency",
     "assert_dependency",
     "Experiment",
     # Experiment creation (advanced)

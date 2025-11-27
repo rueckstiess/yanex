@@ -318,95 +318,145 @@ def get_metadata() -> dict[str, Any]:
     return manager.get_experiment_metadata(experiment_id)
 
 
-def get_dependencies(
-    transitive: bool = False, include_self: bool = False
-) -> list[Experiment]:
-    """Get experiment dependencies.
-
-    Returns list of Experiment objects for experiments that the current
-    experiment depends on. In standalone mode, returns empty list.
+def get_dependency(slot: str) -> Experiment | None:
+    """Get dependency experiment for a specific slot.
 
     Args:
-        transitive: If True, include transitive dependencies (dependencies of dependencies)
-        include_self: If True, include current experiment in result (only with transitive=True)
+        slot: The slot name (e.g., "data", "model", "dep1")
 
     Returns:
-        List of Experiment objects in topological order (dependencies before dependents)
+        Experiment object for the slot, or None if slot not found
 
     Examples:
-        # Get direct dependencies only
-        deps = yanex.get_dependencies()
-        for dep in deps:
-            print(f"{dep.id}: {dep.name} ({dep.status})")
+        # Get the dependency in the "data" slot
+        data_exp = yanex.get_dependency("data")
+        if data_exp:
+            dataset = data_exp.load_artifact("dataset.pkl")
 
-        # Get all dependencies (transitive)
-        all_deps = yanex.get_dependencies(transitive=True)
-
-        # Load artifact from specific dependency
-        deps = yanex.get_dependencies()
-        model = deps[0].load_artifact("model.pt")
-
-        # List artifacts in all dependencies
-        for dep in yanex.get_dependencies(transitive=True):
-            print(f"{dep.id} artifacts: {dep.list_artifacts()}")
+        # Access default slots
+        dep1 = yanex.get_dependency("dep1")
 
     Note:
-        In standalone mode (no experiment context): Returns empty list
+        In standalone mode (no experiment context): Returns None
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
-        return []  # Standalone mode - no dependencies
+        return None  # Standalone mode - no dependencies
+
+    manager = _get_experiment_manager()
+
+    # Load dependencies dict
+    dep_data = manager.storage.dependency_storage.load_dependencies(
+        experiment_id, include_archived=True
+    )
+    dependencies = dep_data.get("dependencies", {})
+
+    # Get the experiment ID for the slot
+    dep_id = dependencies.get(slot)
+    if dep_id is None:
+        return None
+
+    try:
+        return Experiment(dep_id, manager)
+    except Exception:
+        return None
+
+
+def get_dependencies(
+    transitive: bool = False, include_self: bool = False
+) -> dict[str, Experiment] | list[Experiment]:
+    """Get experiment dependencies.
+
+    Args:
+        transitive: If True, return flat list of all transitive dependencies
+        include_self: If True, include current experiment in result (only with transitive=True)
+
+    Returns:
+        If transitive=False: dict[str, Experiment] - slot name to Experiment
+        If transitive=True: list[Experiment] - flat list of all dependencies
+
+    Examples:
+        # Get direct dependencies as dict
+        deps = yanex.get_dependencies()
+        data_exp = deps.get("data")
+        if data_exp:
+            print(f"Data from: {data_exp.id}")
+
+        # Access by slot name
+        deps = yanex.get_dependencies()
+        for slot, dep in deps.items():
+            print(f"{slot}: {dep.id} ({dep.status})")
+
+        # Get all transitive dependencies as flat list
+        all_deps = yanex.get_dependencies(transitive=True)
+        for dep in all_deps:
+            print(f"{dep.id} artifacts: {dep.list_artifacts()}")
+
+    Note:
+        In standalone mode (no experiment context): Returns {} or []
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return [] if transitive else {}  # Standalone mode - no dependencies
 
     manager = _get_experiment_manager()
 
     # Get dependency IDs
     if transitive:
-        # Get all dependencies using DependencyResolver
+        # Get all dependencies using DependencyResolver (flat list)
         from .core.dependencies import DependencyResolver
 
         resolver = DependencyResolver(manager)
         dependency_ids = resolver.get_transitive_dependencies(
             experiment_id, include_self=include_self, include_archived=True
         )
+
+        # Create Experiment objects for each dependency
+        dependencies = []
+        for dep_id in dependency_ids:
+            try:
+                experiment = Experiment(dep_id, manager)
+                dependencies.append(experiment)
+            except Exception:
+                continue
+
+        return dependencies
     else:
-        # Get only direct dependencies
+        # Get only direct dependencies as dict
         dep_data = manager.storage.dependency_storage.load_dependencies(
             experiment_id, include_archived=True
         )
-        dependency_ids = dep_data.get("dependency_ids", [])
+        deps_dict = dep_data.get("dependencies", {})
 
-        if include_self:
-            dependency_ids = dependency_ids + [experiment_id]
+        # Create Experiment objects for each dependency
+        dependencies = {}
+        for slot, dep_id in deps_dict.items():
+            try:
+                experiment = Experiment(dep_id, manager)
+                dependencies[slot] = experiment
+            except Exception:
+                continue
 
-    # Create Experiment objects for each dependency
-    dependencies = []
-    for dep_id in dependency_ids:
-        try:
-            # Use Experiment class for consistent API
-            experiment = Experiment(dep_id, manager)
-            dependencies.append(experiment)
-        except Exception:
-            # Skip dependencies that can't be loaded (e.g., deleted)
-            continue
-
-    return dependencies
+        return dependencies
 
 
-def assert_dependency(script_name: str) -> None:
-    """Assert that at least one dependency is from a specific script.
+def assert_dependency(script_name: str, slot: str | None = None) -> None:
+    """Assert that a required dependency exists.
 
     This is a convenience method for validating dependencies at the start of a script.
     If the dependency check fails, prints an error and fails the experiment.
 
     Args:
         script_name: Script filename to check for (e.g., "prepare_data.py")
+        slot: Optional slot name. If provided, only that slot is checked.
 
     Examples:
-        # At the start of train_model.py
+        # Check that any dependency is from prepare_data.py
         >>> import yanex
         >>> yanex.assert_dependency("prepare_data.py")
-        # Continues only if a dependency from prepare_data.py exists
-        # Otherwise, prints error and fails the experiment
+
+        # Check that the "data" slot dependency is from prepare_data.py
+        >>> yanex.assert_dependency("prepare_data.py", slot="data")
 
     Note:
         In standalone mode (no experiment context): No-op, allows script to continue
@@ -416,7 +466,7 @@ def assert_dependency(script_name: str) -> None:
         # In standalone mode - no-op, allow script to continue
         return
 
-    # Get dependencies
+    # Get dependencies as dict
     deps = get_dependencies()
 
     if not deps:
@@ -426,17 +476,37 @@ def assert_dependency(script_name: str) -> None:
         fail(f"Missing required dependency: {script_name}")
         return
 
+    if slot is not None:
+        # Check specific slot
+        dep = deps.get(slot)
+        if dep is None:
+            print(f"Error: No dependency in slot '{slot}'")
+            print(f"Available slots: {', '.join(deps.keys())}")
+            fail(f"Missing required dependency slot: {slot}")
+            return
+
+        if dep.script_path and dep.script_path.name == script_name:
+            return  # Success - slot matches script
+
+        print(f"Error: Dependency in slot '{slot}' is not from '{script_name}'")
+        print(
+            f"Slot '{slot}' is from: {dep.script_path.name if dep.script_path else '[unknown]'}"
+        )
+        fail(f"Slot '{slot}' not from required script: {script_name}")
+        return
+
     # Check if any dependency matches the script name
-    for dep in deps:
+    for _slot_name, dep in deps.items():
         if dep.script_path and dep.script_path.name == script_name:
             return  # Success - found a match
 
     # No match found - print error and fail
     dep_scripts = [
-        dep.script_path.name if dep.script_path else "[unknown]" for dep in deps
+        f"{slot_name}={dep.script_path.name if dep.script_path else '[unknown]'}"
+        for slot_name, dep in deps.items()
     ]
     print(f"Error: No dependency from '{script_name}' found")
-    print(f"Current dependencies are from: {', '.join(dep_scripts)}")
+    print(f"Current dependencies: {', '.join(dep_scripts)}")
     fail(f"Missing required dependency: {script_name}")
 
 

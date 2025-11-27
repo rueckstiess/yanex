@@ -25,15 +25,15 @@ class TestDependencyStorage:
         exp_id = manager.generate_experiment_id()
         manager.storage.create_experiment_directory(exp_id)
 
-        # Save dependencies
-        dep_ids = ["abc12345", "def67890"]
+        # Save dependencies (now as dict with slot names)
+        deps = {"data": "abc12345", "model": "def67890"}
         metadata = {"dep1": "info"}
-        manager.storage.dependency_storage.save_dependencies(exp_id, dep_ids, metadata)
+        manager.storage.dependency_storage.save_dependencies(exp_id, deps, metadata)
 
         # Load dependencies
         loaded = manager.storage.dependency_storage.load_dependencies(exp_id)
 
-        assert loaded["dependency_ids"] == dep_ids
+        assert loaded["dependencies"] == deps
         assert loaded["metadata"] == metadata
         assert "created_at" in loaded
 
@@ -48,7 +48,7 @@ class TestDependencyStorage:
         # Load should return empty
         loaded = manager.storage.dependency_storage.load_dependencies(exp_id)
 
-        assert loaded["dependency_ids"] == []
+        assert loaded["dependencies"] == {}
         assert loaded["created_at"] is None
         assert loaded["metadata"] == {}
 
@@ -64,7 +64,9 @@ class TestDependencyStorage:
         assert not manager.storage.dependency_storage.dependency_file_exists(exp_id)
 
         # Save dependencies
-        manager.storage.dependency_storage.save_dependencies(exp_id, ["abc12345"])
+        manager.storage.dependency_storage.save_dependencies(
+            exp_id, {"dep1": "abc12345"}
+        )
 
         # Should exist now
         assert manager.storage.dependency_storage.dependency_file_exists(exp_id)
@@ -170,10 +172,10 @@ class TestDependencyResolver:
         # Create chain: A -> B -> C
         exp_c = manager.create_experiment(script_path, config={}, stage_only=True)
         exp_b = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_c], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_c}, stage_only=True
         )
         exp_a = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_b], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_b}, stage_only=True
         )
 
         # Get transitive dependencies of A
@@ -196,15 +198,15 @@ class TestDependencyResolver:
         # Create diamond: D -> B,C -> A
         exp_a = manager.create_experiment(script_path, config={}, stage_only=True)
         exp_b = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_a], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_a}, stage_only=True
         )
         exp_c = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_a], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_a}, stage_only=True
         )
         exp_d = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[exp_b, exp_c],
+            dependencies={"data": exp_b, "model": exp_c},
             stage_only=True,
         )
 
@@ -230,7 +232,7 @@ class TestDependencyResolver:
         # Create chain: A -> B
         exp_b = manager.create_experiment(script_path, config={}, stage_only=True)
         exp_a = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_b], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_b}, stage_only=True
         )
 
         # Get transitive dependencies with include_self
@@ -267,7 +269,7 @@ class TestDependencyResolver:
         # Create chain: A -> B
         exp_b = manager.create_experiment(script_path, config={}, stage_only=True)
         exp_a = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_b], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_b}, stage_only=True
         )
 
         # Try to make B depend on A (creates cycle)
@@ -315,7 +317,7 @@ class TestDependencyResolver:
 
         # Create experiment depending on it
         exp_id = manager.create_experiment(
-            script_path, config={}, dependency_ids=[dep_id], stage_only=True
+            script_path, config={}, dependencies={"dep1": dep_id}, stage_only=True
         )
 
         # Find artifact
@@ -356,7 +358,7 @@ class TestDependencyResolver:
         exp_id = manager.create_experiment(
             script_path,
             config={},
-            dependency_ids=[dep1_id, dep2_id],
+            dependencies={"data": dep1_id, "model": dep2_id},
             stage_only=True,
         )
 
@@ -402,12 +404,12 @@ class TestExperimentManagerDependencies:
 
         # Create experiment with dependency
         exp_id = manager.create_experiment(
-            script_path, config={}, dependency_ids=[dep_id], stage_only=True
+            script_path, config={}, dependencies={"dep1": dep_id}, stage_only=True
         )
 
         # Check dependencies were saved
         deps = manager.storage.dependency_storage.load_dependencies(exp_id)
-        assert deps["dependency_ids"] == [dep_id]
+        assert deps["dependencies"] == {"dep1": dep_id}
 
     def test_create_experiment_with_short_dependency_ids(self, temp_dir):
         """Test creating experiment with short dependency IDs."""
@@ -421,12 +423,12 @@ class TestExperimentManagerDependencies:
         # Create experiment with short dependency ID
         short_id = dep_id[:4]
         exp_id = manager.create_experiment(
-            script_path, config={}, dependency_ids=[short_id], stage_only=True
+            script_path, config={}, dependencies={"dep1": short_id}, stage_only=True
         )
 
         # Check full ID was resolved and saved
         deps = manager.storage.dependency_storage.load_dependencies(exp_id)
-        assert deps["dependency_ids"] == [dep_id]
+        assert deps["dependencies"] == {"dep1": dep_id}
 
     def test_create_experiment_circular_dependency_error(self, temp_dir):
         """Test creating experiment with circular dependency fails."""
@@ -437,7 +439,7 @@ class TestExperimentManagerDependencies:
         # Create experiment chain: A -> B
         exp_b = manager.create_experiment(script_path, config={}, stage_only=True)
         exp_a = manager.create_experiment(
-            script_path, config={}, dependency_ids=[exp_b], stage_only=True
+            script_path, config={}, dependencies={"dep1": exp_b}, stage_only=True
         )
 
         # Try to make B depend on A (creates cycle: A -> B -> A)
@@ -460,7 +462,9 @@ class TestExperimentManagerDependencies:
 
         # Try to use as dependency (should fail - not completed)
         with pytest.raises(InvalidDependencyError):
-            manager.create_experiment(script_path, config={}, dependency_ids=[dep_id])
+            manager.create_experiment(
+                script_path, config={}, dependencies={"dep1": dep_id}
+            )
 
     def test_create_experiment_nonexistent_dependency(self, temp_dir):
         """Test creating experiment with non-existent dependency fails."""
@@ -471,5 +475,5 @@ class TestExperimentManagerDependencies:
         # Try to create with non-existent dependency
         with pytest.raises(ExperimentNotFoundError):
             manager.create_experiment(
-                script_path, config={}, dependency_ids=["notfound"]
+                script_path, config={}, dependencies={"dep1": "notfound"}
             )
