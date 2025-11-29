@@ -29,7 +29,7 @@ model = data_exp.load_artifact("model.pkl")
 
 # Get all direct dependencies (returns dict[slot, Experiment])
 deps = yanex.get_dependencies()
-model = yanex.load_artifact("model.pkl", from_experiment=deps["model"].id)
+model = deps["model"].load_artifact("model.pkl")
 ```
 
 ---
@@ -155,6 +155,14 @@ yanex run evaluate.py -D data=data1,data2 -D model=model1,model2
 
 ## Accessing Dependencies in Scripts
 
+### API Summary
+
+| Function | Parameters | Returns |
+|----------|------------|---------|
+| `yanex.get_dependency(slot)` | `slot: str` | `Experiment \| None` |
+| `yanex.get_dependencies()` | `transitive: bool = False` | `dict[str, Experiment]` (direct) or `list[Experiment]` (transitive) |
+| `yanex.assert_dependency(script, slot=None)` | `script: str`, `slot: str \| None` | `None` (raises on failure) |
+
 ### Get Dependencies by Slot Name
 
 Use `yanex.get_dependency(slot)` to access a specific dependency by its slot name:
@@ -196,7 +204,7 @@ else:
 
 # Access specific dependency from dict
 if "data" in deps:
-    data = yanex.load_artifact("processed_data.pkl", from_experiment=deps["data"].id)
+    data = deps["data"].load_artifact("processed_data.pkl")
 ```
 
 ### Assert Required Dependencies
@@ -262,18 +270,22 @@ model = yanex.load_artifact("model.pkl")
 
 ### Explicit Dependency
 
-Load from specific dependency:
+Load from a specific dependency using the `Experiment.load_artifact()` method:
 
 ```python
 import yanex
 
+# Get dependencies as dict (slot name -> Experiment)
 deps = yanex.get_dependencies()
 
-# Load from first dependency
-model = yanex.load_artifact("model.pkl", from_experiment=deps[0].id)
+# Load from a specific slot
+if "model" in deps:
+    model = deps["model"].load_artifact("model.pkl")
 
-# Load from specific dependency by experiment ID
-preprocessed_data = yanex.load_artifact("data.pkl", from_experiment="abc12345")
+# Or get a single dependency by slot name
+data_exp = yanex.get_dependency("data")
+if data_exp:
+    preprocessed_data = data_exp.load_artifact("data.pkl")
 ```
 
 ### Access All Artifacts
@@ -325,9 +337,13 @@ import yanex
 
 yanex.assert_dependency("prepare_data.py")
 
-# Load preprocessed data from dependency
-deps = yanex.get_dependencies()
-data = yanex.load_artifact("processed_data.pkl", from_experiment=deps[0].id)
+# Load preprocessed data from dependency (auto-searches dependencies)
+data = yanex.load_artifact("processed_data.pkl")
+
+# Or explicitly load from a specific dependency slot
+data_exp = yanex.get_dependency("dep1")  # or "data" if using named slots
+if data_exp:
+    data = data_exp.load_artifact("processed_data.pkl")
 
 # Train model
 model = train_model(data)
@@ -358,15 +374,15 @@ yanex run evaluate.py -D model_1,model_2,model_3,model_4,model_5,model_6,model_7
 # ensemble.py
 import yanex
 
-# Get all model dependencies
+# Get all model dependencies (dict: slot name -> Experiment)
 deps = yanex.get_dependencies()
 
 # Load all models
 models = []
-for dep in deps:
-    model = yanex.load_artifact("model.pkl", from_experiment=dep.id)
+for slot, dep in deps.items():
+    model = dep.load_artifact("model.pkl")
     models.append(model)
-    print(f"Loaded model from {dep.id}: accuracy={dep.get_metric('accuracy')}")
+    print(f"Loaded model from {slot} ({dep.id}): accuracy={dep.get_metric('accuracy')}")
 
 # Create ensemble
 ensemble = create_ensemble(models)
@@ -382,21 +398,21 @@ yanex.log_metrics({"ensemble_accuracy": ensemble_accuracy})
 # compare_configs.py
 import yanex
 
-# Get dependencies to compare
+# Get dependencies to compare (dict: slot name -> Experiment)
 deps = yanex.get_dependencies()
 
 # Compare parameters and results
-for dep in deps:
+for slot, dep in deps.items():
     params = dep.get_params()
     metrics = dep.get_metrics()
 
-    print(f"Experiment {dep.id}:")
+    print(f"Experiment {dep.id} (slot: {slot}):")
     print(f"  Config: {params}")
     print(f"  Results: {metrics}")
     print()
 
 # Find best configuration
-best = max(deps, key=lambda d: d.get_metric('accuracy'))
+best = max(deps.values(), key=lambda d: d.get_metric('accuracy'))
 print(f"Best experiment: {best.id} (accuracy={best.get_metric('accuracy')})")
 ```
 
