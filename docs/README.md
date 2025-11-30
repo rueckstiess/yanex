@@ -7,6 +7,7 @@ Complete documentation for Yanex - Yet Another Experiment Tracker
 - [**Installation & Quick Start**](../README.md#quick-start) - Get up and running in minutes
 - [**Configuration**](configuration.md) - Parameter management and config files
 - [**Experiment Structure**](experiment-structure.md) - Directory layout and file organization
+- [**Dependencies**](dependencies.md) - Multi-stage pipelines and experiment dependencies
 - [**Best Practices**](best-practices.md) - Recommended patterns and workflows
 
 ## CLI Commands
@@ -44,7 +45,7 @@ Yanex provides two APIs for programmatic access:
 
 Practical demonstrations for all Yanex features:
 
-- [**CLI Examples**](../examples/cli/) - Main usage patterns (9 examples)
+- [**CLI Examples**](../examples/cli/) - Main usage patterns (10 examples)
 - [**Run API Examples**](../examples/run-api/) - Advanced programmatic patterns (3 examples)
 - [**Results API Examples**](../examples/results-api/) - Analysis with Jupyter notebooks (2 notebooks)
 

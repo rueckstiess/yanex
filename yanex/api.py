@@ -8,6 +8,7 @@ and thread-local storage for safe concurrent usage.
 import atexit
 import os
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime
@@ -17,8 +18,13 @@ from typing import Any
 from .core.manager import ExperimentManager
 from .core.param_tracking import save_accessed_params
 from .core.tracked_dict import TrackedDict
+from .results.experiment import Experiment
 from .utils.dict_utils import get_nested_value
-from .utils.exceptions import ExperimentContextError, ExperimentNotFoundError
+from .utils.exceptions import (
+    AmbiguousArtifactError,
+    ExperimentContextError,
+    ExperimentNotFoundError,
+)
 
 # Thread-local storage for current experiment context
 _local = threading.local()
@@ -312,6 +318,198 @@ def get_metadata() -> dict[str, Any]:
     return manager.get_experiment_metadata(experiment_id)
 
 
+def get_dependency(slot: str) -> Experiment | None:
+    """Get dependency experiment for a specific slot.
+
+    Args:
+        slot: The slot name (e.g., "data", "model", "dep1")
+
+    Returns:
+        Experiment object for the slot, or None if slot not found
+
+    Examples:
+        # Get the dependency in the "data" slot
+        data_exp = yanex.get_dependency("data")
+        if data_exp:
+            dataset = data_exp.load_artifact("dataset.pkl")
+
+        # Access default slots
+        dep1 = yanex.get_dependency("dep1")
+
+    Note:
+        In standalone mode (no experiment context): Returns None
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return None  # Standalone mode - no dependencies
+
+    manager = _get_experiment_manager()
+
+    # Load dependencies dict
+    dep_data = manager.storage.dependency_storage.load_dependencies(
+        experiment_id, include_archived=True
+    )
+    dependencies = dep_data.get("dependencies", {})
+
+    # Get the experiment ID for the slot
+    dep_id = dependencies.get(slot)
+    if dep_id is None:
+        return None
+
+    try:
+        return Experiment(dep_id, manager)
+    except Exception:
+        return None
+
+
+def get_dependencies(
+    transitive: bool = False, include_self: bool = False
+) -> dict[str, Experiment] | list[Experiment]:
+    """Get experiment dependencies.
+
+    Args:
+        transitive: If True, return flat list of all transitive dependencies
+        include_self: If True, include current experiment in result (only with transitive=True)
+
+    Returns:
+        If transitive=False: dict[str, Experiment] - slot name to Experiment
+        If transitive=True: list[Experiment] - flat list of all dependencies
+
+    Examples:
+        # Get direct dependencies as dict
+        deps = yanex.get_dependencies()
+        data_exp = deps.get("data")
+        if data_exp:
+            print(f"Data from: {data_exp.id}")
+
+        # Access by slot name
+        deps = yanex.get_dependencies()
+        for slot, dep in deps.items():
+            print(f"{slot}: {dep.id} ({dep.status})")
+
+        # Get all transitive dependencies as flat list
+        all_deps = yanex.get_dependencies(transitive=True)
+        for dep in all_deps:
+            print(f"{dep.id} artifacts: {dep.list_artifacts()}")
+
+    Note:
+        In standalone mode (no experiment context): Returns {} or []
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return [] if transitive else {}  # Standalone mode - no dependencies
+
+    manager = _get_experiment_manager()
+
+    # Get dependency IDs
+    if transitive:
+        # Get all dependencies using DependencyResolver (flat list)
+        from .core.dependencies import DependencyResolver
+
+        resolver = DependencyResolver(manager)
+        dependency_ids = resolver.get_transitive_dependencies(
+            experiment_id, include_self=include_self, include_archived=True
+        )
+
+        # Create Experiment objects for each dependency
+        dependencies = []
+        for dep_id in dependency_ids:
+            try:
+                experiment = Experiment(dep_id, manager)
+                dependencies.append(experiment)
+            except Exception:
+                continue
+
+        return dependencies
+    else:
+        # Get only direct dependencies as dict
+        dep_data = manager.storage.dependency_storage.load_dependencies(
+            experiment_id, include_archived=True
+        )
+        deps_dict = dep_data.get("dependencies", {})
+
+        # Create Experiment objects for each dependency
+        dependencies = {}
+        for slot, dep_id in deps_dict.items():
+            try:
+                experiment = Experiment(dep_id, manager)
+                dependencies[slot] = experiment
+            except Exception:
+                continue
+
+        return dependencies
+
+
+def assert_dependency(script_name: str, slot: str | None = None) -> None:
+    """Assert that a required dependency exists.
+
+    This is a convenience method for validating dependencies at the start of a script.
+    If the dependency check fails, prints an error and fails the experiment.
+
+    Args:
+        script_name: Script filename to check for (e.g., "prepare_data.py")
+        slot: Optional slot name. If provided, only that slot is checked.
+
+    Examples:
+        # Check that any dependency is from prepare_data.py
+        >>> import yanex
+        >>> yanex.assert_dependency("prepare_data.py")
+
+        # Check that the "data" slot dependency is from prepare_data.py
+        >>> yanex.assert_dependency("prepare_data.py", slot="data")
+
+    Note:
+        In standalone mode (no experiment context): No-op, allows script to continue
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        # In standalone mode - no-op, allow script to continue
+        return
+
+    # Get dependencies as dict
+    deps = get_dependencies()
+
+    if not deps:
+        # No dependencies at all
+        print(f"Error: No dependency from '{script_name}' found")
+        print("This experiment has no dependencies.")
+        fail(f"Missing required dependency: {script_name}")
+        return
+
+    if slot is not None:
+        # Check specific slot
+        dep = deps.get(slot)
+        if dep is None:
+            print(f"Error: No dependency in slot '{slot}'")
+            print(f"Available slots: {', '.join(deps.keys())}")
+            fail(f"Missing required dependency slot: {slot}")
+            return
+
+        if dep.script_path and dep.script_path.name == script_name:
+            return  # Success - slot matches script
+
+        print(f"Error: Dependency in slot '{slot}' is not from '{script_name}'")
+        print(
+            f"Slot '{slot}' is from: {dep.script_path.name if dep.script_path else '[unknown]'}"
+        )
+        fail(f"Slot '{slot}' not from required script: {script_name}")
+        return
+
+    # Check if any dependency matches the script name
+    for _slot_name, dep in deps.items():
+        if dep.script_path and dep.script_path.name == script_name:
+            return  # Success - found a match
+
+    # No match found - print error and fail
+    dep_scripts = [
+        f"{slot_name}={dep.script_path.name if dep.script_path else '[unknown]'}"
+        for slot_name, dep in deps.items()
+    ]
+    print(f"Error: No dependency from '{script_name}' found")
+    print(f"Current dependencies: {', '.join(dep_scripts)}")
+    fail(f"Missing required dependency: {script_name}")
+
+
 def log_metrics(data: dict[str, Any], step: int | None = None) -> None:
     """Log experiment metrics for current step.
 
@@ -401,7 +599,9 @@ def copy_artifact(src_path: Path | str, filename: str | None = None) -> None:
         manager.storage.copy_artifact(experiment_id, src_path, filename)
 
 
-def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
+def save_artifact(
+    obj: Any, filename: str, saver: Any | None = None, **kwargs: Any
+) -> None:
     """Save a Python object to the experiment's artifacts directory.
 
     Format is auto-detected from filename extension.
@@ -409,7 +609,15 @@ def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
     Args:
         obj: Python object to save
         filename: Name for saved artifact (extension determines format)
-        saver: Optional custom saver function (obj, path) -> None
+        saver: Optional custom saver function (obj, path, **kwargs) -> None
+        **kwargs: Additional arguments passed to the underlying save function.
+            Common examples by format:
+            - Matplotlib (.png): dpi, bbox_inches, facecolor, transparent
+            - JSON (.json): indent, ensure_ascii, sort_keys
+            - CSV (.csv): index, sep (pandas), delimiter (list of dicts)
+            - Pickle (.pkl): protocol
+            - NumPy (.npz): compressed
+            - PyTorch (.pt, .pth): pickle_protocol
 
     Supported formats (auto-detected):
         .txt        - Plain text (str.write)
@@ -431,17 +639,17 @@ def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
         # Text
         yanex.save_artifact("Training complete", "status.txt")
 
-        # JSON
-        yanex.save_artifact({"acc": 0.95}, "metrics.json")
+        # JSON with custom indent
+        yanex.save_artifact({"acc": 0.95}, "metrics.json", indent=4)
 
         # PyTorch model
         yanex.save_artifact(model.state_dict(), "model.pt")
 
-        # Matplotlib figure
-        yanex.save_artifact(fig, "plot.png")
+        # Matplotlib figure with high DPI
+        yanex.save_artifact(fig, "plot.png", dpi=300, bbox_inches="tight")
 
         # Custom format
-        def save_custom(obj, path):
+        def save_custom(obj, path, **kwargs):
             with open(path, 'wb') as f:
                 custom_serialize(obj, f)
 
@@ -462,21 +670,25 @@ def save_artifact(obj: Any, filename: str, saver: Any | None = None) -> None:
 
         artifacts_dir = _get_standalone_artifacts_dir()
         target_path = artifacts_dir / filename
-        save_artifact_to_path(obj, target_path, saver)
+        save_artifact_to_path(obj, target_path, saver, **kwargs)
     else:
         # Experiment mode - save to experiment artifacts
         manager = _get_experiment_manager()
-        manager.storage.save_artifact(experiment_id, obj, filename, saver)
+        manager.storage.save_artifact(experiment_id, obj, filename, saver, **kwargs)
 
 
-def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
+def load_artifact(
+    filename: str, loader: Any | None = None, format: str | None = None
+) -> Any | None:
     """Load an artifact with automatic format detection.
 
-    Returns None if artifact doesn't exist (allows optional artifacts).
+    Automatically searches dependencies if artifact not found in current experiment.
+    Returns None if artifact doesn't exist anywhere (allows optional artifacts).
 
     Args:
         filename: Name of artifact to load
         loader: Optional custom loader function (path) -> object
+        format: Optional format name for explicit format selection
 
     Supported formats (auto-detected by extension):
         .txt        - Plain text (returns str)
@@ -495,11 +707,16 @@ def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
     Raises:
         ValueError: If format can't be auto-detected and no custom loader provided
         ImportError: If required library not installed
+        AmbiguousArtifactError: If artifact found in multiple dependencies
 
     Examples:
-        # Load from current experiment
+        # Auto-detect format from extension
+        # Load from current experiment or dependencies
         model_state = yanex.load_artifact("model.pt")
         results = yanex.load_artifact("results.json")
+
+        # Explicit format for ambiguous extensions
+        workload = yanex.load_artifact("data.jsonl", format="workload")
 
         # Optional artifact (returns None if missing)
         checkpoint = yanex.load_artifact("checkpoint.pt")
@@ -513,14 +730,18 @@ def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
 
         obj = yanex.load_artifact("data.custom", loader=load_custom)
 
+        # Explicit dependency loading (avoids ambiguity)
+        deps = yanex.get_dependencies()
+        model = deps[0].load_artifact("model.pt")
+
     Note:
-        In standalone mode: Loads from ./artifacts/ directory
-        With experiment tracking: Loads from experiment artifacts directory
+        In standalone mode: Loads from ./artifacts/ directory (no dependency search)
+        With experiment tracking: Searches current experiment + all dependencies
     """
     experiment_id = _get_current_experiment_id()
 
     if experiment_id is None:
-        # Standalone mode - load from ./artifacts/
+        # Standalone mode - load from ./artifacts/ (no dependency search)
         from .core.artifact_io import load_artifact_from_path
 
         artifacts_dir = _get_standalone_artifacts_dir()
@@ -529,11 +750,34 @@ def load_artifact(filename: str, loader: Any | None = None) -> Any | None:
         if not artifact_path.exists():
             return None
 
-        return load_artifact_from_path(artifact_path, loader)
+        return load_artifact_from_path(artifact_path, loader, format=format)
     else:
-        # Experiment mode - load from experiment artifacts
+        # Experiment mode - search current experiment + dependencies
         manager = _get_experiment_manager()
-        return manager.storage.load_artifact(experiment_id, filename, loader)
+
+        # First try current experiment
+        if manager.storage.artifact_exists(experiment_id, filename):
+            return manager.storage.load_artifact(experiment_id, filename, loader)
+
+        # Not in current experiment - search dependencies
+        from .core.dependencies import DependencyResolver
+
+        resolver = DependencyResolver(manager)
+        found_in_id, all_matches = resolver.find_artifact_in_dependencies(
+            experiment_id, filename, include_archived=True
+        )
+
+        if found_in_id is not None:
+            # Found uniquely in one dependency - load it
+            return manager.storage.load_artifact(
+                found_in_id, filename, loader, include_archived=True, format=format
+            )
+        elif len(all_matches) > 1:
+            # Found in multiple places - raise ambiguity error
+            raise AmbiguousArtifactError(filename, all_matches)
+        else:
+            # Not found anywhere
+            return None
 
 
 def artifact_exists(filename: str) -> bool:
@@ -567,19 +811,32 @@ def artifact_exists(filename: str) -> bool:
         return manager.storage.artifact_exists(experiment_id, filename)
 
 
-def list_artifacts() -> list[str]:
+def list_artifacts(
+    transitive: bool = False,
+) -> list[str] | dict[str, list[str]]:
     """List all artifacts in the current experiment.
 
+    Args:
+        transitive: If True, include artifacts from all dependencies.
+                   Returns dict mapping experiment ID to artifact list.
+
     Returns:
-        List of artifact filenames (sorted)
+        If transitive=False: List of artifact filenames (sorted)
+        If transitive=True: Dict mapping experiment ID to artifact list
 
     Examples:
+        # List current experiment's artifacts
         artifacts = yanex.list_artifacts()
         # Returns: ["model.pt", "metrics.json", "plot.png"]
+
+        # List artifacts from current experiment and all dependencies
+        all_artifacts = yanex.list_artifacts(transitive=True)
+        # Returns: {"abc123": ["model.pt"], "def456": ["data.csv"]}
 
     Note:
         In standalone mode: Lists ./artifacts/ directory
         With experiment tracking: Lists experiment artifacts directory
+        In standalone mode with transitive=True: Returns {"local": [...]}
     """
     experiment_id = _get_current_experiment_id()
 
@@ -588,11 +845,25 @@ def list_artifacts() -> list[str]:
         from .core.artifact_io import list_artifacts_at_path
 
         artifacts_dir = _get_standalone_artifacts_dir()
-        return list_artifacts_at_path(artifacts_dir)
-    else:
-        # Experiment mode - list experiment artifacts
-        manager = _get_experiment_manager()
+        artifacts = list_artifacts_at_path(artifacts_dir)
+
+        if transitive:
+            return {"local": artifacts}
+        return artifacts
+
+    # Experiment mode
+    manager = _get_experiment_manager()
+
+    if not transitive:
         return manager.storage.list_artifacts(experiment_id)
+
+    # Transitive: get current + all dependencies
+    result = {}
+    deps = get_dependencies(transitive=True, include_self=True)
+    for dep in deps:
+        result[dep.id] = dep.list_artifacts()
+
+    return result
 
 
 def execute_bash_script(
@@ -806,10 +1077,17 @@ def execute_bash_script(
 
 
 def completed() -> None:
-    """Manually mark experiment as completed and exit context.
+    """Manually mark experiment as completed and exit.
+
+    Marks the current experiment as completed and exits the script gracefully.
+    This triggers atexit handlers (e.g., parameter saving) before exiting.
+
+    In CLI subprocess mode: Uses sys.exit(0) for clean exit without stack traces.
+    In context manager mode: Raises exception for __exit__ to handle.
 
     Raises:
         ExperimentContextError: If no active experiment context
+        _ExperimentCompletedException: In non-CLI mode for context manager handling
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
@@ -820,18 +1098,35 @@ def completed() -> None:
     manager = _get_experiment_manager()
     manager.complete_experiment(experiment_id)
 
-    # Raise special exception to exit context cleanly
-    raise _ExperimentCompletedException()
+    # Print success message
+    exp_dir = manager.storage.get_experiment_directory(experiment_id)
+    print(f"✓ Experiment completed successfully: {experiment_id}")
+    print(f"  Directory: {exp_dir}")
+
+    # Different behavior based on context
+    if _is_cli_context():
+        # CLI subprocess mode - exit cleanly without stack trace
+        sys.exit(0)
+    else:
+        # Context manager mode - raise exception for __exit__ to handle
+        raise _ExperimentCompletedException()
 
 
 def fail(message: str) -> None:
-    """Mark experiment as failed with message and exit context.
+    """Mark experiment as failed and exit.
+
+    Marks the current experiment as failed with an error message and exits the script.
+    This triggers atexit handlers (e.g., parameter saving) before exiting.
+
+    In CLI subprocess mode: Uses sys.exit(1) for clean exit without stack traces.
+    In context manager mode: Raises exception for __exit__ to handle.
 
     Args:
         message: Error message describing the failure
 
     Raises:
         ExperimentContextError: If no active experiment context
+        _ExperimentFailedException: In non-CLI mode for context manager handling
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
@@ -842,18 +1137,35 @@ def fail(message: str) -> None:
     manager = _get_experiment_manager()
     manager.fail_experiment(experiment_id, message)
 
-    # Raise special exception to exit context
-    raise _ExperimentFailedException(message)
+    # Print failure message
+    exp_dir = manager.storage.get_experiment_directory(experiment_id)
+    print(f"✗ Experiment failed: {experiment_id}")
+    print(f"  Directory: {exp_dir}")
+
+    # Different behavior based on context
+    if _is_cli_context():
+        # CLI subprocess mode - exit cleanly without stack trace
+        sys.exit(1)
+    else:
+        # Context manager mode - raise exception for __exit__ to handle
+        raise _ExperimentFailedException(message)
 
 
 def cancel(message: str) -> None:
-    """Mark experiment as cancelled with message and exit context.
+    """Mark experiment as cancelled and exit.
+
+    Marks the current experiment as cancelled with a reason and exits the script.
+    This triggers atexit handlers (e.g., parameter saving) before exiting.
+
+    In CLI subprocess mode: Uses sys.exit(1) for clean exit without stack traces.
+    In context manager mode: Raises exception for __exit__ to handle.
 
     Args:
         message: Cancellation reason
 
     Raises:
         ExperimentContextError: If no active experiment context
+        _ExperimentCancelledException: In non-CLI mode for context manager handling
     """
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
@@ -864,8 +1176,18 @@ def cancel(message: str) -> None:
     manager = _get_experiment_manager()
     manager.cancel_experiment(experiment_id, message)
 
-    # Raise special exception to exit context
-    raise _ExperimentCancelledException(message)
+    # Print cancellation message
+    exp_dir = manager.storage.get_experiment_directory(experiment_id)
+    print(f"✗ Experiment cancelled: {experiment_id}")
+    print(f"  Directory: {exp_dir}")
+
+    # Different behavior based on context
+    if _is_cli_context():
+        # CLI subprocess mode - exit cleanly without stack trace
+        sys.exit(1)
+    else:
+        # Context manager mode - raise exception for __exit__ to handle
+        raise _ExperimentCancelledException(message)
 
 
 class _ExperimentCompletedException(Exception):

@@ -512,3 +512,219 @@ class TestExperiment:
         except ExperimentNotFoundError:
             # Expected if experiment doesn't exist in default location
             pass
+
+
+class TestExperimentDependencies:
+    """Test dependency-related features of the Experiment class."""
+
+    def teardown_method(self, method):
+        """Clean up experiments after each test method."""
+        try:
+            from yanex.core.filtering import ExperimentFilter
+            from yanex.core.manager import ExperimentManager
+
+            manager = ExperimentManager()
+            filter_obj = ExperimentFilter(manager=manager)
+            test_experiments = filter_obj.filter_experiments(
+                tags=["unit-tests"], limit=100
+            )
+
+            for exp in test_experiments:
+                try:
+                    if exp.get("status") == "running":
+                        manager.cancel_experiment(exp["id"], "Test cleanup")
+                    manager.delete_experiment(exp["id"])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    @pytest.fixture
+    def manager(self, isolated_experiments_dir, clean_git_repo):
+        """Create an experiment manager for testing."""
+        return ExperimentManager(experiments_dir=isolated_experiments_dir)
+
+    @pytest.fixture
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def prep_experiment(self, mock_capture_env, mock_git_info, manager):
+        """Create preprocessing experiment."""
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        exp_id = manager.create_experiment(
+            script_path=Path("prepare_data.py"),
+            name="preprocessing",
+            config={"dataset": "mnist", "samples": 1000},
+            tags=["preprocessing", "unit-tests"],
+        )
+        manager.start_experiment(exp_id)
+        manager.complete_experiment(exp_id)
+        return exp_id
+
+    @pytest.fixture
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def train_experiment(
+        self, mock_capture_env, mock_git_info, manager, prep_experiment
+    ):
+        """Create training experiment that depends on preprocessing."""
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        exp_id = manager.create_experiment(
+            script_path=Path("train_model.py"),
+            name="training",
+            config={"learning_rate": 0.01},
+            tags=["training", "unit-tests"],
+            dependencies={"dep1": prep_experiment},
+        )
+        manager.start_experiment(exp_id)
+        manager.complete_experiment(exp_id)
+        return exp_id
+
+    @pytest.fixture
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def eval_experiment(
+        self, mock_capture_env, mock_git_info, manager, train_experiment
+    ):
+        """Create evaluation experiment that depends on training."""
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        exp_id = manager.create_experiment(
+            script_path=Path("evaluate_model.py"),
+            name="evaluation",
+            config={},
+            tags=["evaluation", "unit-tests"],
+            dependencies={"dep1": train_experiment},
+        )
+        manager.start_experiment(exp_id)
+        manager.complete_experiment(exp_id)
+        return exp_id
+
+    def test_no_dependencies(self, manager, prep_experiment):
+        """Test experiment with no dependencies."""
+        exp = Experiment(prep_experiment, manager)
+
+        assert exp.dependency_ids == []
+        assert exp.dependencies == {}
+        assert exp.has_dependencies is False
+        assert exp.get_dependencies() == {}
+
+    def test_single_dependency(self, manager, prep_experiment, train_experiment):
+        """Test experiment with single dependency."""
+        exp = Experiment(train_experiment, manager)
+
+        # Test dependency_ids property (deprecated, but still works)
+        assert len(exp.dependency_ids) == 1
+        assert prep_experiment in exp.dependency_ids
+
+        # Test dependencies property (new dict-based API)
+        assert "dep1" in exp.dependencies
+        assert exp.dependencies["dep1"] == prep_experiment
+
+        # Test has_dependencies property
+        assert exp.has_dependencies is True
+
+        # Test get_dependencies method (returns dict when transitive=False)
+        deps = exp.get_dependencies()
+        assert len(deps) == 1
+        assert "dep1" in deps
+        assert isinstance(deps["dep1"], Experiment)
+        assert deps["dep1"].id == prep_experiment
+        assert deps["dep1"].name == "preprocessing"
+
+    def test_transitive_dependencies(
+        self, manager, prep_experiment, train_experiment, eval_experiment
+    ):
+        """Test getting transitive dependencies."""
+        exp = Experiment(eval_experiment, manager)
+
+        # Direct dependencies only (returns dict)
+        direct_deps = exp.get_dependencies(transitive=False)
+        assert len(direct_deps) == 1
+        assert "dep1" in direct_deps
+        assert direct_deps["dep1"].id == train_experiment
+
+        # All transitive dependencies (returns list)
+        all_deps = exp.get_dependencies(transitive=True)
+        assert len(all_deps) == 2
+        dep_ids = [d.id for d in all_deps]
+        assert prep_experiment in dep_ids
+        assert train_experiment in dep_ids
+
+    def test_include_self_with_transitive(
+        self, manager, prep_experiment, train_experiment
+    ):
+        """Test include_self parameter with transitive dependencies."""
+        exp = Experiment(train_experiment, manager)
+
+        # Get dependencies without self
+        deps = exp.get_dependencies(transitive=True, include_self=False)
+        dep_ids = [d.id for d in deps]
+        assert train_experiment not in dep_ids
+        assert prep_experiment in dep_ids
+
+        # Get dependencies with self
+        deps_with_self = exp.get_dependencies(transitive=True, include_self=True)
+        dep_ids_with_self = [d.id for d in deps_with_self]
+        assert train_experiment in dep_ids_with_self
+        assert prep_experiment in dep_ids_with_self
+
+    def test_include_self_without_transitive(
+        self, manager, prep_experiment, train_experiment
+    ):
+        """Test include_self parameter without transitive dependencies.
+
+        Note: include_self only affects the transitive=True case.
+        When transitive=False, include_self is ignored and result is always a dict.
+        """
+        exp = Experiment(train_experiment, manager)
+
+        # Get dependencies without self (returns dict when transitive=False)
+        deps = exp.get_dependencies(transitive=False, include_self=False)
+        assert isinstance(deps, dict)
+        dep_ids = [d.id for d in deps.values()]
+        assert train_experiment not in dep_ids
+        assert prep_experiment in dep_ids
+
+        # include_self=True is ignored when transitive=False - still returns dict
+        deps_with_self = exp.get_dependencies(transitive=False, include_self=True)
+        assert isinstance(deps_with_self, dict)
+        # Self is NOT included when transitive=False
+        dep_ids_with_self = [d.id for d in deps_with_self.values()]
+        assert train_experiment not in dep_ids_with_self
+        assert prep_experiment in dep_ids_with_self
+
+    def test_to_dict_includes_dependencies(
+        self, manager, prep_experiment, train_experiment
+    ):
+        """Test that to_dict includes dependency information."""
+        exp = Experiment(train_experiment, manager)
+
+        data = exp.to_dict()
+
+        # Check dependency fields are present
+        assert "dependency_ids" in data
+        assert "has_dependencies" in data
+
+        # Check values
+        assert data["has_dependencies"] is True
+        assert len(data["dependency_ids"]) == 1
+        assert prep_experiment in data["dependency_ids"]
+
+    def test_to_dict_no_dependencies(self, manager, prep_experiment):
+        """Test that to_dict works for experiments without dependencies."""
+        exp = Experiment(prep_experiment, manager)
+
+        data = exp.to_dict()
+
+        # Check dependency fields are present
+        assert "dependency_ids" in data
+        assert "has_dependencies" in data
+
+        # Check values
+        assert data["has_dependencies"] is False
+        assert data["dependency_ids"] == []

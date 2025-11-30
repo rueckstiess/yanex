@@ -67,18 +67,26 @@ Prepare experiments now, execute later. Batch processing and parallel execution 
 
 ---
 
+### [10: Dependencies and Multi-Stage Pipelines](10_dependencies/README.md)
+Build multi-stage ML pipelines with experiment dependencies. Track complete data lineage and reuse preprocessing across training runs.
+
+**Concepts**: `-D` / `--depends-on`, dependency sweeps, cartesian products, incremental staging, `get_dependencies()`, artifact sharing
+
+---
+
 ## Learning Path
 
 **New to yanex?** Start with examples in order:
 1. **01-04**: Core features (parameters, config, artifacts, metadata)
 2. **05-07**: Training and scaling (multi-step metrics, bash, sweeps)
-3. **08-09**: Advanced features (script args, staging)
+3. **08-10**: Advanced features (script args, staging, dependencies)
 
 **Quick references:**
-- **ML/Training workflows**: 02 → 05 → 07
+- **ML/Training workflows**: 02 → 05 → 07 → 10
+- **Multi-stage pipelines**: 03 → 10
 - **Bash tool integration**: 06 → 08
-- **Batch processing**: 07 → 09
-- **Experiment organization**: 04 → 07
+- **Batch processing**: 07 → 09 → 10
+- **Experiment organization**: 04 → 07 → 10
 
 ## Running Examples
 

@@ -413,6 +413,139 @@ class Experiment:
             self._experiment_id, include_archived=self.archived
         )
 
+    @property
+    def dependencies(self) -> dict[str, str]:
+        """
+        Get the dependencies dict for this experiment.
+
+        Returns:
+            Dict mapping slot names to experiment IDs
+
+        Examples:
+            >>> exp = get_experiment("abc12345")
+            >>> deps = exp.dependencies
+            >>> print(f"Data from: {deps.get('data')}")
+        """
+        dep_data = self._manager.storage.dependency_storage.load_dependencies(
+            self._experiment_id, include_archived=self.archived
+        )
+        return dep_data.get("dependencies", {})
+
+    @property
+    def dependency_ids(self) -> list[str]:
+        """
+        Get the dependency IDs for this experiment (deprecated, use .dependencies).
+
+        Returns:
+            List of experiment IDs that this experiment depends on
+
+        Examples:
+            >>> exp = get_experiment("abc12345")
+            >>> dep_ids = exp.dependency_ids
+            >>> print(f"Depends on: {dep_ids}")
+        """
+        return list(self.dependencies.values())
+
+    @property
+    def has_dependencies(self) -> bool:
+        """
+        Check if this experiment has any dependencies.
+
+        Returns:
+            True if experiment has dependencies, False otherwise
+
+        Examples:
+            >>> exp = get_experiment("abc12345")
+            >>> if exp.has_dependencies:
+            ...     print("This experiment depends on other experiments")
+        """
+        return len(self.dependencies) > 0
+
+    def get_dependency(self, slot: str) -> "Experiment | None":
+        """
+        Get dependency experiment for a specific slot.
+
+        Args:
+            slot: The slot name (e.g., "data", "model", "dep1")
+
+        Returns:
+            Experiment object for the slot, or None if slot not found
+
+        Examples:
+            >>> exp = get_experiment("abc12345")
+            >>> data_exp = exp.get_dependency("data")
+            >>> if data_exp:
+            ...     dataset = data_exp.load_artifact("dataset.pkl")
+        """
+        dep_id = self.dependencies.get(slot)
+        if dep_id is None:
+            return None
+
+        try:
+            return Experiment(dep_id, self._manager)
+        except Exception:
+            return None
+
+    def get_dependencies(
+        self, transitive: bool = False, include_self: bool = False
+    ) -> "dict[str, Experiment] | list[Experiment]":
+        """
+        Get experiment dependencies as Experiment objects.
+
+        Args:
+            transitive: If True, return flat list of all transitive dependencies
+            include_self: If True, include current experiment in result (only with transitive=True)
+
+        Returns:
+            If transitive=False: dict[str, Experiment] - slot name to Experiment
+            If transitive=True: list[Experiment] - flat list of all dependencies
+
+        Examples:
+            # Get direct dependencies as dict
+            >>> exp = get_experiment("abc12345")
+            >>> deps = exp.get_dependencies()
+            >>> data_exp = deps.get("data")
+
+            # Get all dependencies (transitive) as flat list
+            >>> all_deps = exp.get_dependencies(transitive=True)
+            >>> for dep in all_deps:
+            ...     print(f"{dep.id} artifacts: {dep.list_artifacts()}")
+        """
+        # Get dependency IDs
+        if transitive:
+            # Get all dependencies using DependencyResolver (flat list)
+            from ..core.dependencies import DependencyResolver
+
+            resolver = DependencyResolver(self._manager)
+            dependency_ids = resolver.get_transitive_dependencies(
+                self._experiment_id, include_self=include_self, include_archived=True
+            )
+
+            # Create Experiment objects for each dependency
+            dependencies = []
+            for dep_id in dependency_ids:
+                try:
+                    experiment = Experiment(dep_id, self._manager)
+                    dependencies.append(experiment)
+                except Exception:
+                    continue
+
+            return dependencies
+        else:
+            # Get only direct dependencies as dict
+            deps_dict = self.dependencies
+
+            # Create Experiment objects for each dependency
+            dependencies = {}
+            for slot, dep_id in deps_dict.items():
+                try:
+                    experiment = Experiment(dep_id, self._manager)
+                    dependencies[slot] = experiment
+                except Exception:
+                    continue
+
+            return dependencies
+
     def get_script_runs(self) -> list[dict[str, Any]]:
         """
         Get experiment script run history.
@@ -562,6 +695,8 @@ class Experiment:
             "metrics": self.get_metrics(as_dataframe=False),
             "artifacts": self.list_artifacts(),
             "script_runs": self.get_script_runs(),
+            "dependency_ids": self.dependency_ids,
+            "has_dependencies": self.has_dependencies,
         }
 
     def refresh(self) -> None:

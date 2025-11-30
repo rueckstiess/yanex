@@ -126,7 +126,10 @@ def generate_git_patch(repo: Repo | None = None) -> str | None:
         # Generate diff between HEAD and working directory
         # This captures both staged and unstaged changes
         # Binary files are handled automatically by git ("Binary files differ")
-        patch = repo.git.diff("HEAD")
+        # Exclude .ipynb files - they're large (especially with images), cause
+        # false positives in secret scanning, and rarely contain reproducibility-
+        # critical code (that's in .py and config files)
+        patch = repo.git.diff("HEAD", "--", ":(exclude)*.ipynb")
 
         # Return None for clean state (shouldn't happen due to check above, but be safe)
         if not patch or not patch.strip():
@@ -337,6 +340,11 @@ def scan_patch_for_secrets(patch: str) -> dict[str, bool | list[dict[str, str]]]
         for filename, modified_lines in modified_files.items():
             if not modified_lines:
                 continue  # Skip files with no additions (only deletions)
+
+            # Skip .ipynb files - they cause false positives and are excluded
+            # from patch generation anyway
+            if filename.endswith(".ipynb"):
+                continue
 
             file_path = repo_root / filename
 

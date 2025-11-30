@@ -15,6 +15,8 @@ from .api import (
     _set_current_experiment_id,
     # Artifact management
     artifact_exists,
+    # Dependency tracking
+    assert_dependency,
     cancel,
     # Manual experiment control
     completed,
@@ -28,6 +30,8 @@ from .api import (
     # Experiment information
     get_artifacts_dir,
     get_cli_args,
+    get_dependencies,
+    get_dependency,
     get_experiment_dir,
     get_experiment_id,
     get_metadata,
@@ -46,8 +50,12 @@ from .api import (
     save_artifact,
 )
 
+# Custom artifact format registration
+from .core.artifact_formats import register_format
+
 # Batch execution API
 from .executor import ExperimentResult, ExperimentSpec, run_multiple
+from .results.experiment import Experiment
 
 __version__ = "0.4.0"
 __author__ = "Thomas"
@@ -69,6 +77,7 @@ __all__ = [
     "load_artifact",
     "artifact_exists",
     "list_artifacts",
+    "register_format",
     # Script execution
     "execute_bash_script",
     # Experiment information
@@ -77,6 +86,11 @@ __all__ = [
     "get_artifacts_dir",
     "get_status",
     "get_metadata",
+    # Dependency tracking
+    "get_dependencies",
+    "get_dependency",
+    "assert_dependency",
+    "Experiment",
     # Experiment creation (advanced)
     "create_experiment",
     "create_context",

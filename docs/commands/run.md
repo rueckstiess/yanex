@@ -48,6 +48,9 @@ This ensures reproducibility and easy comparison of results.
 - `--config PATH` / `-c PATH`: Use configuration file (can be repeated for multiple files)
 - `--clone-from EXP_ID`: Clone configuration from another experiment
 
+#### Dependencies
+- `--depends-on EXP_ID` / `-D EXP_ID`: Specify dependency experiment(s) (comma-separated for multiple)
+
 #### Metadata
 - `--name NAME`: Set experiment name
 - `--description DESC`: Set experiment description  
@@ -122,6 +125,54 @@ yanex run --staged
 yanex run --staged --parallel 4
 ```
 
+## Dependencies
+
+Create multi-stage experiment pipelines by declaring dependencies between experiments.
+
+### Single Dependency
+
+```bash
+# Step 1: Run preprocessing
+yanex run prepare_data.py --name "data-prep-v1"
+# Returns: abc12345
+
+# Step 2: Run training with dependency on preprocessing
+yanex run train.py -D abc12345 --name "training-v1"
+# Returns: def67890
+
+# Step 3: Run evaluation with dependency on training
+yanex run evaluate.py -D def67890 --name "eval-v1"
+```
+
+### Multiple Dependencies
+
+```bash
+# Train multiple models
+yanex run train.py -p model=resnet18 --name "resnet-v1"  # Returns: aaa111
+yanex run train.py -p model=resnet50 --name "resnet-v2"  # Returns: bbb222
+yanex run train.py -p model=vgg16 --name "vgg-v1"        # Returns: ccc333
+
+# Ensemble evaluation depends on all three
+yanex run ensemble.py -D aaa111,bbb222,ccc333 --name "ensemble-eval"
+```
+
+### Accessing Dependencies in Scripts
+
+```python
+# train.py
+import yanex
+
+# Assert required dependency exists
+yanex.assert_dependency("prepare_data.py")
+
+# Access dependencies
+deps = yanex.get_dependencies()
+if deps:
+    # Load artifact from dependency
+    data = yanex.load_artifact("processed_data.pkl", from_experiment=deps[0].id)
+```
+
+**See Also:** [Dependencies Guide](../dependencies.md) for complete usage patterns and examples.
 
 ## Parameter Management
 

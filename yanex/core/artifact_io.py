@@ -8,8 +8,8 @@ from typing import Any
 
 from .artifact_formats import get_handler_for_load, get_handler_for_save
 
-# Default maximum file size for artifacts (100MB)
-DEFAULT_MAX_FILE_SIZE = 100 * 1024 * 1024
+# Default maximum file size for artifacts (1000MB)
+DEFAULT_MAX_FILE_SIZE = 1000 * 1024 * 1024
 
 
 def _validate_filename(filename: str) -> str:
@@ -72,16 +72,24 @@ def _validate_file_size(path: Path, max_size: int | None = None) -> None:
 def save_artifact_to_path(
     obj: Any,
     target_path: Path,
-    saver: Callable[[Any, Path], None] | None = None,
+    saver: Callable[..., None] | None = None,
     max_size: int | None = None,
+    **kwargs: Any,
 ) -> None:
     """Save a Python object to a specific path with automatic format detection.
 
     Args:
         obj: Python object to save
         target_path: Path where artifact should be saved
-        saver: Optional custom saver function (obj, path) -> None
+        saver: Optional custom saver function (obj, path, **kwargs) -> None
         max_size: Maximum file size in bytes (None uses default 100MB, 0 for no limit)
+        **kwargs: Additional arguments passed to the underlying save function.
+            Common examples:
+            - dpi, bbox_inches, transparent (matplotlib figures)
+            - indent, ensure_ascii, sort_keys (JSON)
+            - index, sep (pandas CSV)
+            - protocol (pickle)
+            - compressed (numpy .npz)
 
     Raises:
         ValueError: If format can't be auto-detected and no custom saver provided,
@@ -99,12 +107,12 @@ def save_artifact_to_path(
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
     if saver is not None:
-        # Use custom saver
-        saver(obj, target_path)
+        # Use custom saver - pass kwargs if it accepts them
+        saver(obj, target_path, **kwargs)
     else:
         # Auto-detect and use format handler
         handler = get_handler_for_save(obj, target_path.name)
-        handler.saver(obj, target_path)
+        handler.saver(obj, target_path, **kwargs)
 
     # Validate file size after saving
     if target_path.exists():
@@ -114,12 +122,14 @@ def save_artifact_to_path(
 def load_artifact_from_path(
     source_path: Path,
     loader: Callable[[Path], Any] | None = None,
+    format: str | None = None,
 ) -> Any:
     """Load an artifact from a specific path with automatic format detection.
 
     Args:
         source_path: Path to artifact to load
         loader: Optional custom loader function (path) -> object
+        format: Optional format name for explicit format selection
 
     Returns:
         Loaded object
@@ -137,7 +147,7 @@ def load_artifact_from_path(
         return loader(source_path)
     else:
         # Auto-detect and use format handler
-        handler = get_handler_for_load(source_path.name)
+        handler = get_handler_for_load(source_path.name, format=format)
         return handler.loader(source_path)
 
 

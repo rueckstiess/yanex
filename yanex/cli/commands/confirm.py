@@ -67,6 +67,8 @@ def find_experiment(
     """
     Find experiment by ID, ID prefix, or name.
 
+    Uses the core resolve_experiment_id() utility for consistent ID resolution.
+
     Args:
         filter_obj: ExperimentFilter instance
         identifier: Experiment ID or name
@@ -77,37 +79,44 @@ def find_experiment(
         - List of experiments if multiple names match
         - None if not found
     """
-    # First, try to find by exact ID match
+    from ...utils.exceptions import AmbiguousIDError, ExperimentNotFoundError
+    from ...utils.id_resolution import resolve_experiment_id
+
     try:
+        # Use the core utility for ID resolution
+        manager = filter_obj.manager
+        experiment_id = resolve_experiment_id(
+            identifier, manager, include_archived=include_archived
+        )
+
+        # Load and return the experiment metadata
+        metadata = manager.storage.load_metadata(
+            experiment_id, include_archived=include_archived
+        )
+        return metadata
+
+    except AmbiguousIDError:
+        # Multiple matches - load all matching experiments for user to choose
         all_experiments = filter_obj._load_all_experiments(include_archived)
 
-        # Try ID prefix match
-        id_prefix_matches: list[dict[str, Any]] = []
-        if identifier:
-            for exp in all_experiments:
-                exp_id = exp.get("id", "")
-                if isinstance(exp_id, str) and exp_id.startswith(identifier):
-                    id_prefix_matches.append(exp)
-
-        if len(id_prefix_matches) == 1:
-            return id_prefix_matches[0]
-        elif len(id_prefix_matches) > 1:
-            return id_prefix_matches
-
-        # Try name match
-        name_matches = []
+        # Return all experiments that match the identifier (by ID prefix or name)
+        matches = []
         for exp in all_experiments:
+            exp_id = exp.get("id", "")
             exp_name = exp.get("name")
-            if exp_name and exp_name == identifier:
-                name_matches.append(exp)
 
-        # Return based on name matches
-        if len(name_matches) == 1:
-            return name_matches[0]
-        elif len(name_matches) > 1:
-            return name_matches
+            # Check ID prefix match
+            if isinstance(exp_id, str) and exp_id.startswith(identifier):
+                matches.append(exp)
+            # Check exact name match
+            elif exp_name and exp_name == identifier:
+                if exp not in matches:  # Avoid duplicates
+                    matches.append(exp)
 
-        # No matches found
+        return matches if matches else None
+
+    except ExperimentNotFoundError:
+        # No match found
         return None
 
     except Exception:
@@ -122,6 +131,8 @@ def find_experiments_by_identifiers(
     """
     Find experiments by list of identifiers (IDs or names).
 
+    Uses the core resolve_experiment_id() utility for consistent ID resolution.
+
     Args:
         filter_obj: ExperimentFilter instance
         identifiers: List of experiment IDs or names
@@ -133,84 +144,90 @@ def find_experiments_by_identifiers(
     Raises:
         click.ClickException: If any identifier is not found or ambiguous
     """
+    from ...utils.exceptions import AmbiguousIDError, ExperimentNotFoundError
+    from ...utils.id_resolution import resolve_experiment_id
+
     all_experiments = []
+    manager = filter_obj.manager
+
+    # Determine include_archived flag for resolve_experiment_id
+    # archived=True: only archived, archived=False: only regular, archived=None: both
+    include_archived = archived is not False
 
     for identifier in identifiers:
-        # Try to find by ID first (8-character hex)
-        if len(identifier) == 8:
-            try:
-                # Try exact ID match using the unified filter
-                results = filter_obj.filter_experiments(
-                    ids=[identifier], archived=archived, include_all=True
-                )
-                if results:
-                    all_experiments.append(results[0])
-                    continue
-            except Exception:
-                pass
-
-        # Try ID prefix match (if shorter than 8 characters)
-        if len(identifier) < 8:
-            try:
-                # Get all experiments and filter by ID prefix
-                all_exps = filter_obj.filter_experiments(
-                    archived=archived, include_all=True
-                )
-                prefix_matches = [
-                    exp for exp in all_exps if exp.get("id", "").startswith(identifier)
-                ]
-
-                if len(prefix_matches) == 1:
-                    all_experiments.append(prefix_matches[0])
-                    continue
-                elif len(prefix_matches) > 1:
-                    raise click.ClickException(
-                        f"Ambiguous experiment ID prefix '{identifier}' matches multiple experiments"
-                    )
-            except click.ClickException:
-                raise  # Re-raise ClickExceptions (like ambiguous ID prefix errors)
-            except Exception:
-                pass  # Suppress other errors and try next identification method
-
-        # Try name match
         try:
-            results = filter_obj.filter_experiments(
-                name=identifier, archived=archived, include_all=True
+            # Use core utility to resolve ID
+            experiment_id = resolve_experiment_id(
+                identifier, manager, include_archived=include_archived
             )
 
-            if len(results) == 1:
-                all_experiments.append(results[0])
-                continue
-            elif len(results) > 1:
-                # Multiple experiments with same name
-                click.echo(f"Multiple experiments found with name '{identifier}':")
-                click.echo()
+            # Load metadata
+            metadata = manager.storage.load_metadata(
+                experiment_id, include_archived=include_archived
+            )
 
-                from ..formatters.console import ExperimentTableFormatter
+            # If archived filter is strict (True or False, not None), verify match
+            if archived is True:
+                # Must be archived
+                if not manager.storage.archived_experiment_exists(experiment_id):
+                    raise click.ClickException(
+                        f"Experiment '{identifier}' exists but is not archived"
+                    )
+            elif archived is False:
+                # Must NOT be archived
+                if manager.storage.archived_experiment_exists(experiment_id):
+                    raise click.ClickException(
+                        f"Experiment '{identifier}' is archived (use --archived flag)"
+                    )
 
-                formatter = ExperimentTableFormatter()
-                formatter.print_experiments_table(results)
-                click.echo()
-                click.echo(
-                    "Please use specific experiment IDs instead of names for bulk operations."
-                )
-                raise click.ClickException(f"Ambiguous experiment name: '{identifier}'")
-        except click.ClickException:
-            raise  # Re-raise ClickExceptions (like ambiguous name errors)
-        except Exception:
-            pass  # Suppress other errors and try next identification method
+            all_experiments.append(metadata)
 
-        # If we get here, nothing was found
-        if archived is True:
-            location = "archived"
-        elif archived is False:
-            location = "regular"
-        else:
-            location = ""
+        except AmbiguousIDError as e:
+            # Multiple matches - show table and raise clear error
+            # For name matches, we want to show the table
+            if len(e.matches) > 1:
+                # Load full metadata for all matches to show in table
+                match_experiments = []
+                for match_id in e.matches:
+                    # Extract just the ID if match contains extra info
+                    exp_id = match_id.split()[0] if " " in match_id else match_id
+                    try:
+                        meta = manager.storage.load_metadata(
+                            exp_id, include_archived=include_archived
+                        )
+                        match_experiments.append(meta)
+                    except Exception:
+                        continue
 
-        raise click.ClickException(
-            f"No {location} experiment found with ID or name '{identifier}'"
-        )
+                if match_experiments:
+                    click.echo(f"Multiple experiments found matching '{identifier}':")
+                    click.echo()
+
+                    from ..formatters.console import ExperimentTableFormatter
+
+                    formatter = ExperimentTableFormatter()
+                    formatter.print_experiments_table(match_experiments)
+                    click.echo()
+                    click.echo(
+                        "Please use a more specific ID or full experiment ID for bulk operations."
+                    )
+
+            raise click.ClickException(
+                f"Ambiguous identifier '{identifier}': {str(e).split(':', 1)[1].strip()}"
+            )
+
+        except ExperimentNotFoundError:
+            # Determine location string for error message
+            if archived is True:
+                location = "archived"
+            elif archived is False:
+                location = "regular"
+            else:
+                location = ""
+
+            raise click.ClickException(
+                f"No {location} experiment found with ID or name '{identifier}'"
+            )
 
     return all_experiments
 

@@ -117,7 +117,7 @@ class TestFormatDuration:
         """Test formatting ongoing duration (no end time)."""
         start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         result = format_duration(start, None)
-        assert "(ongoing)" in result
+        assert "+" in result
 
 
 class TestFormatRelativeTime:

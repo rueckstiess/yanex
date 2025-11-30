@@ -34,6 +34,7 @@ class ExperimentSpec:
         name: Optional experiment name
         tags: List of tags for organization
         description: Optional experiment description
+        dependencies: Dict mapping slot names to experiment IDs this depends on
         cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
     """
 
@@ -49,6 +50,7 @@ class ExperimentSpec:
     name: str | None = None
     tags: list[str] = field(default_factory=list)
     description: str | None = None
+    dependencies: dict[str, str] = field(default_factory=dict)
     cli_args: dict[str, Any] = field(default_factory=dict)
 
     def validate(self) -> None:
@@ -187,6 +189,7 @@ def _run_sequential(
                 config=spec.config,
                 tags=spec.tags,
                 description=spec.description,
+                dependencies=spec.dependencies,
                 script_args=spec.script_args,
                 cli_args=spec.cli_args,
             )
@@ -389,6 +392,7 @@ def _execute_single_experiment(
             config=spec.config,
             tags=spec.tags,
             description=spec.description,
+            dependencies=spec.dependencies,
             script_args=spec.script_args,
             cli_args=spec.cli_args,
         )

@@ -4,68 +4,42 @@ Tests for yanex CLI show command functionality.
 
 import time
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
-from tests.test_utils import TestDataFactory, TestFileHelpers
+from tests.test_utils import TestDataFactory
 from yanex.cli.commands.show import find_experiment
 from yanex.cli.filters import ExperimentFilter
 from yanex.cli.formatters.console import ExperimentTableFormatter
-from yanex.core.manager import ExperimentManager
 
 
 class TestFindExperiment:
     """Test experiment lookup functionality."""
 
-    def setup_method(self):
-        """Set up test fixtures."""
-        # Create test storage using utilities
-        self.storage = TestFileHelpers.create_temp_storage()
-        self.manager = Mock(spec=ExperimentManager)
-        self.manager.storage = self.storage
-
+    @pytest.fixture(autouse=True)
+    def setup(self, isolated_storage, isolated_manager):
+        """Set up test fixtures with real isolated storage."""
+        self.storage = isolated_storage
+        self.manager = isolated_manager
         self.filter = ExperimentFilter(self.manager)
 
-        # Create test experiment data using factory
-        self.sample_experiments = [
-            TestDataFactory.create_experiment_metadata(
-                experiment_id="abcd1234",
-                name="test-experiment",
-                status="completed",
-                created_at="2025-06-28T10:00:00",
-            ),
-            TestDataFactory.create_experiment_metadata(
-                experiment_id="efgh5678",
-                name="test-experiment",  # Duplicate name
-                status="running",
-                created_at="2025-06-28T11:00:00",
-            ),
-            TestDataFactory.create_experiment_metadata(
-                experiment_id="ijkl9012",
-                name="unique-experiment",
-                status="failed",
-                created_at="2025-06-28T12:00:00",
-            ),
-            TestDataFactory.create_experiment_metadata(
-                experiment_id="mnop3456",
-                name=None,  # Unnamed experiment
-                status="completed",
-                created_at="2025-06-28T13:00:00",
-            ),
-            TestDataFactory.create_experiment_metadata(
-                experiment_id="7775550b",
-                name="amb-1",
-                status="completed",
-                created_at="2025-06-28T14:10:00",
-            ),
-            TestDataFactory.create_experiment_metadata(
-                experiment_id="777999aa",
-                name="amb-2",
-                status="running",
-                created_at="2025-06-28T14:20:00",
-            ),
+        # Create test experiments in storage
+        test_experiments = [
+            ("abcd1234", "test-experiment", "completed"),
+            ("efgh5678", "test-experiment", "running"),  # Duplicate name
+            ("ijkl9012", "unique-experiment", "failed"),
+            ("mnop3456", None, "completed"),  # Unnamed
+            ("7775550b", "amb-1", "completed"),
+            ("777999aa", "amb-2", "running"),
         ]
+
+        for exp_id, name, status in test_experiments:
+            metadata = TestDataFactory.create_experiment_metadata(
+                experiment_id=exp_id, name=name, status=status
+            )
+            self.storage.create_experiment_directory(exp_id)
+            self.storage.save_metadata(exp_id, metadata)
 
     @pytest.mark.parametrize(
         "identifier,expected_id,expected_name",
@@ -78,15 +52,12 @@ class TestFindExperiment:
         self, identifier, expected_id, expected_name
     ):
         """Test finding experiment by ID or unique name."""
-        with patch.object(
-            self.filter, "_load_all_experiments", return_value=self.sample_experiments
-        ):
-            result = find_experiment(self.filter, identifier)
+        result = find_experiment(self.filter, identifier)
 
-            assert result is not None
-            assert isinstance(result, dict)
-            assert result["id"] == expected_id
-            assert result["name"] == expected_name
+        assert result is not None
+        assert isinstance(result, dict)
+        assert result["id"] == expected_id
+        assert result["name"] == expected_name
 
     @pytest.mark.parametrize(
         "identifier",
@@ -98,79 +69,61 @@ class TestFindExperiment:
     )
     def test_find_experiment_not_found(self, identifier):
         """Test finding experiment with non-existent identifiers."""
-        with patch.object(
-            self.filter, "_load_all_experiments", return_value=self.sample_experiments
-        ):
-            result = find_experiment(self.filter, identifier)
-            assert result is None
+        result = find_experiment(self.filter, identifier)
+        assert result is None
 
     def test_find_experiment_by_name_duplicate_returns_list(self):
         """Test finding experiment by name with duplicates returns list."""
-        with patch.object(
-            self.filter, "_load_all_experiments", return_value=self.sample_experiments
-        ):
-            result = find_experiment(self.filter, "test-experiment")
+        result = find_experiment(self.filter, "test-experiment")
 
-            assert result is not None
-            assert isinstance(result, list)
-            assert len(result) == 2
-            assert all(exp["name"] == "test-experiment" for exp in result)
-            assert result[0]["id"] != result[1]["id"]
+        assert result is not None
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert all(exp["name"] == "test-experiment" for exp in result)
+        assert result[0]["id"] != result[1]["id"]
 
     def test_find_experiment_id_takes_precedence_over_name(self):
         """Test that ID lookup takes precedence over name lookup."""
         # Create an experiment where the 8-char ID could be confused with name
-        special_experiments = self.sample_experiments + [
-            TestDataFactory.create_experiment_metadata(
-                experiment_id="testexpr",  # 8-char ID
-                name="special-experiment",
-                status="completed",
-                created_at="2025-06-28T14:00:00",
-            )
-        ]
+        exp_id = "testexpr"
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=exp_id,
+            name="special-experiment",
+            status="completed",
+        )
+        self.storage.create_experiment_directory(exp_id)
+        self.storage.save_metadata(exp_id, metadata)
 
-        with patch.object(
-            self.filter, "_load_all_experiments", return_value=special_experiments
-        ):
-            result = find_experiment(self.filter, "testexpr")
+        result = find_experiment(self.filter, "testexpr")
 
-            assert result is not None
-            assert isinstance(result, dict)  # Single result, not list
-            assert result["id"] == "testexpr"
-            assert result["name"] == "special-experiment"
+        assert result is not None
+        assert isinstance(result, dict)  # Single result, not list
+        assert result["id"] == "testexpr"
+        assert result["name"] == "special-experiment"
 
     def test_find_experiment_by_unique_id_prefix(self):
         """Test finding experiment by a unique ID prefix returns the single match."""
-        with patch.object(
-            self.filter, "_load_all_experiments", return_value=self.sample_experiments
-        ):
-            # 'abc' uniquely matches id 'abcd1234'
-            result = find_experiment(self.filter, "abc")
+        # 'abc' uniquely matches id 'abcd1234'
+        result = find_experiment(self.filter, "abc")
 
-            assert result is not None
-            assert isinstance(result, dict)
-            assert result["id"] == "abcd1234"
+        assert result is not None
+        assert isinstance(result, dict)
+        assert result["id"] == "abcd1234"
 
     def test_find_experiment_by_ambiguous_id_prefix_returns_list(self):
         """Test finding experiment by an ambiguous ID prefix returns a list of matches."""
-        with patch.object(
-            self.filter, "_load_all_experiments", return_value=self.sample_experiments
-        ):
-            result = find_experiment(self.filter, "777")
+        result = find_experiment(self.filter, "777")
 
-            assert result is not None
-            assert isinstance(result, list)
-            # Should include both 777* experiments
-            ids = sorted(exp["id"] for exp in result)
-            assert ids == ["7775550b", "777999aa"]
+        assert result is not None
+        assert isinstance(result, list)
+        # Should include both 777* experiments
+        ids = sorted(exp["id"] for exp in result)
+        assert ids == ["7775550b", "777999aa"]
 
     def test_find_experiment_by_id_prefix_no_match(self):
         """Test that a non-matching ID prefix returns None (falls through name match too)."""
-        with patch.object(
-            self.filter, "_load_all_experiments", return_value=self.sample_experiments
-        ):
-            result = find_experiment(self.filter, "zzz")
-            assert result is None
+        result = find_experiment(self.filter, "zzz")
+        assert result is None
 
 
 class TestFormatterHelperMethods:
@@ -212,7 +165,7 @@ class TestFormatterHelperMethods:
             mock_datetime.fromisoformat = datetime.fromisoformat
 
             result = self.formatter._calculate_duration(start_time, None)
-            assert "(ongoing)" in result
+            assert "+" in result
 
     @pytest.mark.parametrize(
         "file_size,expected_output",

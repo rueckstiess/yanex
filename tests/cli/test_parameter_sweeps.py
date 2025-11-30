@@ -71,7 +71,7 @@ class TestCLIParameterSweeps:
             ],
         )
         assert result.exit_code == 0
-        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "✓ Sweep detected: expanding into 2 experiments" in result.output
         assert "Staged 2 sweep experiments" in result.output
         assert "sweep-test-sweep-001" in result.output or "IDs:" in result.output
 
@@ -94,7 +94,7 @@ class TestCLIParameterSweeps:
             ],
         )
         assert result.exit_code == 0
-        assert "Parameter sweep detected: expanding into 4 experiments" in result.output
+        assert "✓ Sweep detected: expanding into 4 experiments" in result.output
         assert "Staged 4 sweep experiments" in result.output
 
     def test_mixed_sweep_and_regular_parameters(self, tmp_path, cli_runner):
@@ -121,7 +121,7 @@ class TestCLIParameterSweeps:
             ],
         )
         assert result.exit_code == 0
-        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "✓ Sweep detected: expanding into 2 experiments" in result.output
         assert "Staged 2 sweep experiments" in result.output
 
     def test_nested_parameter_sweep(self, tmp_path, cli_runner):
@@ -146,7 +146,7 @@ class TestCLIParameterSweeps:
             ],
         )
         assert result.exit_code == 0
-        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "✓ Sweep detected: expanding into 2 experiments" in result.output
         assert "Staged 2 sweep experiments" in result.output
 
     def test_regular_parameters_without_sweeps(self, tmp_path, cli_runner):
@@ -230,7 +230,7 @@ class TestCLIParameterSweeps:
             ],
         )
         assert result.exit_code == 0
-        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "✓ Sweep detected: expanding into 2 experiments" in result.output
         assert "Staged 2 sweep experiments" in result.output
 
         # Check that parameter values are included in names
@@ -254,7 +254,7 @@ class TestCLIParameterSweeps:
             ],
         )
         assert result.exit_code == 0
-        assert "Parameter sweep detected: expanding into 2 experiments" in result.output
+        assert "✓ Sweep detected: expanding into 2 experiments" in result.output
         assert "Staged 2 sweep experiments" in result.output
 
     @pytest.mark.parametrize(
@@ -298,7 +298,7 @@ class TestCLIParameterSweeps:
         result = cli_runner.invoke(cli, command)
         assert result.exit_code == 0
         assert (
-            f"Parameter sweep detected: expanding into {expected_count} experiments"
+            f"✓ Sweep detected: expanding into {expected_count} experiments"
             in result.output
         )
         assert f"Staged {expected_count} sweep experiments" in result.output

@@ -59,3 +59,4 @@ Thumbs.db
 # Yanex experiment directories
 experiments/
 archived_experiments/
+artifacts/

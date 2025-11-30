@@ -4,7 +4,6 @@ Tests for parameter sweep naming functionality.
 
 import pytest
 
-from tests.test_utils import TestDataFactory
 from yanex.cli.commands.run import _generate_sweep_experiment_name
 
 
@@ -12,216 +11,327 @@ class TestSweepExperimentNaming:
     """Test sweep experiment naming functionality."""
 
     @pytest.mark.parametrize(
-        "base_name,config,expected_name",
+        "base_name,config,sweep_param_paths,dependency_slots,expected_name",
         [
-            # With base name - config is ignored, name returned as-is
-            ("train-model", {"lr": 0.001}, "train-model"),
-            ("model", {"batch_size": 32}, "model"),
-            (
-                "train-model",
-                {"lr": 0.001, "batch_size": 32, "epochs": 100},
-                "train-model",
-            ),
-            ("test", {"epochs": 100, "batch_size": 32, "hidden_dim": 512}, "test"),
+            # No sweep params or dependencies - name unchanged
+            ("train-model", {"lr": 0.001}, None, None, "train-model"),
+            ("model", {"batch_size": 32}, [], None, "model"),
+            ("test", {"epochs": 100}, None, None, "test"),
             # No base name - defaults to "sweep"
-            (None, {"lr": 0.001, "momentum": 0.9}, "sweep"),
-            (None, {"batch_size": 16}, "sweep"),
-            # Config parameters don't affect name
+            (None, {"lr": 0.001}, None, None, "sweep"),
+            # Single sweep parameter
+            ("model", {"lr": 0.01}, ["lr"], None, "model-0-01"),
+            ("train", {"batch_size": 32}, ["batch_size"], None, "train-32"),
+            (None, {"lr": 0.001}, ["lr"], None, "sweep-0-001"),
+            # Multiple sweep parameters
             (
                 "model",
-                {"use_dropout": True, "use_batch_norm": False, "lr": 0.01},
-                "model",
+                {"lr": 0.01, "batch_size": 32},
+                ["lr", "batch_size"],
+                None,
+                "model-0-01-32",
             ),
             (
                 "train",
-                {"model_type": "resnet50", "optimizer": "adam", "lr": 0.001},
-                "train",
+                {"lr": 0.1, "momentum": 0.9, "epochs": 100},
+                ["lr", "momentum"],
+                None,
+                "train-0-1-0-9",
             ),
-            ("test", {"lr": 1.0, "momentum": 0.0}, "test"),
-            # Empty config
-            ("test", {}, "test"),
-            (None, {}, "sweep"),
+            # Dependency sweep (no params) - dependency_slots is now a dict
+            ("model", {}, None, {"dep1": "abc12345"}, "model-dep1-abc12345"),
+            (None, {}, None, {"dep1": "def67890"}, "sweep-dep1-def67890"),
+            # Dependency + parameter sweep
+            (
+                "model",
+                {"lr": 0.01},
+                ["lr"],
+                {"dep1": "abc12345"},
+                "model-dep1-abc12345-0-01",
+            ),
+            (
+                "train",
+                {"lr": 0.1, "batch_size": 32},
+                ["lr", "batch_size"],
+                {"dep1": "xyz98765"},
+                "train-dep1-xyz98765-0-1-32",
+            ),
+            # Multiple dependencies
+            (
+                "model",
+                {"lr": 0.01},
+                ["lr"],
+                {"data": "abc12345", "model": "def67890"},
+                "model-data-abc12345-model-def67890-0-01",
+            ),
         ],
     )
-    def test_basic_naming_patterns(self, base_name, config, expected_name):
-        """Test basic parameter sweep naming patterns - names are returned as-is."""
-        result = _generate_sweep_experiment_name(base_name, config)
+    def test_basic_naming_patterns(
+        self, base_name, config, sweep_param_paths, dependency_slots, expected_name
+    ):
+        """Test basic parameter sweep naming patterns."""
+        result = _generate_sweep_experiment_name(
+            base_name, config, sweep_param_paths, dependency_slots
+        )
         assert result == expected_name
 
     def test_nested_parameter_naming(self):
-        """Test naming with nested parameters - config is ignored."""
+        """Test naming with nested parameters - only leaf values used."""
         config = {
             "model": {"lr": 0.01, "hidden_size": 128},
             "training": {"epochs": 100},
         }
-        result = _generate_sweep_experiment_name("test", config)
-        # Name is returned as-is, config doesn't affect it
-        assert result == "test"
+        # Only sweep on model.lr
+        sweep_paths = ["model.lr"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-0-01"
+
+        # Sweep on multiple nested params
+        sweep_paths = ["model.lr", "training.epochs"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-0-01-100"
 
     def test_scientific_notation_formatting(self):
-        """Test that scientific notation in config doesn't affect naming."""
+        """Test that scientific notation is formatted correctly."""
         config = {"lr": 1e-4, "weight_decay": 1e-5}
-        result = _generate_sweep_experiment_name("model", config)
-        # Name is returned as-is
-        assert result == "model"
+        sweep_paths = ["lr", "weight_decay"]
+        result = _generate_sweep_experiment_name("model", config, sweep_paths)
+        # Scientific notation converted to string then sanitized
+        assert result == "model-0-0001-1e-05"
 
-    def test_parameter_order_consistency(self):
-        """Test that naming is consistent (config doesn't affect result)."""
-        config = {"z_param": 1, "a_param": 2, "m_param": 3}
+    def test_string_parameter_formatting(self):
+        """Test string parameter formatting."""
+        config = {"sequence_order": "ORDERED"}
+        sweep_paths = ["sequence_order"]
+        result = _generate_sweep_experiment_name("model", config, sweep_paths)
+        # String converted to lowercase
+        assert result == "model-ordered"
 
-        name1 = _generate_sweep_experiment_name("test", config)
-        name2 = _generate_sweep_experiment_name("test", config)
+        config = {"sequence_order": "SHUFFLED"}
+        result = _generate_sweep_experiment_name("model", config, sweep_paths)
+        assert result == "model-shuffled"
 
-        # Both should return the same base name
-        assert name1 == name2 == "test"
+    def test_special_characters_in_values(self):
+        """Test that special characters are replaced with dashes."""
+        config = {"dataset": "COCO 2017"}
+        sweep_paths = ["dataset"]
+        result = _generate_sweep_experiment_name("model", config, sweep_paths)
+        # Spaces and special chars replaced with dash, lowercase
+        assert result == "model-coco-2017"
 
-    def test_naming_with_factory_generated_configs(self):
-        """Test naming with configurations generated by TestDataFactory."""
-        config = TestDataFactory.create_experiment_config(config_type="ml_training")
-        result = _generate_sweep_experiment_name("test", config)
-        # Config doesn't affect name
-        assert result == "test"
-
-    def test_naming_with_complex_ml_config(self):
-        """Test naming with complex ML configuration - config is ignored."""
-        ml_config = TestDataFactory.create_experiment_config(
-            config_type="ml_training",
-            dropout_rate=0.1,
-            weight_decay=1e-5,
-        )
-
-        result = _generate_sweep_experiment_name("ml-experiment", ml_config)
-        # Name is returned as-is
-        assert result == "ml-experiment"
-
-    def test_naming_edge_cases(self):
-        """Test edge cases - config values don't affect naming."""
-        edge_cases = [
-            {"lr": 0, "momentum": 0.0},
-            {"bias": -0.1, "offset": -10},
-            {"max_tokens": 1000000, "vocab_size": 50000},
-        ]
-
-        for config in edge_cases:
-            result = _generate_sweep_experiment_name("edge-test", config)
-            # Name is always returned as-is
-            assert result == "edge-test"
-
-    def test_naming_with_special_characters_in_values(self):
-        """Test that special characters in config don't affect naming."""
-        config = {
-            "model_path": "/path/to/model",
-            "dataset": "dataset-v2.1",
-            "tag": "experiment_2024",
-        }
-
-        result = _generate_sweep_experiment_name("special", config)
-        # Config is ignored
-        assert result == "special"
-
-    @pytest.mark.parametrize(
-        "base_name_pattern",
-        [
-            "simple-name",
-            "name_with_underscores",
-            "name-with-many-dashes",
-            "CamelCaseName",
-            "name123",
-        ],
-    )
-    def test_naming_with_various_base_name_patterns(self, base_name_pattern):
-        """Test that various base name patterns are preserved exactly."""
-        config = {"lr": 0.01, "epochs": 10}
-
-        result = _generate_sweep_experiment_name(base_name_pattern, config)
-        # Base name is returned exactly as provided
-        assert result == base_name_pattern
-
-    def test_sweep_vs_constant_parameter_filtering(self):
-        """Test that sweep_param_paths parameter is ignored (backward compatibility)."""
-        config = {
-            "lr": 0.01,
-            "batch_size": 32,
-            "epochs": 100,
-        }
-
-        sweep_paths = ["lr"]
+        config = {"model_type": "ResNet-50"}
+        sweep_paths = ["model_type"]
         result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-resnet-50"
 
-        # Sweep paths are ignored, name is returned as-is
+    def test_list_parameter_formatting(self):
+        """Test list parameter formatting."""
+        config = {"model_types": ["cnn", "rnn"]}
+        sweep_paths = ["model_types"]
+        result = _generate_sweep_experiment_name("model", config, sweep_paths)
+        # List elements joined with dash
+        assert result == "model-cnn-rnn"
+
+        config = {"layers": [128, 64, 32]}
+        sweep_paths = ["layers"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-128-64-32"
+
+    def test_dict_parameter_formatting(self):
+        """Test dict parameter formatting."""
+        config = {"optimizer": {"type": "adam", "lr": 0.01}}
+        sweep_paths = ["optimizer"]
+        result = _generate_sweep_experiment_name("model", config, sweep_paths)
+        # Dict keys and values interleaved
+        assert result == "model-type-adam-lr-0-01"
+
+        config = {"config": {"a": 1, "b": 2}}
+        sweep_paths = ["config"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-a-1-b-2"
+
+    def test_boolean_parameter_formatting(self):
+        """Test boolean parameter formatting."""
+        config = {"use_dropout": True}
+        sweep_paths = ["use_dropout"]
+        result = _generate_sweep_experiment_name("model", config, sweep_paths)
+        assert result == "model-true"
+
+        config = {"use_batch_norm": False}
+        sweep_paths = ["use_batch_norm"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-false"
+
+    def test_zero_and_negative_values(self):
+        """Test zero and negative value formatting."""
+        config = {"lr": 0, "momentum": -0.1}
+        sweep_paths = ["lr", "momentum"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-0-0-1"
+
+    def test_very_long_names(self):
+        """Test that very long names are not truncated."""
+        config = {
+            "lr": 0.001,
+            "batch_size": 32,
+            "hidden_size": 512,
+            "dropout": 0.1,
+        }
+        sweep_paths = ["lr", "batch_size", "hidden_size", "dropout"]
+        result = _generate_sweep_experiment_name("model", config, sweep_paths)
+        # All values included, no truncation
+        assert result == "model-0-001-32-512-0-1"
+
+    def test_base_name_with_spaces(self):
+        """Test base name with spaces is preserved."""
+        config = {"lr": 0.01}
+        sweep_paths = ["lr"]
+        # Note: base name is not sanitized, only parameter values are
+        result = _generate_sweep_experiment_name("Model Training", config, sweep_paths)
+        assert result == "Model Training-0-01"
+
+    def test_multiple_dependency_sweep(self):
+        """Test naming with dependency sweep."""
+        config = {}
+        # Different dependency slot combinations
+        deps_1 = {"dep1": "abc12345"}
+        deps_2 = {"dep1": "def67890"}
+        deps_both = {"data": "abc12345", "model": "def67890"}
+
+        result_1 = _generate_sweep_experiment_name("model", config, None, deps_1)
+        assert result_1 == "model-dep1-abc12345"
+
+        result_2 = _generate_sweep_experiment_name("model", config, None, deps_2)
+        assert result_2 == "model-dep1-def67890"
+
+        # Test with multiple dependencies (one from each slot)
+        result_both = _generate_sweep_experiment_name("model", config, None, deps_both)
+        assert result_both == "model-data-abc12345-model-def67890"
+
+    def test_cartesian_sweep(self):
+        """Test naming for cartesian product sweep (dependency × parameter)."""
+        config_1 = {"lr": 0.01}
+        config_2 = {"lr": 0.1}
+        sweep_paths = ["lr"]
+
+        deps_1 = {"dep1": "abc12345"}
+        deps_2 = {"dep1": "def67890"}
+        deps_both = {"data": "abc12345", "model": "def67890"}
+
+        # Should generate names with slot-dep_id pairs and parameter values
+        result_1_1 = _generate_sweep_experiment_name(
+            "model", config_1, sweep_paths, deps_1
+        )
+        assert result_1_1 == "model-dep1-abc12345-0-01"
+
+        result_1_2 = _generate_sweep_experiment_name(
+            "model", config_2, sweep_paths, deps_1
+        )
+        assert result_1_2 == "model-dep1-abc12345-0-1"
+
+        result_2_1 = _generate_sweep_experiment_name(
+            "model", config_1, sweep_paths, deps_2
+        )
+        assert result_2_1 == "model-dep1-def67890-0-01"
+
+        result_2_2 = _generate_sweep_experiment_name(
+            "model", config_2, sweep_paths, deps_2
+        )
+        assert result_2_2 == "model-dep1-def67890-0-1"
+
+        # Test with multiple dependencies (cross-product result)
+        result_both = _generate_sweep_experiment_name(
+            "model", config_1, sweep_paths, deps_both
+        )
+        assert result_both == "model-data-abc12345-model-def67890-0-01"
+
+    def test_empty_sweep_paths(self):
+        """Test behavior with empty sweep paths list."""
+        config = {"lr": 0.01, "batch_size": 32}
+        result = _generate_sweep_experiment_name("test", config, [])
+        # No sweep params, name unchanged
         assert result == "test"
 
-    def test_sweep_vs_constant_parameter_filtering_multiple_sweeps(self):
-        """Test that sweep filtering parameter is ignored."""
+    def test_sweep_parameter_filtering(self):
+        """Test that only sweep parameters are included in name."""
         config = {
             "lr": 0.01,
-            "momentum": 0.9,
             "batch_size": 32,
             "epochs": 100,
             "model": "resnet",
         }
+        # Only lr is sweep parameter
+        sweep_paths = ["lr"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-0-01"
 
-        sweep_paths = ["lr", "momentum"]
-        result = _generate_sweep_experiment_name("ml", config, sweep_paths)
+        # lr and batch_size are sweep parameters
+        sweep_paths = ["lr", "batch_size"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-0-01-32"
 
-        # Name is returned as-is regardless of sweep_paths
-        assert result == "ml"
+    def test_no_base_name_with_sweeps(self):
+        """Test default 'sweep' name with parameter sweeps."""
+        config = {"lr": 0.01}
+        sweep_paths = ["lr"]
+        result = _generate_sweep_experiment_name(None, config, sweep_paths)
+        assert result == "sweep-0-01"
 
-    def test_sweep_vs_constant_parameter_filtering_nested(self):
-        """Test that nested sweep paths are ignored."""
+    def test_no_base_name_with_dependency(self):
+        """Test default 'sweep' name with dependency sweep."""
+        config = {}
+        deps = {"dep1": "abc12345"}
+        result = _generate_sweep_experiment_name(None, config, None, deps)
+        assert result == "sweep-dep1-abc12345"
+
+        # Test with multiple dependencies
+        deps_multi = {"data": "abc12345", "model": "def67890"}
+        result_multi = _generate_sweep_experiment_name(None, config, None, deps_multi)
+        assert result_multi == "sweep-data-abc12345-model-def67890"
+
+    def test_complex_nested_structure(self):
+        """Test with complex nested parameter structure."""
         config = {
             "model": {
-                "lr": 0.01,
-                "architecture": "resnet",
-                "layers": 18,
-            },
-            "training": {
-                "epochs": 100,
-                "batch_size": 32,
-            },
-            "optimizer": "adam",
+                "architecture": {
+                    "type": "transformer",
+                    "layers": 12,
+                },
+                "dropout": 0.1,
+            }
         }
-
-        sweep_paths = ["model.lr", "training.batch_size"]
-        result = _generate_sweep_experiment_name("deep", config, sweep_paths)
-
-        # Name is returned as-is
-        assert result == "deep"
-
-    def test_sweep_parameter_filtering_backwards_compatibility(self):
-        """Test backwards compatibility - config doesn't affect result."""
-        config = {
-            "lr": 0.01,
-            "batch_size": 32,
-            "epochs": 100,
-        }
-
-        result = _generate_sweep_experiment_name("test", config, None)
-
-        # Name is returned as-is (config ignored)
-        assert result == "test"
-
-    def test_sweep_parameter_filtering_empty_sweep_paths(self):
-        """Test behavior with empty sweep paths list."""
-        config = {
-            "lr": 0.01,
-            "batch_size": 32,
-        }
-
-        result = _generate_sweep_experiment_name("test", config, [])
-
-        # Name is returned as-is
-        assert result == "test"
-
-    def test_sweep_parameter_filtering_no_matching_paths(self):
-        """Test behavior when sweep paths don't match config."""
-        config = {
-            "lr": 0.01,
-            "batch_size": 32,
-        }
-
-        sweep_paths = ["nonexistent", "another_missing"]
+        sweep_paths = ["model.architecture.type", "model.dropout"]
         result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        assert result == "test-transformer-0-1"
 
-        # Name is returned as-is
-        assert result == "test"
+    def test_underscore_and_dash_handling(self):
+        """Test that underscores and dashes in values are preserved."""
+        config = {"model_type": "bert_base"}
+        sweep_paths = ["model_type"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        # Underscores are special chars, replaced with dash
+        assert result == "test-bert-base"
+
+    def test_unicode_characters(self):
+        """Test that unicode characters are handled."""
+        config = {"model": "model_α"}
+        sweep_paths = ["model"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        # Non-alphanumeric replaced with dash
+        assert result == "test-model"
+
+    def test_multiple_consecutive_special_chars(self):
+        """Test that multiple consecutive special chars are collapsed."""
+        config = {"path": "/path//to///file"}
+        sweep_paths = ["path"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        # Multiple special chars replaced with single dash
+        assert result == "test-path-to-file"
+
+    def test_leading_trailing_special_chars(self):
+        """Test that leading/trailing special chars are removed."""
+        config = {"tag": "_test_"}
+        sweep_paths = ["tag"]
+        result = _generate_sweep_experiment_name("test", config, sweep_paths)
+        # Leading/trailing dashes removed
+        assert result == "test-test"

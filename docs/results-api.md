@@ -282,7 +282,76 @@ print(exp.script_path)  # Path object or None
 print(exp.archived)     # True/False
 print(exp.experiment_dir) # Path to experiment directory
 print(exp.artifacts_dir)  # Path to artifacts directory
+
+# Dependencies
+print(exp.has_dependencies) # True/False
+print(exp.dependency_ids)   # ["abc123", "def456"]
 ```
+
+### Dependency Properties
+
+#### `has_dependencies`
+
+Boolean indicating if experiment has any dependencies.
+
+```python
+if exp.has_dependencies:
+    print("This experiment depends on other experiments")
+```
+
+#### `dependency_ids`
+
+List of experiment IDs that this experiment depends on.
+
+```python
+dep_ids = exp.dependency_ids
+print(f"Depends on: {dep_ids}")  # ["abc123", "def456"]
+```
+
+#### `get_dependencies(transitive=False, include_self=False)`
+
+Get dependency experiments as `Experiment` objects.
+
+```python
+# Get direct dependencies
+deps = exp.get_dependencies()
+for dep in deps:
+    print(f"{dep.id}: {dep.name} ({dep.status})")
+
+# Get all transitive dependencies
+all_deps = exp.get_dependencies(transitive=True)
+
+# Include current experiment in results
+pipeline = exp.get_dependencies(transitive=True, include_self=True)
+```
+
+**Parameters:**
+- `transitive` (bool): If True, include transitive dependencies recursively (default: False)
+- `include_self` (bool): If True, include current experiment in results (default: False)
+
+**Returns:**
+- `list[Experiment]`: List of dependency Experiment objects in topological order
+
+**Example Use Cases:**
+
+```python
+# Load artifacts from dependencies
+deps = exp.get_dependencies()
+if deps:
+    preprocessed_data = deps[0].load_artifact("data.pkl")
+
+# List artifacts across all dependencies
+for dep in exp.get_dependencies(transitive=True):
+    print(f"{dep.id} artifacts: {dep.list_artifacts()}")
+
+# Analyze full pipeline
+pipeline = exp.get_dependencies(transitive=True, include_self=True)
+for i, stage in enumerate(pipeline):
+    metrics = stage.get_metrics()
+    print(f"Stage {i}: {stage.name} - {metrics}")
+```
+
+**See Also:** [Dependencies Guide](dependencies.md) for complete dependency patterns.
 
 ### Data Access Methods
 

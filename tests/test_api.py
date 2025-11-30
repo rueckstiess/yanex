@@ -5,6 +5,7 @@ This file replaces test_api.py with equivalent functionality using the new test 
 All test logic and coverage is preserved while reducing setup duplication.
 """
 
+import os
 import subprocess
 import threading
 import time
@@ -412,6 +413,10 @@ class TestManualExperimentControl:
 
     def setup_method(self):
         """Set up test experiment context using utilities."""
+        # Save and clear YANEX_CLI_ACTIVE to ensure non-CLI context
+        # (prevents sys.exit() being called instead of raising exception)
+        self._saved_cli_active = os.environ.pop("YANEX_CLI_ACTIVE", None)
+
         # NEW: Much cleaner setup
         self.manager = create_isolated_manager()
         self.experiment_id = "control123"
@@ -431,6 +436,9 @@ class TestManualExperimentControl:
     def teardown_method(self):
         """Clean up after test."""
         yanex._clear_current_experiment_id()
+        # Restore YANEX_CLI_ACTIVE if it was set
+        if self._saved_cli_active is not None:
+            os.environ["YANEX_CLI_ACTIVE"] = self._saved_cli_active
 
     @patch("yanex.api._get_experiment_manager")
     def test_completed(self, mock_get_manager):
@@ -1164,3 +1172,200 @@ class TestGetCliArgs:
         monkeypatch.delenv("YANEX_EXPERIMENT_ID", raising=False)
         monkeypatch.delenv("YANEX_CLI_ACTIVE", raising=False)
         monkeypatch.delenv("YANEX_CLI_ARGS", raising=False)
+
+
+class TestListArtifactsTransitive:
+    """Test list_artifacts() with transitive flag for dependency traversal."""
+
+    def setup_method(self):
+        """Set up test experiment context."""
+        # Clean API state before test
+        if hasattr(yanex.api._local, "experiment_id"):
+            del yanex.api._local.experiment_id
+        yanex.api._tracked_params = None
+        yanex.api._atexit_registered = False
+
+    def teardown_method(self):
+        """Clean up after test."""
+        yanex._clear_current_experiment_id()
+        # Clean API state after test
+        if hasattr(yanex.api._local, "experiment_id"):
+            del yanex.api._local.experiment_id
+        yanex.api._tracked_params = None
+        yanex.api._atexit_registered = False
+
+    def test_list_artifacts_default_unchanged(self, tmp_path):
+        """Test that list_artifacts() without args still returns list."""
+        manager = create_isolated_manager(tmp_path)
+        experiment_id = "listtest"
+
+        # Create experiment directory with artifacts
+        exp_dir = manager.storage.experiments_dir / experiment_id
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        artifacts_dir = exp_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create some artifacts
+        (artifacts_dir / "model.pt").write_text("model data")
+        (artifacts_dir / "metrics.json").write_text("{}")
+
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=experiment_id, status="running"
+        )
+        manager.storage.save_metadata(experiment_id, metadata)
+
+        yanex._set_current_experiment_id(experiment_id)
+
+        with patch("yanex.api._get_experiment_manager") as mock_get_manager:
+            mock_get_manager.return_value = manager
+
+            # Default call should return list
+            artifacts = yanex.list_artifacts()
+            assert isinstance(artifacts, list)
+            assert "model.pt" in artifacts
+            assert "metrics.json" in artifacts
+
+    def test_list_artifacts_transitive_standalone_mode(self, tmp_path):
+        """Test list_artifacts(transitive=True) in standalone mode returns dict with 'local' key."""
+        # Ensure standalone mode
+        yanex._clear_current_experiment_id()
+
+        # Create local artifacts directory
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        (artifacts_dir / "local_file.txt").write_text("local content")
+
+        # Change to tmp_path so standalone mode uses it
+        import os
+
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+
+        try:
+            result = yanex.list_artifacts(transitive=True)
+            assert isinstance(result, dict)
+            assert "local" in result
+            assert isinstance(result["local"], list)
+            assert "local_file.txt" in result["local"]
+        finally:
+            os.chdir(original_cwd)
+
+    def test_list_artifacts_transitive_no_dependencies(self, tmp_path):
+        """Test list_artifacts(transitive=True) with no dependencies returns single experiment."""
+        manager = create_isolated_manager(tmp_path)
+        experiment_id = "nodeps01"
+
+        # Create experiment directory with artifacts
+        exp_dir = manager.storage.experiments_dir / experiment_id
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        artifacts_dir = exp_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create some artifacts
+        (artifacts_dir / "output.csv").write_text("data")
+
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=experiment_id, status="running"
+        )
+        manager.storage.save_metadata(experiment_id, metadata)
+
+        yanex._set_current_experiment_id(experiment_id)
+
+        with patch("yanex.api._get_experiment_manager") as mock_get_manager:
+            mock_get_manager.return_value = manager
+
+            result = yanex.list_artifacts(transitive=True)
+            assert isinstance(result, dict)
+            assert experiment_id in result
+            assert "output.csv" in result[experiment_id]
+
+    def test_list_artifacts_transitive_with_dependencies(self, tmp_path):
+        """Test list_artifacts(transitive=True) includes artifacts from all dependencies."""
+        manager = create_isolated_manager(tmp_path)
+
+        # Create dependency chain: exp1 <- exp2 <- exp3
+        # exp1: root dependency (completed)
+        exp1_id = "dep1root"
+        exp1_dir = manager.storage.experiments_dir / exp1_id
+        exp1_dir.mkdir(parents=True, exist_ok=True)
+        (exp1_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+        (exp1_dir / "artifacts" / "data.csv").write_text("raw data")
+        (exp1_dir / "artifacts" / "config.json").write_text("{}")
+        metadata1 = TestDataFactory.create_experiment_metadata(
+            experiment_id=exp1_id, status="completed"
+        )
+        manager.storage.save_metadata(exp1_id, metadata1)
+
+        # exp2: depends on exp1 (completed)
+        exp2_id = "dep2midd"
+        exp2_dir = manager.storage.experiments_dir / exp2_id
+        exp2_dir.mkdir(parents=True, exist_ok=True)
+        (exp2_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+        (exp2_dir / "artifacts" / "model.pt").write_text("model weights")
+        metadata2 = TestDataFactory.create_experiment_metadata(
+            experiment_id=exp2_id, status="completed"
+        )
+        manager.storage.save_metadata(exp2_id, metadata2)
+        # Save dependency on exp1
+        manager.storage.dependency_storage.save_dependencies(exp2_id, {"dep1": exp1_id})
+
+        # exp3: depends on exp2 (current, running)
+        exp3_id = "dep3curr"
+        exp3_dir = manager.storage.experiments_dir / exp3_id
+        exp3_dir.mkdir(parents=True, exist_ok=True)
+        (exp3_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+        (exp3_dir / "artifacts" / "results.json").write_text('{"accuracy": 0.95}')
+        metadata3 = TestDataFactory.create_experiment_metadata(
+            experiment_id=exp3_id, status="running"
+        )
+        manager.storage.save_metadata(exp3_id, metadata3)
+        # Save dependency on exp2
+        manager.storage.dependency_storage.save_dependencies(exp3_id, {"dep1": exp2_id})
+
+        yanex._set_current_experiment_id(exp3_id)
+
+        with patch("yanex.api._get_experiment_manager") as mock_get_manager:
+            mock_get_manager.return_value = manager
+
+            result = yanex.list_artifacts(transitive=True)
+
+            # Should be a dict with all three experiments
+            assert isinstance(result, dict)
+            assert len(result) == 3
+
+            # Check each experiment's artifacts
+            assert exp1_id in result
+            assert "data.csv" in result[exp1_id]
+            assert "config.json" in result[exp1_id]
+
+            assert exp2_id in result
+            assert "model.pt" in result[exp2_id]
+
+            assert exp3_id in result
+            assert "results.json" in result[exp3_id]
+
+    def test_list_artifacts_transitive_empty_artifacts(self, tmp_path):
+        """Test list_artifacts(transitive=True) handles experiments with no artifacts."""
+        manager = create_isolated_manager(tmp_path)
+
+        # Create experiment with no artifacts
+        experiment_id = "emptyart"
+        exp_dir = manager.storage.experiments_dir / experiment_id
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        (exp_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+        # No artifacts created
+
+        metadata = TestDataFactory.create_experiment_metadata(
+            experiment_id=experiment_id, status="running"
+        )
+        manager.storage.save_metadata(experiment_id, metadata)
+
+        yanex._set_current_experiment_id(experiment_id)
+
+        with patch("yanex.api._get_experiment_manager") as mock_get_manager:
+            mock_get_manager.return_value = manager
+
+            result = yanex.list_artifacts(transitive=True)
+            assert isinstance(result, dict)
+            assert experiment_id in result
+            assert result[experiment_id] == []
