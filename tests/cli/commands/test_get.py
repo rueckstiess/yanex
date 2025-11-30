@@ -683,3 +683,874 @@ class TestFormatValueForCSVUnit:
         assert "a=1" in result
         assert "b=2" in result
         assert "," in result
+
+
+class TestGetStdoutStderr:
+    """Test get command with stdout/stderr fields."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = create_cli_runner()
+
+    def test_get_stdout(self, clean_git_repo, tmp_path):
+        """Test getting stdout from an experiment."""
+        # Create a script that outputs to stdout
+        script = tmp_path / "output_script.py"
+        script.write_text("print('Hello from stdout')\n")
+
+        result = self.runner.invoke(
+            cli, ["run", str(script), "--name", "get-stdout-test"]
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get stdout
+        result = self.runner.invoke(cli, ["get", "stdout", exp_id])
+        assert result.exit_code == 0
+        # Script prints something to stdout
+        assert "Hello from stdout" in result.output
+
+    def test_get_stderr_empty(self, clean_git_repo, sample_experiment_script):
+        """Test getting stderr when it's empty."""
+        result = self.runner.invoke(
+            cli, ["run", str(sample_experiment_script), "--name", "get-stderr-test"]
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get stderr - should be empty for successful script
+        result = self.runner.invoke(cli, ["get", "stderr", exp_id])
+        assert result.exit_code == 0
+
+    def test_get_stdout_tail(self, clean_git_repo, tmp_path):
+        """Test getting last N lines of stdout."""
+        # Create script that prints numbered lines
+        script = tmp_path / "print_lines.py"
+        script.write_text("for i in range(20):\n    print(f'Line {i}')\n")
+
+        result = self.runner.invoke(
+            cli, ["run", str(script), "--name", "get-stdout-tail-test"]
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get last 5 lines
+        result = self.runner.invoke(cli, ["get", "stdout", exp_id, "--tail", "5"])
+        assert result.exit_code == 0
+        lines = result.output.strip().split("\n")
+        assert len(lines) == 5
+        assert "Line 15" in result.output
+        assert "Line 19" in result.output
+
+    def test_get_stdout_head(self, clean_git_repo, tmp_path):
+        """Test getting first N lines of stdout."""
+        # Create script that prints numbered lines
+        script = tmp_path / "print_lines.py"
+        script.write_text("for i in range(20):\n    print(f'Line {i}')\n")
+
+        result = self.runner.invoke(
+            cli, ["run", str(script), "--name", "get-stdout-head-test"]
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get first 5 lines
+        result = self.runner.invoke(cli, ["get", "stdout", exp_id, "--head", "5"])
+        assert result.exit_code == 0
+        lines = result.output.strip().split("\n")
+        assert len(lines) == 5
+        assert "Line 0" in result.output
+        assert "Line 4" in result.output
+
+    def test_get_stdout_head_and_tail(self, clean_git_repo, tmp_path):
+        """Test getting first and last N lines with ellipsis."""
+        # Create script that prints numbered lines
+        script = tmp_path / "print_lines.py"
+        script.write_text("for i in range(20):\n    print(f'Line {i}')\n")
+
+        result = self.runner.invoke(
+            cli, ["run", str(script), "--name", "get-stdout-headtail-test"]
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get first 3 and last 3 lines
+        result = self.runner.invoke(
+            cli, ["get", "stdout", exp_id, "--head", "3", "--tail", "3"]
+        )
+        assert result.exit_code == 0
+        assert "Line 0" in result.output
+        assert "Line 2" in result.output
+        assert "..." in result.output
+        assert "Line 17" in result.output
+        assert "Line 19" in result.output
+
+    def test_get_stdout_json(self, clean_git_repo, sample_experiment_script):
+        """Test getting stdout as JSON."""
+        result = self.runner.invoke(
+            cli,
+            ["run", str(sample_experiment_script), "--name", "get-stdout-json-test"],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get stdout as JSON
+        result = self.runner.invoke(cli, ["get", "stdout", exp_id, "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output.strip())
+        assert isinstance(data, str)
+
+    def _extract_experiment_id(self, output: str) -> str | None:
+        """Extract experiment ID from yanex run output."""
+        for line in output.split("\n"):
+            if "Experiment completed successfully:" in line:
+                return line.split(":")[-1].strip()
+        return None
+
+
+class TestGetStdoutStderrValidation:
+    """Test validation for stdout/stderr options."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = create_cli_runner()
+
+    def test_tail_only_for_stdout_stderr(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test that --tail is rejected for non-stdout/stderr fields."""
+        result = self.runner.invoke(
+            cli, ["run", str(sample_experiment_script), "--name", "get-tail-validate"]
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Try to use --tail with status field
+        result = self.runner.invoke(cli, ["get", "status", exp_id, "--tail", "5"])
+        assert result.exit_code != 0
+        assert "--tail option only applies to stdout/stderr" in result.output
+
+    def test_head_only_for_stdout_stderr(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test that --head is rejected for non-stdout/stderr fields."""
+        result = self.runner.invoke(
+            cli, ["run", str(sample_experiment_script), "--name", "get-head-validate"]
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Try to use --head with status field
+        result = self.runner.invoke(cli, ["get", "status", exp_id, "--head", "5"])
+        assert result.exit_code != 0
+        assert "--head option only applies to stdout/stderr" in result.output
+
+    def test_csv_not_supported_for_stdout(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test that --csv is rejected for stdout field."""
+        result = self.runner.invoke(
+            cli, ["run", str(sample_experiment_script), "--name", "get-csv-validate"]
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Try to use --csv with stdout field
+        result = self.runner.invoke(cli, ["get", "stdout", exp_id, "--csv"])
+        assert result.exit_code != 0
+        assert "--csv output is not supported" in result.output
+
+    def _extract_experiment_id(self, output: str) -> str | None:
+        """Extract experiment ID from yanex run output."""
+        for line in output.split("\n"):
+            if "Experiment completed successfully:" in line:
+                return line.split(":")[-1].strip()
+        return None
+
+
+class TestGetCommandReconstructedCommands:
+    """Test get command with cli-command and run-command fields."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = create_cli_runner()
+
+    def test_get_cli_command(self, clean_git_repo, sample_experiment_script):
+        """Test getting cli-command from an experiment."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "get-cli-cmd-test",
+                "--param",
+                "lr=0.01",
+                "--tag",
+                "test",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get cli-command
+        result = self.runner.invoke(cli, ["get", "cli-command", exp_id])
+        assert result.exit_code == 0
+        assert "yanex run" in result.output
+        assert '-p "lr=0.01"' in result.output
+        assert '-n "get-cli-cmd-test"' in result.output
+        assert '-t "test"' in result.output
+
+    def test_get_run_command(self, clean_git_repo, sample_experiment_script):
+        """Test getting run-command from an experiment."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "get-run-cmd-test",
+                "--param",
+                "epochs=50",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get run-command
+        result = self.runner.invoke(cli, ["get", "run-command", exp_id])
+        assert result.exit_code == 0
+        assert "yanex run" in result.output
+        assert '-p "epochs=50"' in result.output
+        assert '-n "get-run-cmd-test"' in result.output
+
+    def test_get_cli_command_with_config(self, clean_git_repo, tmp_path):
+        """Test cli-command includes config files."""
+        # Create config file and script
+        config = tmp_path / "test-config.yaml"
+        config.write_text("lr: 0.001\n")
+        script = tmp_path / "test_script.py"
+        script.write_text("print('test')\n")
+
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(script),
+                "--config",
+                str(config),
+                "--name",
+                "config-cmd-test",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get cli-command - should include config
+        result = self.runner.invoke(cli, ["get", "cli-command", exp_id])
+        assert result.exit_code == 0
+        assert "-c" in result.output
+        assert "test-config.yaml" in result.output
+
+    def test_get_cli_command_json(self, clean_git_repo, sample_experiment_script):
+        """Test getting cli-command as JSON."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "json-cli-cmd-test",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get cli-command as JSON
+        result = self.runner.invoke(cli, ["get", "cli-command", exp_id, "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output.strip())
+        assert isinstance(data, str)
+        assert "yanex run" in data
+
+    def test_get_commands_help_lists_new_fields(self):
+        """Test that help includes cli-command and run-command fields."""
+        result = self.runner.invoke(cli, ["get", "--help"])
+        assert result.exit_code == 0
+        assert "cli-command" in result.output
+        assert "run-command" in result.output
+
+    def _extract_experiment_id(self, output: str) -> str | None:
+        """Extract experiment ID from yanex run output."""
+        for line in output.split("\n"):
+            if "Experiment completed successfully:" in line:
+                return line.split(":")[-1].strip()
+        return None
+
+
+class TestReconstructCommandsUnit:
+    """Unit tests for reconstruct_cli_command and reconstruct_run_command."""
+
+    def test_reconstruct_cli_command_basic(self):
+        """Test basic command reconstruction from cli_args."""
+        from yanex.cli.commands.get import reconstruct_cli_command
+
+        cli_args = {
+            "script": "train.py",
+            "param": ["lr=0.01", "epochs=10"],
+            "name": "my-experiment",
+        }
+
+        result = reconstruct_cli_command(cli_args)
+        assert (
+            result
+            == 'yanex run train.py -p "lr=0.01" -p "epochs=10" -n "my-experiment"'
+        )
+
+    def test_reconstruct_cli_command_with_config(self):
+        """Test command reconstruction with config files."""
+        from yanex.cli.commands.get import reconstruct_cli_command
+
+        cli_args = {
+            "script": "train.py",
+            "config": ["base.yaml", "override.yaml"],
+            "param": ["lr=0.01"],
+        }
+
+        result = reconstruct_cli_command(cli_args)
+        assert result == 'yanex run train.py -c base.yaml -c override.yaml -p "lr=0.01"'
+
+    def test_reconstruct_cli_command_with_dependencies(self):
+        """Test command reconstruction with dependencies."""
+        from yanex.cli.commands.get import reconstruct_cli_command
+
+        cli_args = {
+            "script": "train.py",
+            "depends_on": ["data=abc123", "model=def456"],
+        }
+
+        result = reconstruct_cli_command(cli_args)
+        assert result == "yanex run train.py -D data=abc123 -D model=def456"
+
+    def test_reconstruct_cli_command_with_tags(self):
+        """Test command reconstruction with tags."""
+        from yanex.cli.commands.get import reconstruct_cli_command
+
+        cli_args = {
+            "script": "train.py",
+            "tag": ["sweep", "production"],
+        }
+
+        result = reconstruct_cli_command(cli_args)
+        assert result == 'yanex run train.py -t "sweep" -t "production"'
+
+    def test_reconstruct_cli_command_sweep_syntax(self):
+        """Test that sweep syntax is preserved in cli_args."""
+        from yanex.cli.commands.get import reconstruct_cli_command
+
+        cli_args = {
+            "script": "train.py",
+            "param": ["lr=0.001,0.01,0.1"],  # Sweep syntax
+            "name": "sweep-hpo",
+            "parallel": 4,
+        }
+
+        result = reconstruct_cli_command(cli_args)
+        assert result == 'yanex run train.py -p "lr=0.001,0.01,0.1" -n "sweep-hpo" -j 4'
+
+    def test_reconstruct_cli_command_all_options(self):
+        """Test command reconstruction with all options."""
+        from yanex.cli.commands.get import reconstruct_cli_command
+
+        cli_args = {
+            "script": "train.py",
+            "clone_from": "abc123",
+            "config": ["config.yaml"],
+            "depends_on": ["data=xyz789"],
+            "param": ["lr=0.01"],
+            "name": "my-exp",
+            "description": "A test experiment",
+            "tag": ["test"],
+            "stage": True,
+            "parallel": 8,
+        }
+
+        result = reconstruct_cli_command(cli_args)
+        expected_parts = [
+            "yanex run",
+            "train.py",
+            "--clone-from abc123",
+            "-c config.yaml",
+            "-D data=xyz789",
+            '-p "lr=0.01"',
+            '-n "my-exp"',
+            '-d "A test experiment"',
+            '-t "test"',
+            "--stage",
+            "-j 8",
+        ]
+        assert result == " ".join(expected_parts)
+
+    def test_reconstruct_cli_command_empty_lists(self):
+        """Test command reconstruction with empty lists."""
+        from yanex.cli.commands.get import reconstruct_cli_command
+
+        cli_args = {
+            "script": "train.py",
+            "config": [],
+            "param": [],
+            "tag": [],
+        }
+
+        result = reconstruct_cli_command(cli_args)
+        assert result == "yanex run train.py"
+
+    def test_reconstruct_run_command_with_mock(self):
+        """Test run command reconstruction using mock experiment."""
+        from yanex.cli.commands.get import reconstruct_run_command
+
+        exp = Mock()
+        exp._load_metadata = Mock(
+            return_value={
+                "cli_args": {
+                    "script": "train.py",
+                    "config": ["config.yaml"],
+                    "param": ["lr=0.001,0.01,0.1"],  # Original sweep syntax
+                }
+            }
+        )
+        exp.get_params = Mock(
+            return_value={"lr": 0.01}  # Resolved value for this experiment
+        )
+        exp.dependencies = {"data": "abc123"}
+        exp.name = "sweep-exp-1"
+        exp.tags = ["sweep"]
+
+        result = reconstruct_run_command(exp)
+        # Should use resolved params, not sweep syntax
+        assert "yanex run train.py" in result
+        assert "-c config.yaml" in result
+        assert "-D data=abc123" in result
+        assert '-p "lr=0.01"' in result
+        assert '-n "sweep-exp-1"' in result
+        assert '-t "sweep"' in result
+        # Should NOT contain sweep syntax
+        assert "0.001,0.01,0.1" not in result
+
+    def test_reconstruct_run_command_empty_dependencies(self):
+        """Test run command with no dependencies."""
+        from yanex.cli.commands.get import reconstruct_run_command
+
+        exp = Mock()
+        exp._load_metadata = Mock(
+            return_value={
+                "cli_args": {
+                    "script": "train.py",
+                }
+            }
+        )
+        exp.get_params = Mock(return_value={"lr": 0.01})
+        exp.dependencies = None
+        exp.name = "test"
+        exp.tags = None
+
+        result = reconstruct_run_command(exp)
+        assert "-D" not in result
+        assert "-t" not in result
+
+
+class TestResolveCliCommandFields:
+    """Unit tests for resolve_field_value with cli-command/run-command fields."""
+
+    def test_resolve_cli_command_field(self):
+        """Test resolving cli-command field."""
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        exp._load_metadata = Mock(
+            return_value={
+                "cli_args": {
+                    "script": "train.py",
+                    "param": ["lr=0.01"],
+                    "name": "test",
+                }
+            }
+        )
+
+        value, found = resolve_field_value(exp, "cli-command", "[not_found]")
+        assert found is True
+        assert value == 'yanex run train.py -p "lr=0.01" -n "test"'
+
+    def test_resolve_cli_command_missing_script(self):
+        """Test resolving cli-command when script is missing."""
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        exp._load_metadata = Mock(return_value={"cli_args": {}})
+
+        value, found = resolve_field_value(exp, "cli-command", "[not_found]")
+        assert found is False
+        assert value == "[not_found]"
+
+    def test_resolve_cli_command_no_cli_args(self):
+        """Test resolving cli-command when cli_args is missing."""
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        exp._load_metadata = Mock(return_value={})
+
+        value, found = resolve_field_value(exp, "cli-command", "[not_found]")
+        assert found is False
+        assert value == "[not_found]"
+
+    def test_resolve_run_command_field(self):
+        """Test resolving run-command field."""
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        exp._load_metadata = Mock(
+            return_value={
+                "cli_args": {
+                    "script": "train.py",
+                }
+            }
+        )
+        exp.get_params = Mock(return_value={"lr": 0.01, "epochs": 10})
+        exp.dependencies = {}
+        exp.name = "test"
+        exp.tags = []
+
+        value, found = resolve_field_value(exp, "run-command", "[not_found]")
+        assert found is True
+        assert "yanex run train.py" in value
+        assert '-p "lr=0.01"' in value
+        assert '-p "epochs=10"' in value
+
+    def test_resolve_run_command_missing_script(self):
+        """Test resolving run-command when script is missing."""
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        exp._load_metadata = Mock(return_value={"cli_args": {}})
+
+        value, found = resolve_field_value(exp, "run-command", "[not_found]")
+        assert found is False
+        assert value == "[not_found]"
+
+
+class TestResolveStdoutStderrUnit:
+    """Unit tests for resolve_field_value with stdout/stderr."""
+
+    def test_resolve_stdout_with_tail(self, tmp_path):
+        """Test resolving stdout with tail parameter."""
+        from unittest.mock import Mock
+
+        from yanex.cli.commands.get import resolve_field_value
+
+        # Create mock experiment with artifacts_dir
+        exp = Mock()
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        exp.artifacts_dir = artifacts_dir
+
+        # Create stdout.txt with 10 lines
+        stdout_file = artifacts_dir / "stdout.txt"
+        stdout_file.write_text("\n".join(f"Line {i}" for i in range(10)))
+
+        value, found = resolve_field_value(exp, "stdout", "[not_found]", tail=3)
+        assert found is True
+        assert "Line 7" in value
+        assert "Line 8" in value
+        assert "Line 9" in value
+        assert "Line 0" not in value
+
+    def test_resolve_stdout_with_head(self, tmp_path):
+        """Test resolving stdout with head parameter."""
+        from unittest.mock import Mock
+
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        exp.artifacts_dir = artifacts_dir
+
+        stdout_file = artifacts_dir / "stdout.txt"
+        stdout_file.write_text("\n".join(f"Line {i}" for i in range(10)))
+
+        value, found = resolve_field_value(exp, "stdout", "[not_found]", head=3)
+        assert found is True
+        assert "Line 0" in value
+        assert "Line 1" in value
+        assert "Line 2" in value
+        assert "Line 9" not in value
+
+    def test_resolve_stdout_with_head_and_tail(self, tmp_path):
+        """Test resolving stdout with both head and tail parameters."""
+        from unittest.mock import Mock
+
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        exp.artifacts_dir = artifacts_dir
+
+        stdout_file = artifacts_dir / "stdout.txt"
+        stdout_file.write_text("\n".join(f"Line {i}" for i in range(20)))
+
+        value, found = resolve_field_value(exp, "stdout", "[not_found]", tail=3, head=3)
+        assert found is True
+        assert "Line 0" in value
+        assert "Line 2" in value
+        assert "..." in value
+        assert "Line 17" in value
+        assert "Line 19" in value
+        # Middle lines should not be there
+        assert "Line 10" not in value
+
+    def test_resolve_stdout_head_tail_covers_all(self, tmp_path):
+        """Test that head+tail returns all when it covers entire file."""
+        from unittest.mock import Mock
+
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        exp.artifacts_dir = artifacts_dir
+
+        stdout_file = artifacts_dir / "stdout.txt"
+        stdout_file.write_text("\n".join(f"Line {i}" for i in range(5)))
+
+        # head=3 + tail=3 = 6 > 5 lines, so return all
+        value, found = resolve_field_value(exp, "stdout", "[not_found]", tail=3, head=3)
+        assert found is True
+        assert "..." not in value
+        assert "Line 0" in value
+        assert "Line 4" in value
+
+    def test_resolve_stdout_missing(self, tmp_path):
+        """Test resolving stdout when file doesn't exist."""
+        from unittest.mock import Mock
+
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        exp.artifacts_dir = artifacts_dir
+
+        value, found = resolve_field_value(exp, "stdout", "[not_found]")
+        assert found is False
+        assert value == "[not_found]"
+
+
+class TestFollowValidation:
+    """Tests for --follow option validation."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = create_cli_runner()
+
+    def test_follow_only_for_stdout_stderr(self):
+        """Test that --follow only works with stdout/stderr fields."""
+        result = self.runner.invoke(cli, ["get", "status", "abc123", "--follow"])
+        assert result.exit_code != 0
+        assert "only applies to stdout/stderr" in result.output
+
+    def test_follow_incompatible_with_csv(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test that --follow cannot be used with --csv."""
+        # Create an experiment first
+        result = self.runner.invoke(
+            cli,
+            ["run", str(sample_experiment_script), "--name", "follow-csv-test"],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+
+        # Try to use --follow with --csv
+        result = self.runner.invoke(cli, ["get", "stdout", exp_id, "--follow", "--csv"])
+        assert result.exit_code != 0
+        # Either validation error is acceptable (--csv not supported for stdout, or --follow+--csv incompatible)
+        assert "csv" in result.output.lower()
+
+    def test_follow_incompatible_with_json(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test that --follow cannot be used with --json."""
+        result = self.runner.invoke(
+            cli,
+            ["run", str(sample_experiment_script), "--name", "follow-json-test"],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+
+        result = self.runner.invoke(
+            cli, ["get", "stdout", exp_id, "--follow", "--json"]
+        )
+        assert result.exit_code != 0
+        assert "cannot be used with --json" in result.output
+
+    def test_follow_incompatible_with_head(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test that --follow cannot be used with --head."""
+        result = self.runner.invoke(
+            cli,
+            ["run", str(sample_experiment_script), "--name", "follow-head-test"],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+
+        result = self.runner.invoke(
+            cli, ["get", "stdout", exp_id, "--follow", "--head", "10"]
+        )
+        assert result.exit_code != 0
+        assert "cannot be used with --head" in result.output
+
+    def test_follow_requires_single_experiment(self):
+        """Test that --follow requires a single experiment ID, not filters."""
+        result = self.runner.invoke(cli, ["get", "stdout", "-s", "running", "--follow"])
+        assert result.exit_code != 0
+        assert "requires a single experiment ID" in result.output
+
+    def test_follow_with_tail_is_allowed(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test that --follow can be used with --tail (shows last N lines first)."""
+        result = self.runner.invoke(
+            cli,
+            ["run", str(sample_experiment_script), "--name", "follow-tail-test"],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+
+        # --follow with --tail should work (no error)
+        # The experiment is already completed, so it will just show output and exit
+        result = self.runner.invoke(
+            cli, ["get", "stdout", exp_id, "--follow", "--tail", "5"]
+        )
+        # Should succeed (exit code 0) since experiment is completed
+        assert result.exit_code == 0
+
+    def test_follow_help_shows_option(self):
+        """Test that --follow option is shown in help."""
+        result = self.runner.invoke(cli, ["get", "--help"])
+        assert result.exit_code == 0
+        assert "--follow" in result.output or "-f" in result.output
+
+    def _extract_experiment_id(self, output: str) -> str | None:
+        """Extract experiment ID from yanex run output."""
+        for line in output.split("\n"):
+            if "Experiment completed successfully:" in line:
+                return line.split(":")[-1].strip()
+        return None
+
+
+class TestFollowOutputUnit:
+    """Unit tests for follow_output function."""
+
+    def test_follow_completed_experiment_exits_immediately(self, tmp_path):
+        """Test that follow_output exits immediately for completed experiments."""
+        from unittest.mock import Mock, patch
+
+        from yanex.cli.commands.get import follow_output
+
+        # Create mock experiment
+        exp = Mock()
+        exp.id = "test123"
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        exp.artifacts_dir = artifacts_dir
+
+        # Create stdout file
+        stdout_file = artifacts_dir / "stdout.txt"
+        stdout_file.write_text("Test output\n")
+
+        # Mock yr.get_experiment to return completed status
+        with patch("yanex.cli.commands.get.yr.get_experiment") as mock_get:
+            mock_exp = Mock()
+            mock_exp.status = "completed"
+            mock_get.return_value = mock_exp
+
+            # Should exit immediately without blocking
+            follow_output(exp, "stdout")
+
+            # Verify get_experiment was called to check status
+            mock_get.assert_called()
+
+    def test_follow_shows_initial_content(self, tmp_path, capsys):
+        """Test that follow_output shows initial file content."""
+        from unittest.mock import Mock, patch
+
+        from yanex.cli.commands.get import follow_output
+
+        exp = Mock()
+        exp.id = "test123"
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        exp.artifacts_dir = artifacts_dir
+
+        # Create stdout file with content
+        stdout_file = artifacts_dir / "stdout.txt"
+        stdout_file.write_text("Line 1\nLine 2\nLine 3\n")
+
+        with patch("yanex.cli.commands.get.yr.get_experiment") as mock_get:
+            mock_exp = Mock()
+            mock_exp.status = "completed"
+            mock_get.return_value = mock_exp
+
+            follow_output(exp, "stdout")
+
+        captured = capsys.readouterr()
+        assert "Line 1" in captured.out
+        assert "Line 2" in captured.out
+        assert "Line 3" in captured.out
+
+    def test_follow_with_initial_tail(self, tmp_path, capsys):
+        """Test that follow_output respects initial_tail parameter."""
+        from unittest.mock import Mock, patch
+
+        from yanex.cli.commands.get import follow_output
+
+        exp = Mock()
+        exp.id = "test123"
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        exp.artifacts_dir = artifacts_dir
+
+        # Create stdout file with many lines
+        stdout_file = artifacts_dir / "stdout.txt"
+        stdout_file.write_text("\n".join(f"Line {i}" for i in range(20)) + "\n")
+
+        with patch("yanex.cli.commands.get.yr.get_experiment") as mock_get:
+            mock_exp = Mock()
+            mock_exp.status = "completed"
+            mock_get.return_value = mock_exp
+
+            follow_output(exp, "stdout", initial_tail=3)
+
+        captured = capsys.readouterr()
+        # Should show only last 3 lines
+        assert "Line 17" in captured.out
+        assert "Line 18" in captured.out
+        assert "Line 19" in captured.out
+        # Should not show early lines
+        assert "Line 0" not in captured.out
+        assert "Line 10" not in captured.out

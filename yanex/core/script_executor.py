@@ -49,6 +49,12 @@ class ScriptExecutor:
         """
         if script_args is None:
             script_args = []
+
+        # Print experiment ID immediately so user can track it
+        exp_dir = self.manager.storage.get_experiment_directory(experiment_id)
+        self.console.print(f"[green]✓ Experiment created: {experiment_id}[/]")
+        self.console.print(f"[dim]  Directory: {exp_dir}[/]")
+
         try:
             # Prepare environment for subprocess
             env = self._prepare_environment(experiment_id, config)
@@ -56,13 +62,12 @@ class ScriptExecutor:
             if verbose:
                 self.console.print(f"[dim]Starting script execution: {script_path}[/]")
 
-            # Execute script with real-time output streaming
+            # Execute script with real-time output streaming to both console and disk
             return_code, stdout_text, stderr_text = self._execute_with_streaming(
-                script_path, env, script_args
+                script_path, env, script_args, experiment_id
             )
 
-            # Save captured output as artifacts
-            self._save_output_artifacts(experiment_id, stdout_text, stderr_text)
+            # Output is already saved to disk in real-time, no need for separate save
 
             # Handle experiment result based on exit code
             self._handle_execution_result(
@@ -124,14 +129,19 @@ class ScriptExecutor:
         return env
 
     def _execute_with_streaming(
-        self, script_path: Path, env: dict[str, str], script_args: list[str]
+        self,
+        script_path: Path,
+        env: dict[str, str],
+        script_args: list[str],
+        experiment_id: str,
     ) -> tuple[int, str, str]:
-        """Execute script with real-time output streaming.
+        """Execute script with real-time output streaming to console and disk.
 
         Args:
             script_path: Path to the script to execute.
             env: Environment variables for the subprocess.
             script_args: Arguments to pass through to the script via sys.argv.
+            experiment_id: The experiment ID for saving output artifacts.
 
         Returns:
             Tuple of (return_code, stdout_text, stderr_text).
@@ -139,58 +149,77 @@ class ScriptExecutor:
         stdout_capture: list[str] = []
         stderr_capture: list[str] = []
 
+        # Get artifact paths for real-time streaming
+        exp_dir = self.manager.storage.get_experiment_directory(experiment_id)
+        artifacts_dir = exp_dir / "artifacts"
+        stdout_path = artifacts_dir / "stdout.txt"
+        stderr_path = artifacts_dir / "stderr.txt"
+
         # Build command: python -u script.py [script_args...]
         cmd = [sys.executable, "-u", str(script_path.resolve())] + script_args
 
-        process = subprocess.Popen(
-            cmd,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=Path.cwd(),
-        )
-
         def stream_output(
-            pipe: Any, capture_list: list[str], output_stream: Any
+            pipe: Any,
+            capture_list: list[str],
+            output_stream: Any,
+            file_handle: Any,
         ) -> None:
-            """Stream output line by line while capturing it."""
+            """Stream output line by line to console and disk."""
             for line in iter(pipe.readline, ""):
-                # Display in real-time
+                # Display to console in real-time
                 output_stream.write(line)
                 output_stream.flush()
-                # Capture for later saving
+                # Write to disk in real-time
+                file_handle.write(line)
+                file_handle.flush()
+                # Capture for error handling
                 capture_list.append(line)
             pipe.close()
 
-        # Start threads for stdout and stderr streaming
-        stdout_thread = threading.Thread(
-            target=stream_output, args=(process.stdout, stdout_capture, sys.stdout)
-        )
-        stderr_thread = threading.Thread(
-            target=stream_output, args=(process.stderr, stderr_capture, sys.stderr)
-        )
+        # Open files for real-time writing before starting process
+        with (
+            open(stdout_path, "w", encoding="utf-8") as stdout_file,
+            open(stderr_path, "w", encoding="utf-8") as stderr_file,
+        ):
+            process = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=Path.cwd(),
+            )
 
-        stdout_thread.start()
-        stderr_thread.start()
+            # Start threads for stdout and stderr streaming
+            stdout_thread = threading.Thread(
+                target=stream_output,
+                args=(process.stdout, stdout_capture, sys.stdout, stdout_file),
+            )
+            stderr_thread = threading.Thread(
+                target=stream_output,
+                args=(process.stderr, stderr_capture, sys.stderr, stderr_file),
+            )
 
-        try:
-            # Wait for process completion
-            return_code = process.wait()
+            stdout_thread.start()
+            stderr_thread.start()
 
-            # Wait for output threads to finish
-            stdout_thread.join()
-            stderr_thread.join()
+            try:
+                # Wait for process completion
+                return_code = process.wait()
 
-            return return_code, "".join(stdout_capture), "".join(stderr_capture)
+                # Wait for output threads to finish
+                stdout_thread.join()
+                stderr_thread.join()
 
-        except KeyboardInterrupt:
-            # Terminate the process and wait for threads
-            process.terminate()
-            process.wait()
-            stdout_thread.join()
-            stderr_thread.join()
-            raise
+                return return_code, "".join(stdout_capture), "".join(stderr_capture)
+
+            except KeyboardInterrupt:
+                # Terminate the process and wait for threads
+                process.terminate()
+                process.wait()
+                stdout_thread.join()
+                stderr_thread.join()
+                raise
 
     def _save_output_artifacts(
         self, experiment_id: str, stdout_text: str, stderr_text: str

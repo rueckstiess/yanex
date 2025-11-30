@@ -553,10 +553,12 @@ class TestExperimentContext:
         assert metadata["status"] == "cancelled"
         assert "Interrupted by user" in metadata["cancellation_reason"]
 
+    @patch("yanex.api._is_cli_context")
     @patch("yanex.api._get_experiment_manager")
-    def test_context_manager_manual_completion(self, mock_get_manager):
+    def test_context_manager_manual_completion(self, mock_get_manager, mock_is_cli):
         """Test context manager with manual completion."""
         mock_get_manager.return_value = self.manager
+        mock_is_cli.return_value = False  # Ensure we don't call sys.exit()
 
         context = yanex.ExperimentContext(self.experiment_id)
 
@@ -568,10 +570,12 @@ class TestExperimentContext:
         status = self.manager.get_experiment_status(self.experiment_id)
         assert status == "completed"
 
+    @patch("yanex.api._is_cli_context")
     @patch("yanex.api._get_experiment_manager")
-    def test_context_manager_manual_failure(self, mock_get_manager):
+    def test_context_manager_manual_failure(self, mock_get_manager, mock_is_cli):
         """Test context manager with manual failure."""
         mock_get_manager.return_value = self.manager
+        mock_is_cli.return_value = False  # Ensure we don't call sys.exit()
 
         context = yanex.ExperimentContext(self.experiment_id)
 

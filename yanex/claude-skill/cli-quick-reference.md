@@ -4,6 +4,8 @@
 
 Execute experiments with tracking.
 
+**Note**: Run in background (use Bash tool's `run_in_background` parameter) to avoid blocking on long experiments.
+
 ```bash
 yanex run script.py [OPTIONS]
 ```
@@ -98,6 +100,9 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `--json` | `-j` | JSON output |
 | `--no-id` | | Omit experiment ID prefix in multi-experiment output |
 | `--default VALUE` | | Value for missing fields (default: `[not_found]`) |
+| `--head N` | | Return first N lines (stdout/stderr only) |
+| `--tail N` | | Return last N lines (stdout/stderr only) |
+| `--follow` | `-f` | Follow output in real-time (stdout/stderr, single experiment only) |
 
 ### Field Paths
 
@@ -107,6 +112,10 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `name` | Experiment name |
 | `status` | Status (running, completed, failed, etc.) |
 | `tags` | List of tags |
+| `stdout` | Standard output (supports --head/--tail/--follow) |
+| `stderr` | Standard error (supports --head/--tail/--follow) |
+| `cli-command` | Original CLI invocation (with sweep syntax if applicable) |
+| `run-command` | Reproducible command (with resolved parameter values) |
 | `params` | List available parameter names |
 | `params.<key>` | Specific parameter value (e.g., `params.lr`) |
 | `metrics` | List available metric names |
@@ -128,6 +137,15 @@ yanex get params abc12345              # List available parameter names
 yanex get metrics abc12345             # List available metric names
 yanex get dependencies abc12345        # Get dependencies as slot=id pairs
 yanex get tags abc12345 --json         # Get tags as JSON array
+yanex get stdout abc12345              # Get full stdout
+yanex get stdout abc12345 --tail 50    # Get last 50 lines of stdout
+yanex get stdout abc12345 --head 10    # Get first 10 lines of stdout
+yanex get stdout abc12345 --head 5 --tail 5  # First 5 and last 5 lines
+yanex get stdout abc12345 -f           # Follow stdout in real-time
+yanex get stdout abc12345 --tail 20 -f # Show last 20 lines then follow
+yanex get stderr abc12345              # Get stderr output
+yanex get cli-command abc12345         # Get original CLI invocation (with sweep syntax)
+yanex get run-command abc12345         # Get reproducible command (resolved values)
 ```
 
 ### Multi-Experiment Mode (with filters)
@@ -137,6 +155,7 @@ yanex get id -s completed              # Get IDs of completed experiments
 yanex get id -n "train-*" -l 5         # Get IDs of matching experiments
 yanex get params.lr -s completed       # Get learning rates from all completed
 yanex get status -t sweep              # Get status of all experiments with tag
+yanex get stdout -s running --tail 5   # Check progress of running experiments
 ```
 
 ### Output Formats
@@ -154,6 +173,16 @@ yanex get id -s completed --csv
 # JSON: machine-readable
 yanex get params.lr -s completed --json
 # [{"id": "abc12345", "value": 0.001}, {"id": "def67890", "value": 0.01}]
+
+# Multi-experiment stdout/stderr (header-separated)
+yanex get stdout -s running --tail 5
+# [experiment: abc12345]
+# Epoch 10/100, loss=0.234
+# ...
+#
+# [experiment: def67890]
+# Processing batch 50/200
+# ...
 ```
 
 ### Bash Substitution for Dynamic Sweeps
@@ -208,12 +237,16 @@ yanex compare [OPTIONS]
 
 ## yanex archive / unarchive
 
-Move experiments to/from archive.
+Move experiments to/from archive. Archiving is reversible.
 
 ```bash
 yanex archive [OPTIONS]
 yanex unarchive [OPTIONS]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--force` | Skip confirmation prompt |
 
 Uses same filters as `yanex list`.
 
@@ -221,17 +254,21 @@ Uses same filters as `yanex list`.
 
 ```bash
 yanex archive -s failed --started-before "1 month ago"
-yanex archive -t experiment -t test
+yanex archive -t experiment -t test --force  # Skip confirmation
 yanex unarchive abc12345
 ```
 
 ## yanex delete
 
-Permanently delete experiments.
+Permanently delete experiments. **This action cannot be undone.**
 
 ```bash
 yanex delete [OPTIONS]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--force` | Skip confirmation prompt |
 
 Uses same filters as `yanex list`.
 
@@ -239,7 +276,7 @@ Uses same filters as `yanex list`.
 
 ```bash
 yanex delete abc12345 def67890
-yanex delete -s failed --started-before "3 months ago"
+yanex delete -s failed --started-before "3 months ago" --force
 ```
 
 ## yanex update

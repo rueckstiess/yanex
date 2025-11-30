@@ -132,3 +132,15 @@ When adding to an existing log:
 1. Read the current file
 2. Add new content at the **top** (after the `# Experiment Log` header)
 3. Keep the `---` separator between groups
+
+## Retrieving Commands
+
+To retrieve the exact command used for an experiment, use:
+
+```bash
+yanex get cli-command abc12345    # Original command (with sweep syntax)
+yanex get run-command abc12345    # Reproducible command (resolved values)
+```
+
+- `cli-command` is best for logging - it shows the original sweep syntax
+- `run-command` is useful for reproducing a specific experiment from a sweep

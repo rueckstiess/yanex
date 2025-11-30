@@ -1,5 +1,5 @@
 ---
-name: tracking-yanex-experiments
+name: yanex-experiment-tracking
 description: Use this skill when running, managing, or analyzing yanex experiments. Includes executing experiments via CLI, parameter sweeps, dependencies, querying experiment history, comparing results, and maintaining experiment logs. Invoke when users mention yanex, experiments, training runs, parameter sweeps, or need to track ML experiments.
 ---
 
@@ -15,6 +15,23 @@ Help users run, manage, and analyze experiments using the yanex experiment track
 4. **Inspect experiments** with `yanex show` and `yanex compare`
 5. **Analyze results** using the Results API in notebooks or scripts
 6. **Maintain experiment logs** in markdown format
+
+## Safety Guidelines for Destructive Operations
+
+**CRITICAL: `yanex delete` requires user confirmation**
+- NEVER run `yanex delete` without first confirming with the user
+- Deletion is permanent and cannot be undone
+- Always ask the user before deleting any experiments
+
+**`yanex archive` can be run autonomously**
+- Archiving is safe and reversible (use `yanex unarchive` to restore)
+- Run `yanex archive` without user confirmation when contextually appropriate
+- Example: archiving old failed experiments during cleanup
+
+**Bypassing CLI confirmation prompts:**
+- Both `yanex delete` and `yanex archive` require pressing `y` to confirm
+- Use `--force` to bypass the confirmation prompt
+- Example: `yanex archive -s failed --started-before "1 month ago" --force`
 
 ## Before Taking Action
 
@@ -57,6 +74,21 @@ yanex run train.py -p "lr=logspace(-4,-1,10)" --parallel 0  # Auto-detect CPUs
 yanex run train.py -p "lr=logspace(-4,-1,10)" -j 4          # 4 workers
 ```
 
+### Background Execution
+
+**IMPORTANT**: Always run `yanex run` commands in the background to avoid blocking.
+
+Use the Bash tool's `run_in_background` parameter:
+- Experiments can take minutes to hours - don't block waiting for completion
+- After starting, use `yanex list -s running` or `yanex get stdout <id> --tail 20` to check progress
+- The user can continue working while experiments run
+
+**Workflow:**
+1. Start experiment in background
+2. Note the experiment ID from output
+3. Check status periodically with `yanex list -s running` or `yanex get stdout <id> --tail N`
+4. Log results once completed
+
 ## Querying Experiments
 
 ### List with Filters
@@ -83,6 +115,20 @@ yanex get metrics.accuracy abc12345     # Get last logged metric value
 yanex get params abc12345               # List parameter names
 yanex get metrics abc12345              # List metric names
 
+# Get stdout/stderr (works for running and completed experiments)
+yanex get stdout abc12345               # Get full stdout
+yanex get stdout abc12345 --tail 50     # Get last 50 lines
+yanex get stdout abc12345 --head 10     # Get first 10 lines
+yanex get stdout abc12345 --head 5 --tail 5  # First 5 and last 5 lines
+yanex get stdout abc12345 -f            # Follow stdout in real-time (like tail -f)
+yanex get stdout abc12345 --tail 20 -f  # Show last 20 lines then follow
+yanex get stderr abc12345               # Get stderr output
+yanex get stdout -s running --tail 5    # Check progress of running experiments
+
+# Get command reconstruction (useful for logging)
+yanex get cli-command abc12345          # Original CLI invocation (with sweep syntax)
+yanex get run-command abc12345          # Reproducible command (resolved values)
+
 # Multi-experiment queries (use filters instead of ID)
 yanex get id -s completed               # Get IDs of completed experiments
 yanex get params.lr -n "sweep-*"        # Get learning rates from sweep
@@ -90,6 +136,17 @@ yanex get params.lr -n "sweep-*"        # Get learning rates from sweep
 # Output formats for scripting
 yanex get id -s completed --csv         # Comma-separated (for bash substitution)
 yanex get params.lr -n "sweep-*" --json # JSON output
+```
+
+**Multi-experiment stdout/stderr output** uses `[experiment: <id>]` headers:
+```
+[experiment: abc12345]
+Epoch 10/100, loss=0.234
+...
+
+[experiment: def67890]
+Processing batch 50/200
+...
 ```
 
 **Bash substitution for dynamic sweeps:**
@@ -126,7 +183,7 @@ Default: `scripts/experiment-log.md`. Confirm with user if this doesn't exist.
 After running `yanex run`, append to the log with:
 - Experiment group header (if new group)
 - Table row for each experiment
-- The command that was run
+- The command that was run (use `yanex get cli-command <id>` to retrieve the original command)
 
 ### Alert on Failures
 Don't log failed experiments, but alert the user in conversation when failures are detected.
