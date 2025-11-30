@@ -193,6 +193,20 @@ See [Configuration Guide](docs/configuration.md#parameter-sweeps) for complete s
 - **[Run API Examples](examples/run-api/)** - Programmatic experiment creation for advanced patterns like k-fold cross-validation and batch processing
 - **[Results API Examples](examples/results-api/)** - Querying and analyzing completed experiments with pandas integration
 
+## Claude Code Integration
+
+Yanex includes a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill for AI-assisted experiment management. Install it by creating a symlink:
+
+```bash
+# Find your yanex installation
+YANEX_PATH=$(python -c "import yanex; print(yanex.__path__[0])")
+
+# Create symlink to your Claude skills directory
+ln -s "$YANEX_PATH/claude-skill" ~/.claude/skills/tracking-yanex-experiments
+```
+
+The skill enables Claude to help you run experiments, query results, and analyze data using yanex commands and APIs.
+
 ## Contributing
 
 Yanex is open source and welcomes contributions! See our [contributing guidelines](CONTRIBUTING.md) for details.
