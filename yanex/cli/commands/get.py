@@ -196,6 +196,14 @@ def resolve_field_value(
             return reconstruct_run_command(exp), True
         return default_value, False
 
+    # Handle experiment-dir field (experiment directory path)
+    if field == "experiment-dir":
+        return str(exp.experiment_dir), True
+
+    # Handle artifacts-dir field (artifacts directory path)
+    if field == "artifacts-dir":
+        return str(exp.artifacts_dir), True
+
     # Handle special field: dependencies
     if field == "dependencies":
         deps = exp.dependencies
@@ -514,6 +522,7 @@ def get_field(
       - Script: script_path, error_message
       - Output: stdout, stderr (with --head/--tail N, or --follow/-f)
       - Commands: cli-command (original), run-command (reproducible)
+      - Paths: experiment-dir, artifacts-dir
       - Git: git.branch, git.commit_hash
       - Environment: environment.python.version
       - Parameters: params (list names), params.<key> (get value)
@@ -537,6 +546,8 @@ def get_field(
       yanex get stdout -s running --tail 5 Check running experiments progress
       yanex get cli-command abc123         Get original CLI invocation (with sweep syntax)
       yanex get run-command abc123         Get reproducible command (resolved values)
+      yanex get experiment-dir abc123      Get experiment directory path
+      yanex get artifacts-dir abc123       Get artifacts directory path
       yanex get dependencies abc123        Get dependencies as slot=id pairs
       yanex get id -n "train-*"            Get IDs of matching experiments
       yanex get id -n "train-*" --csv      Get IDs comma-separated (for sweeps)

@@ -1251,6 +1251,34 @@ class TestResolveCliCommandFields:
         assert value == "[not_found]"
 
 
+class TestResolveDirectoryFields:
+    """Unit tests for resolve_field_value with experiment-dir/artifacts-dir fields."""
+
+    def test_resolve_experiment_dir(self, tmp_path):
+        """Test resolving experiment-dir field."""
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        exp_dir = tmp_path / "experiments" / "abc12345"
+        exp.experiment_dir = exp_dir
+
+        value, found = resolve_field_value(exp, "experiment-dir", "[not_found]")
+        assert found is True
+        assert value == str(exp_dir)
+
+    def test_resolve_artifacts_dir(self, tmp_path):
+        """Test resolving artifacts-dir field."""
+        from yanex.cli.commands.get import resolve_field_value
+
+        exp = Mock()
+        artifacts_dir = tmp_path / "experiments" / "abc12345" / "artifacts"
+        exp.artifacts_dir = artifacts_dir
+
+        value, found = resolve_field_value(exp, "artifacts-dir", "[not_found]")
+        assert found is True
+        assert value == str(artifacts_dir)
+
+
 class TestResolveStdoutStderrUnit:
     """Unit tests for resolve_field_value with stdout/stderr."""
 

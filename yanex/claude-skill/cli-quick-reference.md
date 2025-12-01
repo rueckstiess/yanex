@@ -116,6 +116,8 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `stderr` | Standard error (supports --head/--tail/--follow) |
 | `cli-command` | Original CLI invocation (with sweep syntax if applicable) |
 | `run-command` | Reproducible command (with resolved parameter values) |
+| `experiment-dir` | Experiment directory path |
+| `artifacts-dir` | Artifacts directory path |
 | `params` | List available parameter names |
 | `params.<key>` | Specific parameter value (e.g., `params.lr`) |
 | `metrics` | List available metric names |
@@ -146,6 +148,8 @@ yanex get stdout abc12345 --tail 20 -f # Show last 20 lines then follow
 yanex get stderr abc12345              # Get stderr output
 yanex get cli-command abc12345         # Get original CLI invocation (with sweep syntax)
 yanex get run-command abc12345         # Get reproducible command (resolved values)
+yanex get experiment-dir abc12345      # Get experiment directory path
+yanex get artifacts-dir abc12345       # Get artifacts directory path
 ```
 
 ### Multi-Experiment Mode (with filters)

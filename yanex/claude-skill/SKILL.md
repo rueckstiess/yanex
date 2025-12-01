@@ -129,6 +129,10 @@ yanex get stdout -s running --tail 5    # Check progress of running experiments
 yanex get cli-command abc12345          # Original CLI invocation (with sweep syntax)
 yanex get run-command abc12345          # Reproducible command (resolved values)
 
+# Get directory paths (useful for file access)
+yanex get experiment-dir abc12345       # Experiment directory path
+yanex get artifacts-dir abc12345        # Artifacts directory path
+
 # Multi-experiment queries (use filters instead of ID)
 yanex get id -s completed               # Get IDs of completed experiments
 yanex get params.lr -n "sweep-*"        # Get learning rates from sweep
