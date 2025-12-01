@@ -117,9 +117,19 @@ def reconstruct_run_command(exp: yr.Experiment) -> str:
     for slot, dep_id in deps.items():
         parts.append(f"-D {slot}={dep_id}")
 
-    # Use resolved config values (not sweep syntax)
-    for key, value in config.items():
-        parts.append(f'-p "{key}={value}"')
+    # Only output parameters that were passed via CLI -p flags
+    # Use resolved values (for sweep parameters that got expanded)
+    for param_str in cli_args.get("param", []):
+        # Parse the key from "key=value" or "key=sweep(...)"
+        if "=" in param_str:
+            key = param_str.split("=", 1)[0]
+            # Get the resolved value from config using dot notation
+            resolved_value = get_nested_value(config, key)
+            if resolved_value is not None:
+                parts.append(f'-p "{key}={resolved_value}"')
+            else:
+                # Fallback to original if key not found (shouldn't happen)
+                parts.append(f'-p "{param_str}"')
 
     if exp.name:
         parts.append(f'-n "{exp.name}"')

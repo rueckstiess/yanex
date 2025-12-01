@@ -1225,6 +1225,8 @@ class TestResolveCliCommandFields:
             return_value={
                 "cli_args": {
                     "script": "train.py",
+                    # Only params passed via CLI -p are included in run-command
+                    "param": ["lr=0.01", "epochs=10"],
                 }
             }
         )

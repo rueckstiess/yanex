@@ -178,8 +178,7 @@ def run(
     dependency_slots = _parse_dependencies(depends_on)
 
     # Build parsed CLI arguments dictionary for yanex.get_cli_args()
-    # Flatten dependency slots for cli_args (stores what was passed on CLI)
-    flat_dependency_ids = [dep for _, ids in dependency_slots for dep in ids]
+    # Store raw dependency arguments to preserve sweep syntax (e.g., "-D data=abc,def")
     cli_args = {
         "script": str(script) if script else None,
         "config": [str(c) for c in config] if config else [],
@@ -188,7 +187,7 @@ def run(
         "name": name,
         "tag": list(tag),
         "description": description,
-        "depends_on": flat_dependency_ids,
+        "depends_on": list(depends_on),  # Preserve original CLI format
         "dry_run": dry_run,
         "stage": stage,
         "staged": staged,
