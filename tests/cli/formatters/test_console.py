@@ -149,18 +149,24 @@ class TestExperimentTableFormatter:
         assert column_headers[5] == "Tags"
         assert column_headers[6] == "Started"
 
-    def test_calculate_script_column_width(self, formatter):
-        """Test that script column width is calculated based on longest script name."""
+    def test_calculate_column_width(self, formatter):
+        """Test that column width is calculated based on longest value."""
         # Empty experiments should return minimum width
-        assert formatter._calculate_script_column_width([]) == 15
+        assert formatter._calculate_column_width([], "script_path", min_width=15) == 15
 
-        # Single experiment with short name
+        # Single experiment with short script name
         experiments = [{"script_path": "/path/to/train.py"}]
-        assert formatter._calculate_script_column_width(experiments) == 15  # Minimum
+        assert (
+            formatter._calculate_column_width(experiments, "script_path", min_width=15)
+            == 15
+        )  # Minimum
 
-        # Single experiment with long name
+        # Single experiment with long script name
         experiments = [{"script_path": "/path/to/very_long_script_name.py"}]
-        assert formatter._calculate_script_column_width(experiments) == 24
+        assert (
+            formatter._calculate_column_width(experiments, "script_path", min_width=15)
+            == 24
+        )
 
         # Multiple experiments - should use longest
         experiments = [
@@ -168,8 +174,29 @@ class TestExperimentTableFormatter:
             {"script_path": "/path/to/very_long_script_name.py"},
             {"script_path": "/path/to/medium_length.py"},
         ]
-        assert formatter._calculate_script_column_width(experiments) == 24
+        assert (
+            formatter._calculate_column_width(experiments, "script_path", min_width=15)
+            == 24
+        )
 
         # Experiment with no script_path
         experiments = [{"script_path": None}, {"script_path": "/path/to/train.py"}]
-        assert formatter._calculate_script_column_width(experiments) == 15
+        assert (
+            formatter._calculate_column_width(experiments, "script_path", min_width=15)
+            == 15
+        )
+
+        # Test with name field
+        experiments = [{"name": "short"}, {"name": "very-long-experiment-name"}]
+        assert (
+            formatter._calculate_column_width(experiments, "name", min_width=12) == 25
+        )  # "very-long-experiment-name" is 25 chars
+
+        # Test max_width cap
+        experiments = [{"name": "a" * 100}]
+        assert (
+            formatter._calculate_column_width(
+                experiments, "name", min_width=12, max_width=50
+            )
+            == 50
+        )

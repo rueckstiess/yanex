@@ -62,8 +62,16 @@ class ExperimentTableFormatter:
         Returns:
             Rich Table object ready for console output
         """
-        # Calculate optimal script column width based on longest script name
-        script_width = self._calculate_script_column_width(experiments)
+        # Calculate optimal column widths based on content
+        script_width = self._calculate_column_width(
+            experiments, "script_path", min_width=15, max_width=60
+        )
+        name_width = self._calculate_column_width(
+            experiments, "name", min_width=12, max_width=50
+        )
+
+        # Store name_width for use in _format_name
+        self._current_name_width = name_width
 
         # Create table with columns
         table = Table(show_header=True, header_style="bold")
@@ -71,7 +79,7 @@ class ExperimentTableFormatter:
         # Add columns
         table.add_column("ID", style="dim", width=8)
         table.add_column("Script", style="cyan", width=script_width)
-        table.add_column("Name", min_width=12, max_width=25)
+        table.add_column("Name", min_width=12, max_width=name_width)
         table.add_column("Status", width=12)
         table.add_column("Duration", width=10, justify="right")
         table.add_column("Tags", min_width=8, max_width=20)
@@ -149,36 +157,54 @@ class ExperimentTableFormatter:
         if not name:
             return Text("[unnamed]", style="dim italic")
 
-        # Truncate long names
-        if len(name) > 28:
-            name = name[:25] + "..."
+        # Use calculated width, fallback to 50 if not set
+        max_width = getattr(self, "_current_name_width", 50)
+
+        # Truncate in the middle if name exceeds max width
+        if len(name) > max_width:
+            # Reserve 3 chars for "..." in the middle
+            available = max_width - 3
+            # Split available space: more chars at start to show the prefix
+            start_len = (available * 2) // 3  # ~67% at start
+            end_len = available - start_len  # ~33% at end
+            name = name[:start_len] + "..." + name[-end_len:]
 
         return Text(name)
 
-    def _calculate_script_column_width(self, experiments: list[dict[str, Any]]) -> int:
+    def _calculate_column_width(
+        self,
+        experiments: list[dict[str, Any]],
+        field: str,
+        min_width: int = 12,
+        max_width: int = 50,
+    ) -> int:
         """
-        Calculate optimal width for script column based on longest script name.
+        Calculate optimal width for a column based on content length.
 
         Args:
             experiments: List of experiment metadata dictionaries
+            field: Field name to check ("script_path" or "name")
+            min_width: Minimum column width
+            max_width: Maximum column width
 
         Returns:
-            Column width (minimum 15, maximum based on longest script name)
+            Calculated column width between min and max
         """
         from pathlib import Path
 
         if not experiments:
-            return 15  # Default minimum width
+            return min_width
 
-        max_length = 15  # Start with minimum width
+        max_length = min_width
         for exp in experiments:
-            script_path = exp.get("script_path")
-            if script_path:
-                script_name = Path(script_path).name
-                max_length = max(max_length, len(script_name))
+            value = exp.get(field)
+            if value:
+                # For script_path, extract just the filename
+                if field == "script_path":
+                    value = Path(value).name
+                max_length = max(max_length, len(value))
 
-        # Add a small buffer but cap at reasonable maximum
-        return min(max_length, 60)
+        return min(max_length, max_width)
 
     def _format_script(self, script_path: str | None) -> Text:
         """
