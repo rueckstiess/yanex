@@ -602,11 +602,12 @@ def get_field(
         )
 
     # Determine if we have filters or a single experiment
+    # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
             ids,
             status,
-            name_pattern,
+            name_pattern is not None,
             script_pattern,
             tags,
             started_after,
@@ -676,7 +677,7 @@ def get_field(
         filter_kwargs["ids"] = list(ids)
     if status:
         filter_kwargs["status"] = status
-    if name_pattern:
+    if name_pattern is not None:
         filter_kwargs["name"] = name_pattern
     if script_pattern:
         filter_kwargs["script_pattern"] = script_pattern

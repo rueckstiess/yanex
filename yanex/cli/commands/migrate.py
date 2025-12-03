@@ -88,10 +88,11 @@ def migrate_experiments(
     filter_obj = ExperimentFilter()
 
     # Validate targeting options
+    # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
             status,
-            name_pattern,
+            name_pattern is not None,
             tags,
             script_pattern,
             started_after,

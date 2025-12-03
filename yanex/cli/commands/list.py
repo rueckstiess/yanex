@@ -160,10 +160,11 @@ def list_experiments(
         formatter.print_experiments_table(experiments, title=table_title)
 
         # Show summary if filtering was applied or not showing all
+        # Note: name_pattern="" is a valid filter for unnamed experiments
         if any(
             [
                 status,
-                name_pattern,
+                name_pattern is not None,
                 tags,
                 script_pattern,
                 started_after,
@@ -214,10 +215,11 @@ def _show_filter_suggestions(
     """Show helpful suggestions when no experiments are found."""
 
     # Check if any filters were applied
+    # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
             status,
-            name_pattern,
+            name_pattern is not None,
             tags,
             script_pattern,
             started_after,
