@@ -9,6 +9,7 @@ Complete documentation for Yanex - Yet Another Experiment Tracker
 - [**Experiment Structure**](experiment-structure.md) - Directory layout and file organization
 - [**Dependencies**](dependencies.md) - Multi-stage pipelines and experiment dependencies
 - [**Best Practices**](best-practices.md) - Recommended patterns and workflows
+- [**AI & Automation**](ai-usage.md) - Machine-readable output, `yanex get`, and Claude Code skill
 
 ## CLI Commands
 
@@ -29,6 +30,7 @@ Yanex provides a comprehensive command-line interface for managing experiments.
 - [**`yanex update`**](commands/update.md) - Modify experiment metadata
 
 ### Utility Commands
+- [**`yanex get`**](commands/get.md) - Extract field values (AI/scripting-friendly)
 - [**`yanex ui`**](commands/ui.md) - Launch web interface
 - [**`yanex open`**](commands/open.md) - Open experiment directory
 

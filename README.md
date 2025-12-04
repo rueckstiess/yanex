@@ -39,7 +39,7 @@ That's it. Yanex creates a separate directory for each experiment, saves the log
 - ⚡ **Parallel Execution**: Run multiple experiments simultaneously on multi-core systems
 - 📈 **Rich Logging**: Track metrics, artifacts, and figures
 - 🔍 **Powerful Search**: Find experiments by status, parameters, tags, or time ranges
-- 🌐 **Web UI**: Interactive browser-based interface for experiment management
+- 🤖 **AI-Friendly**: Machine-readable output formats, Claude Code skill, and `yanex get` for seamless AI assistant integration
 
 ## Quick Start
 
@@ -186,6 +186,7 @@ See [Configuration Guide](docs/configuration.md#parameter-sweeps) for complete s
 - [Configuration](docs/configuration.md) - Parameter management and config files
 - [Run API](docs/run-api.md) - Programmatic experiment execution
 - [Results API](docs/results-api.md) - Querying and analyzing experiment results
+- [AI & Automation](docs/ai-usage.md) - Machine-readable output and Claude Code skill
 
 ## Examples
 
@@ -193,19 +194,39 @@ See [Configuration Guide](docs/configuration.md#parameter-sweeps) for complete s
 - **[Run API Examples](examples/run-api/)** - Programmatic experiment creation for advanced patterns like k-fold cross-validation and batch processing
 - **[Results API Examples](examples/results-api/)** - Querying and analyzing completed experiments with pandas integration
 
-## Claude Code Integration
+## AI & Automation
 
-Yanex includes a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill for AI-assisted experiment management. Install it by creating a symlink:
+Yanex is designed for seamless integration with AI assistants and automation scripts.
+
+**Machine-readable output** - Most commands support `--format json`, `--format csv`, and `--format markdown`:
+```bash
+yanex list -s completed -F json | jq '.[] | .id'
+yanex compare -t sweep -F csv > results.csv
+```
+
+**Quick field extraction** - The `yanex get` command extracts individual values for scripting:
+```bash
+yanex get status abc12345           # → "completed"
+yanex get params.lr abc12345        # → "0.001"
+yanex get stdout abc12345 --tail 20 # Last 20 lines of output
+```
+
+**[→ Complete AI & Automation Guide](docs/ai-usage.md)**
+
+### Claude Code Skill
+
+Yanex includes a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill for AI-assisted experiment management:
 
 ```bash
 # Find your yanex installation
 YANEX_PATH=$(python -c "import yanex; print(yanex.__path__[0])")
 
-# Create symlink to your Claude skills directory
+# Install globally or per-project
 ln -s "$YANEX_PATH/claude-skill" ~/.claude/skills/tracking-yanex-experiments
+# or: ln -s "$YANEX_PATH/claude-skill" .claude/skills/tracking-yanex-experiments
 ```
 
-The skill enables Claude to help you run experiments, query results, and analyze data using yanex commands and APIs.
+The skill enables Claude to run experiments, query results, monitor progress, and analyze data using yanex commands and APIs.
 
 ## Contributing
 
