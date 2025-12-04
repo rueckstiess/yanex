@@ -20,7 +20,7 @@ print(f"Accuracy: {exp.get_metric('accuracy')}")
 
 ### Get Multiple Experiments
 ```python
-# By filters
+# By filters - returns Experiment objects
 exps = yr.get_experiments(status="completed")
 exps = yr.get_experiments(name="yelp-2-*")
 exps = yr.get_experiments(tags=["training", "sweep"])
@@ -33,6 +33,17 @@ exps = yr.get_experiments(
     tags=["training"],
     started_after="2025-01-01"
 )
+```
+
+### Find Experiments (Lightweight)
+```python
+# find() returns metadata dicts (faster than get_experiments for large queries)
+results = yr.find(status="completed", tags=["training"])
+for r in results:
+    print(f"{r['id']}: {r['name']} - {r['status']}")
+
+# Useful for quick lookups without loading full Experiment objects
+ids = [r['id'] for r in yr.find(name="yelp-*", limit=10)]
 ```
 
 ### Find Best Experiment
@@ -166,16 +177,15 @@ plt.show()
 ## Bulk Operations
 
 ```python
-# Archive old experiments
-count = yr.archive_experiments(
-    status="failed",
-    ended_before="1 month ago"
-)
+# Archive old experiments (uses same filters as find/get_experiments)
+count = yr.archive_experiments(status="failed", ended_before="1 month ago")
+print(f"Archived {count} experiments")
 
-# Delete experiments
+# Delete experiments by ID or filters
 count = yr.delete_experiments(ids=["abc123", "def456"])
+count = yr.delete_experiments(status="failed", started_before="3 months ago")
 
-# Export to file
+# Export to file (json, csv, or yaml)
 yr.export_experiments(
     "results.json",
     format="json",
@@ -206,6 +216,19 @@ if best:
 df = yr.compare(name="yelp-*", status="completed")
 print(f"\nComparison DataFrame shape: {df.shape}")
 print(df.head())
+```
+
+## Utility Functions
+
+```python
+# Count experiments matching filters
+total = yr.get_experiment_count()
+completed = yr.get_experiment_count(status="completed")
+recent = yr.get_experiment_count(tags=["training"], started_after="1 week ago")
+
+# Check if experiment exists
+if yr.experiment_exists("abc12345"):
+    exp = yr.get_experiment("abc12345")
 ```
 
 ## Filter Reference

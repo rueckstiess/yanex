@@ -155,11 +155,17 @@ def per_test_experiments_dir(tmp_path: Path) -> Generator[Path, None, None]:
             manager = ExperimentManager()
             # Only experiments created in THIS test will be in the directory
     """
+    import yanex.results as yr
+
     test_exp_dir = tmp_path / "experiments"
     test_exp_dir.mkdir()
 
     # Save the current (session-wide) value
     old_env = os.environ.get("YANEX_EXPERIMENTS_DIR")
+
+    # Reset cached results manager to ensure it picks up the new directory
+    old_manager = yr._default_manager
+    yr._default_manager = None
 
     # Override with test-specific directory
     os.environ["YANEX_EXPERIMENTS_DIR"] = str(test_exp_dir)
@@ -170,6 +176,10 @@ def per_test_experiments_dir(tmp_path: Path) -> Generator[Path, None, None]:
         # Restore session-wide directory
         if old_env:
             os.environ["YANEX_EXPERIMENTS_DIR"] = old_env
+
+        # Restore cached results manager (or keep it None to force re-creation)
+        yr._default_manager = old_manager
+
         # tmp_path cleanup is handled by pytest's tmp_path fixture
 
 

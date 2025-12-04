@@ -64,6 +64,10 @@ GETTER_TYPES: dict[str, GetterType] = {
     "stdout": GetterType.MULTILINE,
     "stderr": GetterType.MULTILINE,
     "artifacts": GetterType.MULTILINE,
+    # Lineage getters (graph visualization)
+    "upstream": GetterType.MULTILINE,
+    "downstream": GetterType.MULTILINE,
+    "lineage": GetterType.MULTILINE,
 }
 
 

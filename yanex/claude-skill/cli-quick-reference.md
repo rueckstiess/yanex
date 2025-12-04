@@ -153,6 +153,25 @@ yanex get experiment-dir abc12345      # Get experiment directory path
 yanex get artifacts-dir abc12345       # Get artifacts directory path
 ```
 
+### Command Reconstruction
+
+Two fields help reproduce or log experiments:
+
+| Field | Purpose | When to Use |
+|-------|---------|-------------|
+| `cli-command` | Original invocation with sweep syntax preserved | Logging to experiment-log.md |
+| `run-command` | Resolved command for specific experiment | Re-running a single experiment from a sweep |
+
+```bash
+# cli-command preserves sweep syntax (for logging)
+yanex get cli-command abc12345
+# → yanex run train.py -p "lr=0.001,0.01,0.1" -n "hpo-sweep"
+
+# run-command has resolved values (for reproduction)
+yanex get run-command abc12345
+# → yanex run train.py -p lr=0.01 -n "hpo-sweep-1"
+```
+
 ### Multi-Experiment Mode (with filters)
 
 ```bash

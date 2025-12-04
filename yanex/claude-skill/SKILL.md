@@ -125,9 +125,9 @@ yanex get stdout abc12345 --tail 20 -f  # Show last 20 lines then follow
 yanex get stderr abc12345               # Get stderr output
 yanex get stdout -s running --tail 5    # Check progress of running experiments
 
-# Get command reconstruction (useful for logging)
-yanex get cli-command abc12345          # Original CLI invocation (with sweep syntax)
-yanex get run-command abc12345          # Reproducible command (resolved values)
+# Get command reconstruction (useful for logging and reproduction)
+yanex get cli-command abc12345          # Original CLI invocation (preserves sweep syntax)
+yanex get run-command abc12345          # Reproducible command (resolved parameter values)
 
 # Get directory paths (useful for file access)
 yanex get experiment-dir abc12345       # Experiment directory path
@@ -163,6 +163,29 @@ yanex run train.py -D data=$(yanex get id -n "*-prep-*" -F sweep)
 
 # Build sweep from previous learning rates
 yanex run train.py -p lr=$(yanex get params.lr -s completed -F sweep)
+```
+
+### Command Reconstruction: cli-command vs run-command
+
+Two fields help reproduce or log experiments:
+
+| Field | Use Case | Example Output |
+|-------|----------|----------------|
+| `cli-command` | **Logging** - preserves original sweep syntax | `yanex run train.py -p "lr=0.001,0.01,0.1"` |
+| `run-command` | **Reproduction** - resolved values for specific experiment | `yanex run train.py -p lr=0.01` |
+
+**When to use which:**
+- Use `cli-command` when logging to experiment-log.md (shows the original command)
+- Use `run-command` to re-run a specific experiment from a sweep with its exact parameters
+
+```bash
+# For logging: get the original command that created the sweep
+yanex get cli-command abc12345
+# Output: yanex run train.py -p "lr=0.001,0.01,0.1" -n "hpo-sweep"
+
+# For reproduction: get command to re-run this specific experiment
+yanex get run-command abc12345
+# Output: yanex run train.py -p lr=0.01 -n "hpo-sweep-1"
 ```
 
 ### Inspect Experiments

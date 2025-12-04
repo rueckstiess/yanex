@@ -1591,3 +1591,299 @@ class TestFollowOutputUnit:
         # Should not show early lines
         assert "Line 0" not in captured.out
         assert "Line 10" not in captured.out
+
+
+class TestGetLineageValidation:
+    """Test validation for lineage fields (upstream, downstream, lineage)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = create_cli_runner()
+
+    def test_lineage_requires_single_experiment(self):
+        """Test that lineage fields require experiment ID, not filters."""
+        result = self.runner.invoke(cli, ["get", "lineage", "-s", "completed"])
+        assert result.exit_code != 0
+        assert "requires a single experiment ID" in result.output
+
+    def test_upstream_requires_single_experiment(self):
+        """Test that upstream field requires experiment ID."""
+        result = self.runner.invoke(cli, ["get", "upstream", "-n", "test-*"])
+        assert result.exit_code != 0
+        assert "requires a single experiment ID" in result.output
+
+    def test_downstream_requires_single_experiment(self):
+        """Test that downstream field requires experiment ID."""
+        result = self.runner.invoke(cli, ["get", "downstream", "-t", "training"])
+        assert result.exit_code != 0
+        assert "requires a single experiment ID" in result.output
+
+    def test_depth_only_for_lineage_fields(self):
+        """Test that --depth only applies to lineage fields."""
+        result = self.runner.invoke(
+            cli, ["get", "status", "nonexistent", "--depth", "5"]
+        )
+        assert result.exit_code != 0
+        assert "--depth option only applies to lineage fields" in result.output
+
+    def test_ids_only_for_lineage_fields(self):
+        """Test that --ids-only only applies to lineage fields."""
+        result = self.runner.invoke(cli, ["get", "status", "nonexistent", "--ids-only"])
+        assert result.exit_code != 0
+        assert "--ids-only option only applies to lineage fields" in result.output
+
+    def test_help_shows_lineage_fields(self):
+        """Test that help shows lineage field documentation."""
+        result = self.runner.invoke(cli, ["get", "--help"])
+        assert result.exit_code == 0
+        assert "upstream" in result.output
+        assert "downstream" in result.output
+        assert "lineage" in result.output
+
+    def test_help_shows_lineage_examples(self):
+        """Test that help shows lineage examples."""
+        result = self.runner.invoke(cli, ["get", "--help"])
+        assert result.exit_code == 0
+        assert "lineage visualization" in result.output.lower()
+        assert "--depth" in result.output
+        assert "--ids-only" in result.output
+
+
+class TestGetLineageIntegration:
+    """Integration tests for lineage fields."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = create_cli_runner()
+
+    def test_upstream_with_dependencies(self, per_test_experiments_dir, git_repo):
+        """Test upstream shows dependencies correctly."""
+        from pathlib import Path
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        script_path = Path(git_repo.working_dir) / "test.py"
+        script_path.write_text("print('test')")
+
+        # Create parent experiment
+        parent_id = manager.create_experiment(script_path, config={}, name="parent-exp")
+        manager.complete_experiment(parent_id)
+
+        # Create child with dependency
+        child_id = manager.create_experiment(script_path, config={}, name="child-exp")
+        manager.storage.dependency_storage.save_dependencies(
+            child_id, {"data": parent_id}
+        )
+        manager.complete_experiment(child_id)
+
+        result = self.runner.invoke(
+            cli,
+            ["get", "upstream", child_id],
+        )
+
+        assert result.exit_code == 0
+        # Should show parent experiment
+        assert parent_id in result.output
+
+    def test_upstream_ids_only(self, per_test_experiments_dir, git_repo):
+        """Test upstream with --ids-only outputs comma-separated IDs."""
+        from pathlib import Path
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        script_path = Path(git_repo.working_dir) / "test.py"
+        script_path.write_text("print('test')")
+
+        # Create chain
+        parent_id = manager.create_experiment(script_path, config={}, name="parent")
+        manager.complete_experiment(parent_id)
+
+        child_id = manager.create_experiment(script_path, config={}, name="child")
+        manager.storage.dependency_storage.save_dependencies(
+            child_id, {"data": parent_id}
+        )
+        manager.complete_experiment(child_id)
+
+        result = self.runner.invoke(
+            cli,
+            ["get", "upstream", child_id, "--ids-only"],
+        )
+
+        assert result.exit_code == 0
+        # Should be comma-separated IDs with no newline
+        output = result.output.strip()
+        assert "," in output or len(output) == 8  # Either multiple IDs or just one
+        assert parent_id in output
+
+    def test_downstream_shows_dependents(self, per_test_experiments_dir, git_repo):
+        """Test downstream shows experiments that depend on this one."""
+        from pathlib import Path
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        script_path = Path(git_repo.working_dir) / "test.py"
+        script_path.write_text("print('test')")
+
+        # Create parent
+        parent_id = manager.create_experiment(script_path, config={}, name="parent")
+        manager.complete_experiment(parent_id)
+
+        # Create multiple children
+        child1_id = manager.create_experiment(script_path, config={}, name="child-1")
+        manager.storage.dependency_storage.save_dependencies(
+            child1_id, {"data": parent_id}
+        )
+        manager.complete_experiment(child1_id)
+
+        child2_id = manager.create_experiment(script_path, config={}, name="child-2")
+        manager.storage.dependency_storage.save_dependencies(
+            child2_id, {"model": parent_id}
+        )
+        manager.complete_experiment(child2_id)
+
+        result = self.runner.invoke(
+            cli,
+            ["get", "downstream", parent_id],
+        )
+
+        assert result.exit_code == 0
+        # Should show both children
+        assert child1_id in result.output
+        assert child2_id in result.output
+
+    def test_lineage_shows_full_graph(self, per_test_experiments_dir, git_repo):
+        """Test lineage shows both upstream and downstream."""
+        from pathlib import Path
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        script_path = Path(git_repo.working_dir) / "test.py"
+        script_path.write_text("print('test')")
+
+        # Create chain: A -> B -> C
+        a_id = manager.create_experiment(script_path, config={}, name="A")
+        manager.complete_experiment(a_id)
+
+        b_id = manager.create_experiment(script_path, config={}, name="B")
+        manager.storage.dependency_storage.save_dependencies(b_id, {"data": a_id})
+        manager.complete_experiment(b_id)
+
+        c_id = manager.create_experiment(script_path, config={}, name="C")
+        manager.storage.dependency_storage.save_dependencies(c_id, {"data": b_id})
+        manager.complete_experiment(c_id)
+
+        result = self.runner.invoke(
+            cli,
+            ["get", "lineage", b_id],
+        )
+
+        assert result.exit_code == 0
+        # Should show all three experiments
+        assert a_id in result.output
+        assert b_id in result.output
+        assert c_id in result.output
+
+    def test_lineage_json_format(self, per_test_experiments_dir, git_repo):
+        """Test lineage with JSON output format."""
+        from pathlib import Path
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        script_path = Path(git_repo.working_dir) / "test.py"
+        script_path.write_text("print('test')")
+
+        # Create simple chain
+        parent_id = manager.create_experiment(script_path, config={}, name="parent")
+        manager.complete_experiment(parent_id)
+
+        child_id = manager.create_experiment(script_path, config={}, name="child")
+        manager.storage.dependency_storage.save_dependencies(
+            child_id, {"data": parent_id}
+        )
+        manager.complete_experiment(child_id)
+
+        result = self.runner.invoke(
+            cli,
+            ["get", "lineage", child_id, "-F", "json"],
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "target" in data
+        assert "nodes" in data
+        assert "edges" in data
+        assert data["target"] == child_id
+
+    def test_lineage_depth_limiting(self, per_test_experiments_dir, git_repo):
+        """Test that --depth limits traversal."""
+        from pathlib import Path
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        script_path = Path(git_repo.working_dir) / "test.py"
+        script_path.write_text("print('test')")
+
+        # Create long chain: A -> B -> C -> D
+        ids = []
+        for i in range(4):
+            exp_id = manager.create_experiment(script_path, config={}, name=f"exp-{i}")
+            if i > 0:
+                manager.storage.dependency_storage.save_dependencies(
+                    exp_id, {"data": ids[-1]}
+                )
+            manager.complete_experiment(exp_id)
+            ids.append(exp_id)
+
+        # Get lineage with depth=1 from D (last experiment)
+        result = self.runner.invoke(
+            cli,
+            ["get", "upstream", ids[3], "--depth", "1", "--ids-only"],
+        )
+
+        assert result.exit_code == 0
+        output = result.output.strip()
+
+        # Should only include D's direct parent (C), not A or B
+        assert ids[2] in output  # C (direct parent)
+        # A should not be in output with depth=1
+        if len(output.split(",")) > 1:
+            # If there are multiple IDs, A should not be there
+            assert ids[0] not in output.split(",")
+
+    def test_lineage_standalone_experiment(self, per_test_experiments_dir, git_repo):
+        """Test lineage for experiment with no deps or dependents."""
+        from pathlib import Path
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        script_path = Path(git_repo.working_dir) / "test.py"
+        script_path.write_text("print('test')")
+
+        exp_id = manager.create_experiment(script_path, config={}, name="standalone")
+        manager.complete_experiment(exp_id)
+
+        result = self.runner.invoke(
+            cli,
+            ["get", "lineage", exp_id],
+        )
+
+        assert result.exit_code == 0
+        # Should show the experiment itself
+        assert exp_id in result.output
+
+    def test_lineage_nonexistent_experiment(self, per_test_experiments_dir):
+        """Test lineage with non-existent experiment ID."""
+        result = self.runner.invoke(
+            cli,
+            ["get", "lineage", "nonexistent"],
+        )
+
+        assert result.exit_code != 0
+        assert "no experiment found" in result.output.lower()

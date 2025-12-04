@@ -5,11 +5,13 @@ This command is optimized for AI agents and scripting, with support for
 bash command substitution to build dynamic sweeps.
 """
 
+import json
 import sys
 import time
 from typing import Any
 
 import click
+import networkx as nx
 
 import yanex.results as yr
 from yanex.cli.error_handling import CLIErrorHandler
@@ -22,6 +24,14 @@ from yanex.cli.formatters import (
     get_getter_type,
     resolve_output_format,
 )
+from yanex.cli.formatters.lineage import (
+    get_lineage_ids,
+    lineage_to_csv,
+    lineage_to_json,
+    render_lineage_graph,
+)
+from yanex.core.dependency_graph import DependencyGraph
+from yanex.core.storage import ExperimentStorage
 from yanex.utils.dict_utils import get_nested_value
 
 from .confirm import find_experiment
@@ -45,6 +55,9 @@ METADATA_FIELDS = {
 
 # Fields that support --head/--tail options (returns first/last N lines)
 HEAD_TAIL_SUPPORTED_FIELDS = {"stdout", "stderr"}
+
+# Fields that display lineage graphs (support --depth and --ids-only)
+LINEAGE_FIELDS = {"upstream", "downstream", "lineage"}
 
 
 def reconstruct_cli_command(cli_args: dict[str, Any]) -> str:
@@ -424,6 +437,93 @@ def follow_output(
         click.echo("\n[interrupted]")
 
 
+def _handle_lineage_field(
+    exp_id: str,
+    field: str,
+    depth: int,
+    ids_only: bool,
+    fmt: OutputFormat,
+) -> None:
+    """Handle lineage field output (upstream, downstream, lineage).
+
+    Args:
+        exp_id: Experiment ID to get lineage for.
+        field: One of "upstream", "downstream", or "lineage".
+        depth: Maximum traversal depth.
+        ids_only: If True, output only IDs comma-separated.
+        fmt: Output format.
+    """
+    import os
+    from pathlib import Path
+
+    from rich.console import Console
+
+    # Get experiments directory from environment (same logic as ExperimentManager)
+    env_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
+    if env_dir:
+        experiments_dir = Path(env_dir)
+    else:
+        experiments_dir = Path.home() / ".yanex" / "experiments"
+
+    # Build dependency graph (loads all experiments once)
+    storage = ExperimentStorage(experiments_dir)
+    dep_graph = DependencyGraph(storage)
+
+    # Check if experiment exists in graph
+    if not dep_graph.experiment_exists(exp_id):
+        raise click.ClickException(f"Experiment '{exp_id}' not found")
+
+    # Get the appropriate graph based on field
+    if field == "upstream":
+        # get_upstream returns edges in dependent->dependency direction
+        # Reverse them for display (dependency->dependent, roots at top)
+        raw_graph = dep_graph.get_upstream(exp_id, max_depth=depth)
+        graph = nx.DiGraph()
+        for u, v, data in raw_graph.edges(data=True):
+            graph.add_edge(v, u, **data)
+        # Copy node attributes
+        for node in raw_graph.nodes():
+            if node not in graph:
+                graph.add_node(node)
+            graph.nodes[node].update(raw_graph.nodes[node])
+    elif field == "downstream":
+        graph = dep_graph.get_downstream(exp_id, max_depth=depth)
+    else:  # lineage
+        graph = dep_graph.get_lineage(exp_id, max_depth=depth)
+
+    # Handle --ids-only output
+    if ids_only:
+        ids = get_lineage_ids(graph)
+        click.echo(",".join(ids), nl=False)
+        return
+
+    # Handle different output formats
+    if fmt == OutputFormat.JSON:
+        output = lineage_to_json(graph, exp_id)
+        click.echo(json.dumps(output, indent=2))
+    elif fmt == OutputFormat.CSV:
+        output = lineage_to_csv(graph)
+        click.echo(output)
+    elif fmt == OutputFormat.MARKDOWN:
+        # For markdown, output as a simple edge list table
+        click.echo("| From | To | Slot |")
+        click.echo("| --- | --- | --- |")
+        for u, v, data in graph.edges(data=True):
+            slot = data.get("slot", "")
+            click.echo(f"| {u} | {v} | {slot} |")
+    elif fmt == OutputFormat.SWEEP:
+        # Sweep format: comma-separated IDs
+        ids = get_lineage_ids(graph)
+        click.echo(",".join(ids), nl=False)
+    else:
+        # Default: render as ASCII DAG
+        output = render_lineage_graph(graph, exp_id)
+        # Use Rich console for proper markup handling
+        console = Console()
+        console.print()  # Add blank line before tree
+        console.print(output)
+
+
 @click.command("get")
 @click.argument("field", required=True)
 @click.argument("experiment_id", required=False)
@@ -459,6 +559,17 @@ def follow_output(
     is_flag=True,
     help="Follow output in real-time (only for stdout/stderr on single experiment)",
 )
+@click.option(
+    "--depth",
+    type=int,
+    default=10,
+    help="Maximum depth for lineage traversal (default: 10, only for lineage fields)",
+)
+@click.option(
+    "--ids-only",
+    is_flag=True,
+    help="Output only experiment IDs comma-separated (only for lineage fields)",
+)
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
 def get_field(
@@ -488,6 +599,8 @@ def get_field(
     tail: int | None,
     head: int | None,
     follow: bool,
+    depth: int,
+    ids_only: bool,
 ):
     """
     Get a specific field value from experiment(s).
@@ -523,6 +636,12 @@ def get_field(
           Directory paths for the experiment
       dependencies
           Dependency slot=id pairs (e.g., data=abc123 model=def456)
+      upstream
+          DAG of dependencies (what this experiment depends on)
+      downstream
+          DAG of dependents (what depends on this experiment)
+      lineage
+          Full DAG (upstream + downstream combined)
       git.branch, git.commit_hash, git.dirty, git.remote_url
           Git state at experiment creation
       environment.python.version, environment.<path>
@@ -545,6 +664,15 @@ def get_field(
       yanex get stdout abc123 -f           Follow output in real-time
       yanex get cli-command abc123         Original CLI invocation
       yanex get artifacts abc123           List artifact files
+
+    \b
+    Examples (lineage visualization):
+      yanex get upstream abc123            Show dependencies as DAG
+      yanex get downstream abc123          Show dependents as DAG
+      yanex get lineage abc123             Show full dependency graph
+      yanex get lineage abc123 --depth 3   Limit traversal depth
+      yanex get lineage abc123 --ids-only  Get IDs only (for scripting)
+      yanex get lineage abc123 -F json     JSON format (nodes + edges)
 
     \b
     Examples (multiple experiments with filters):
@@ -588,6 +716,24 @@ def get_field(
     if follow and head is not None:
         raise click.ClickException(
             "--follow cannot be used with --head (use --tail to show last N lines before following)"
+        )
+
+    # Validate --depth only applies to lineage fields
+    if depth != 10 and field not in LINEAGE_FIELDS:
+        raise click.ClickException(
+            f"--depth option only applies to lineage fields (upstream, downstream, lineage), not '{field}'"
+        )
+
+    # Validate --ids-only only applies to lineage fields
+    if ids_only and field not in LINEAGE_FIELDS:
+        raise click.ClickException(
+            f"--ids-only option only applies to lineage fields (upstream, downstream, lineage), not '{field}'"
+        )
+
+    # Validate lineage fields require single experiment
+    if field in LINEAGE_FIELDS and not experiment_id:
+        raise click.ClickException(
+            f"'{field}' field requires a single experiment ID, not filter options"
         )
 
     # Determine if we have filters or a single experiment
@@ -645,6 +791,11 @@ def get_field(
         # Handle --follow mode for stdout/stderr
         if follow:
             follow_output(exp, field, initial_tail=tail)
+            return
+
+        # Handle lineage fields (upstream, downstream, lineage)
+        if field in LINEAGE_FIELDS:
+            _handle_lineage_field(exp.id, field, depth, ids_only, fmt)
             return
 
         value, found = resolve_field_value(exp, field, default_value, tail, head)
