@@ -82,6 +82,9 @@ Filter options work the same as [`yanex list`](list.md). See that documentation 
 | `git.commit_hash` | Scalar | Git commit SHA | `a1b2c3d4e5f6...` |
 | `git.dirty` | Scalar | Uncommitted changes flag | `true` |
 | `environment.python.version` | Scalar | Python version | `3.11.5` |
+| `upstream` | Multiline | Dependency graph (what this depends on) | *(ASCII DAG)* |
+| `downstream` | Multiline | Dependent graph (what depends on this) | *(ASCII DAG)* |
+| `lineage` | Multiline | Full lineage (upstream + downstream) | *(ASCII DAG)* |
 
 ### Field Types
 
@@ -111,6 +114,7 @@ yanex get dependencies abc123    # data=def456 model=ghi789
 yanex get stdout abc123          # (full stdout output)
 yanex get stderr abc123          # (full stderr output)
 yanex get artifacts abc123       # (list of file paths, one per line)
+yanex get lineage abc123         # (ASCII DAG visualization)
 ```
 
 ## Output Formats
@@ -226,6 +230,102 @@ for id in $(yanex get id -n "baseline-*" -F sweep | tr ',' ' '); do
 done
 ```
 
+## Lineage Visualization
+
+The `upstream`, `downstream`, and `lineage` fields display experiment dependency graphs as ASCII DAG visualizations.
+
+### Lineage Fields
+
+| Field | Description |
+|-------|-------------|
+| `upstream` | Show dependencies (what this experiment depends on) |
+| `downstream` | Show dependents (what depends on this experiment) |
+| `lineage` | Show both upstream and downstream combined |
+
+### Basic Usage
+
+```bash
+# Show what an experiment depends on
+yanex get upstream abc123
+
+# Show what depends on this experiment
+yanex get downstream abc123
+
+# Show full lineage (both directions)
+yanex get lineage abc123
+```
+
+### Example Output
+
+```
+<*> indicates experiments matching the filter
+
+• <data> 0c621736 flights-data-10k (01_prepare_data.py) ✓
+└─• <encoder> 1fdbf585 flights-100-encoder (02_train_encoder.py) ✓
+  └─• <*> 9f0429e8 flights-103-strategy-ucb (03_train_advisor.py) ✓
+```
+
+Output legend:
+- `<*>` - Target experiment (the one you queried)
+- `<slot>` - Dependency slot name (e.g., `<data>`, `<encoder>`)
+- `✓` - Completed, `✗` - Failed, `●` - Running, `○` - Pending
+
+### Multi-Experiment Lineage
+
+Use filters to visualize lineage for multiple experiments:
+
+```bash
+# Lineage for all completed training experiments
+yanex get lineage -n "train-*" -s completed
+
+# Upstream dependencies of experiments with a tag
+yanex get upstream -t production
+
+# Downstream of specific experiments
+yanex get downstream --ids abc123,def456
+```
+
+Connected experiments render as a single DAG; disconnected experiments render as separate DAGs.
+
+### Lineage Options
+
+| Option | Description |
+|--------|-------------|
+| `--depth N` | Limit traversal depth (default: 10) |
+| `--ids-only` | Output comma-separated IDs only (for scripting) |
+
+```bash
+# Limit to 3 levels of dependencies
+yanex get upstream abc123 --depth 3
+
+# Get just the IDs for scripting
+yanex get upstream abc123 --ids-only
+# Output: def67890,ghi11111
+
+# Use with bash substitution
+yanex delete $(yanex get upstream abc123 --ids-only)
+```
+
+### JSON Output for Lineage
+
+```bash
+yanex get lineage abc123 -F json
+```
+
+Returns structured data with nodes, edges, and targets:
+```json
+{
+  "targets": ["abc12345"],
+  "nodes": [
+    {"id": "abc12345", "name": "train-model", "status": "completed"},
+    {"id": "def67890", "name": "prep-data", "status": "completed"}
+  ],
+  "edges": [
+    {"from": "def67890", "to": "abc12345", "slot": "data"}
+  ]
+}
+```
+
 ## Examples
 
 ### Check Experiment Status
@@ -322,6 +422,11 @@ Same as [`yanex list`](list.md):
 - `--head N`: Return first N lines
 - `--tail N`: Return last N lines
 - `--follow`: Stream output in real-time (single experiment only)
+
+### Lineage Options
+
+- `--depth N`: Limit dependency traversal depth (default: 10)
+- `--ids-only`: Output comma-separated experiment IDs only (for scripting)
 
 ---
 

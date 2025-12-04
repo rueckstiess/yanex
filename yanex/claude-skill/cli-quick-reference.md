@@ -102,6 +102,8 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `--head N` | | Return first N lines (stdout/stderr only) |
 | `--tail N` | | Return last N lines (stdout/stderr only) |
 | `--follow` | `-f` | Follow output in real-time (stdout/stderr, single experiment only) |
+| `--depth N` | | Limit dependency traversal depth (lineage fields, default: 10) |
+| `--ids-only` | | Output comma-separated IDs only (lineage fields, for scripting) |
 
 ### Field Paths
 
@@ -123,6 +125,9 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `metrics` | List available metric names |
 | `metrics.<key>` | Last logged metric value (e.g., `metrics.accuracy`) |
 | `dependencies` | Dependency slot=id pairs |
+| `upstream` | Dependency graph (ASCII DAG) - what this depends on |
+| `downstream` | Dependent graph (ASCII DAG) - what depends on this |
+| `lineage` | Full lineage graph (ASCII DAG) - upstream + downstream |
 | `git.branch` | Git branch name |
 | `git.commit_hash` | Git commit hash |
 | `created_at` | Creation timestamp |
@@ -151,6 +156,11 @@ yanex get cli-command abc12345         # Get original CLI invocation (with sweep
 yanex get run-command abc12345         # Get reproducible command (resolved values)
 yanex get experiment-dir abc12345      # Get experiment directory path
 yanex get artifacts-dir abc12345       # Get artifacts directory path
+yanex get upstream abc12345            # Show dependency graph (what this depends on)
+yanex get downstream abc12345          # Show dependent graph (what depends on this)
+yanex get lineage abc12345             # Show full lineage (both directions)
+yanex get upstream abc12345 --depth 3  # Limit to 3 levels of dependencies
+yanex get upstream abc12345 --ids-only # Get just dependency IDs (for scripting)
 ```
 
 ### Command Reconstruction
@@ -236,6 +246,44 @@ yanex run train.py -p lr=$(yanex get params.lr -s completed -F sweep)
 # Chain experiments dynamically
 DATA_ID=$(yanex get id -n "data-prep" -s completed -l 1)
 yanex run train.py -D data=$DATA_ID
+```
+
+### Lineage Visualization
+
+Visualize experiment dependency graphs with `upstream`, `downstream`, and `lineage` fields:
+
+```bash
+# Show what an experiment depends on
+yanex get upstream abc12345
+
+# Show what depends on this experiment
+yanex get downstream abc12345
+
+# Show full lineage (both directions)
+yanex get lineage abc12345
+
+# Multi-experiment lineage (with filters)
+yanex get lineage -n "train-*" -s completed
+```
+
+Example output:
+```
+<*> indicates experiments matching the filter
+
+• <data> 0c621736 flights-data-10k (01_prepare_data.py) ✓
+└─• <encoder> 1fdbf585 flights-100-encoder (02_train_encoder.py) ✓
+  └─• <*> 9f0429e8 flights-103-strategy-ucb (03_train_advisor.py) ✓
+```
+
+Legend: `<*>` = target experiment, `<slot>` = dependency slot, `✓`/`✗`/`●`/`○` = status
+
+```bash
+# Get dependency IDs for scripting
+yanex get upstream abc12345 --ids-only
+# → def67890,ghi11111
+
+# JSON output for programmatic use
+yanex get lineage abc12345 -F json
 ```
 
 ## yanex show
