@@ -9,14 +9,13 @@ from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
 from ..formatters import (
     ExperimentTableFormatter,
-    OutputMode,
+    OutputFormat,
     experiments_to_list,
-    get_output_mode,
+    format_options,
     output_csv,
     output_json,
     output_markdown_table,
-    output_mode_options,
-    validate_output_mode_flags,
+    resolve_output_format,
 )
 
 # Standard columns for list output
@@ -41,16 +40,17 @@ LIST_HEADERS = {
     is_flag=True,
     help="Show all experiments (overrides default limit of 10)",
 )
-@output_mode_options
+@format_options()
 @experiment_filter_options(include_ids=False, include_archived=True, include_limit=True)
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
 def list_experiments(
     ctx: click.Context,
     show_all: bool,
-    json_output: bool,
-    csv_output: bool,
-    markdown_output: bool,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     limit: int | None,
     status: str | None,
     name_pattern: str | None,
@@ -68,12 +68,12 @@ def list_experiments(
     Shows the last 10 experiments by default. Use --all to show all experiments
     or -l to specify a custom limit.
 
-    Supports multiple output formats for different use cases:
+    Supports multiple output formats:
 
     \b
-      --json      Output as JSON (for scripting/AI processing)
-      --csv       Output as CSV (for spreadsheets/data analysis)
-      --markdown  Output as GitHub-flavored markdown
+      --format json      Output as JSON (for scripting/AI processing)
+      --format csv       Output as CSV (for spreadsheets/data analysis)
+      --format markdown  Output as GitHub-flavored markdown
 
     Examples:
 
@@ -87,11 +87,11 @@ def list_experiments(
 
     \b
       # Export as JSON for processing
-      yanex list --json > experiments.json
+      yanex list --format json > experiments.json
 
     \b
       # Export as CSV for spreadsheets
-      yanex list --csv > experiments.csv
+      yanex list --format csv > experiments.csv
 
     \b
       # Filter by status
@@ -107,11 +107,10 @@ def list_experiments(
 
     \b
       # Complex filtering with JSON output
-      yanex list -s completed -t production --json
+      yanex list -s completed -t production --format json
     """
-    # Validate output mode flags
-    validate_output_mode_flags(json_output, csv_output, markdown_output)
-    output_mode = get_output_mode(json_output, csv_output, markdown_output)
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
 
     verbose = ctx.obj.get("verbose", False)
 
@@ -181,12 +180,12 @@ def list_experiments(
 
         # Handle empty results
         if not experiments:
-            if output_mode == OutputMode.JSON:
+            if fmt == OutputFormat.JSON:
                 output_json([])
-            elif output_mode == OutputMode.CSV:
+            elif fmt == OutputFormat.CSV:
                 # Output empty CSV with just headers
                 output_csv([], columns=LIST_COLUMNS)
-            elif output_mode == OutputMode.MARKDOWN:
+            elif fmt == OutputFormat.MARKDOWN:
                 click.echo("_No experiments found_")
             else:
                 click.echo("No experiments found.")
@@ -202,12 +201,12 @@ def list_experiments(
                 )
             return
 
-        # Output based on mode
-        if output_mode == OutputMode.JSON:
+        # Output based on format
+        if fmt == OutputFormat.JSON:
             output_json(experiments_to_list(experiments))
             return
 
-        if output_mode == OutputMode.CSV:
+        if fmt == OutputFormat.CSV:
             output_csv(
                 experiments_to_list(experiments),
                 columns=LIST_COLUMNS,
@@ -215,7 +214,7 @@ def list_experiments(
             )
             return
 
-        if output_mode == OutputMode.MARKDOWN:
+        if fmt == OutputFormat.MARKDOWN:
             table_title = "Archived Experiments" if archived else "Experiments"
             output_markdown_table(
                 experiments_to_list(experiments),

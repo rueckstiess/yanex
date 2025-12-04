@@ -12,6 +12,12 @@ from .csv_formatter import (
     output_action_result_csv,
     output_csv,
 )
+from .getter_output import (
+    GETTER_TYPES,
+    GetterOutput,
+    GetterType,
+    get_getter_type,
+)
 from .json_formatter import (
     YanexJSONEncoder,
     format_action_result,
@@ -25,12 +31,17 @@ from .markdown_formatter import (
     output_markdown_table,
 )
 from .output import (
+    OutputFormat,
     OutputMode,
     echo_error,
+    echo_format_info,
     echo_info,
+    format_options,
     get_output_mode,
+    is_machine_format,
     is_machine_output,
     output_mode_options,
+    resolve_output_format,
     validate_output_mode_flags,
 )
 from .serializers import (
@@ -62,7 +73,18 @@ from .theme import (
 __all__ = [
     # Console formatter
     "ExperimentTableFormatter",
-    # Output modes
+    # Getter output (for yanex get command)
+    "GetterType",
+    "GetterOutput",
+    "GETTER_TYPES",
+    "get_getter_type",
+    # Output formats (new unified approach)
+    "OutputFormat",
+    "format_options",
+    "resolve_output_format",
+    "is_machine_format",
+    "echo_format_info",
+    # Output modes (legacy, for backwards compatibility)
     "OutputMode",
     "output_mode_options",
     "get_output_mode",

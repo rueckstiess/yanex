@@ -23,10 +23,8 @@ class TestGetCommandHelp:
         assert "Get a specific field value" in result.output
         assert "FIELD" in result.output
         assert "EXPERIMENT_ID" in result.output
-        assert "--csv" in result.output
-        assert "--json" in result.output
+        assert "--format" in result.output  # New unified format option
         assert "--default" in result.output
-        assert "--no-id" in result.output
 
     def test_get_help_shows_field_examples(self):
         """Test that help includes field examples."""
@@ -41,7 +39,7 @@ class TestGetCommandHelp:
         result = self.runner.invoke(cli, ["get", "--help"])
         assert result.exit_code == 0
         assert "Bash substitution" in result.output
-        assert "--csv" in result.output
+        assert "sweep" in result.output  # --format sweep for bash substitution
 
 
 class TestGetCommandValidation:
@@ -187,9 +185,12 @@ class TestGetCommandSingleExperiment:
 
         result = self.runner.invoke(cli, ["get", "tags", exp_id, "--json"])
         assert result.exit_code == 0
-        tags = json.loads(result.output.strip())
-        assert isinstance(tags, list)
-        assert "getalpha" in tags
+        data = json.loads(result.output.strip())
+        # New JSON structure: {"id": "...", "value": [...]}
+        assert "id" in data
+        assert "value" in data
+        assert isinstance(data["value"], list)
+        assert "getalpha" in data["value"]
 
     def test_get_param(self, clean_git_repo, sample_experiment_script):
         """Test getting a parameter from a single experiment."""
@@ -326,8 +327,10 @@ class TestGetCommandMultipleExperiments:
         )
         assert result.exit_code == 0
         data = json.loads(result.output.strip())
+        # Multi-experiment JSON: [{"id": "...", "value": ...}, ...]
         assert isinstance(data, list)
         assert len(data) == 2
+        assert all("id" in item and "value" in item for item in data)
 
     def test_get_multiple_with_id_prefix(
         self, clean_git_repo, sample_experiment_script
@@ -351,25 +354,25 @@ class TestGetCommandMultipleExperiments:
         assert result.exit_code == 0
         assert ": completed" in result.output
 
-    def test_get_multiple_no_id(self, clean_git_repo, sample_experiment_script):
-        """Test --no-id flag omits ID prefix."""
+    def test_get_multiple_sweep_format(self, clean_git_repo, sample_experiment_script):
+        """Test --format sweep outputs values without IDs."""
         # Create two experiments
         for i in range(2):
             result = self.runner.invoke(
                 cli,
-                ["run", str(sample_experiment_script), "--name", f"get-noid-test-{i}"],
+                ["run", str(sample_experiment_script), "--name", f"get-sweep-test-{i}"],
             )
             assert result.exit_code == 0
 
-        # Get status with --no-id
+        # Get status with --format sweep
         result = self.runner.invoke(
-            cli, ["get", "status", "-n", "get-noid-test-*", "--no-id"]
+            cli, ["get", "status", "-n", "get-sweep-test-*", "-F", "sweep"]
         )
         assert result.exit_code == 0
-        lines = result.output.strip().split("\n")
-        # Each line should just be "completed" without ID prefix
-        for line in lines:
-            assert line == "completed"
+        # Sweep format: comma-separated values without IDs or newline
+        assert "completed,completed" in result.output
+        # No newline at end for bash substitution
+        assert not result.output.endswith("\n")
 
     def test_get_multiple_with_limit(self, clean_git_repo, sample_experiment_script):
         """Test limit option."""
@@ -456,7 +459,10 @@ class TestGetCommandDependencies:
         result = self.runner.invoke(cli, ["get", "dependencies", exp_id, "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output.strip())
-        assert data == {}
+        # New JSON structure: {"id": "...", "value": {...}}
+        assert "id" in data
+        assert "value" in data
+        assert data["value"] == {}
 
     def _extract_experiment_id(self, output: str) -> str | None:
         """Extract experiment ID from yanex run output."""
@@ -609,80 +615,73 @@ class TestResolveFieldValueUnit:
         assert found is True
 
 
-class TestFormatValueUnit:
-    """Unit tests for format_value function."""
+class TestGetterOutputUnit:
+    """Unit tests for GetterOutput class."""
 
-    def test_format_string(self):
-        """Test formatting string value."""
-        from yanex.cli.commands.get import format_value
+    def test_format_display_value_string(self):
+        """Test formatting string value for display."""
+        from yanex.cli.formatters import GetterOutput, GetterType, OutputFormat
 
-        assert format_value("hello") == "hello"
+        output = GetterOutput("test", OutputFormat.DEFAULT)
+        assert output._format_display_value("hello", GetterType.SCALAR) == "hello"
 
-    def test_format_number(self):
-        """Test formatting number value."""
-        from yanex.cli.commands.get import format_value
+    def test_format_display_value_number(self):
+        """Test formatting number value for display."""
+        from yanex.cli.formatters import GetterOutput, GetterType, OutputFormat
 
-        assert format_value(42) == "42"
-        assert format_value(3.14) == "3.14"
+        output = GetterOutput("test", OutputFormat.DEFAULT)
+        assert output._format_display_value(42, GetterType.SCALAR) == "42"
+        assert output._format_display_value(3.14, GetterType.SCALAR) == "3.14"
 
-    def test_format_none(self):
-        """Test formatting None value."""
-        from yanex.cli.commands.get import format_value
+    def test_format_display_value_none(self):
+        """Test formatting None value for display."""
+        from yanex.cli.formatters import GetterOutput, GetterType, OutputFormat
 
-        assert format_value(None) == ""
+        output = GetterOutput("test", OutputFormat.DEFAULT)
+        assert output._format_display_value(None, GetterType.SCALAR) == ""
 
-    def test_format_list(self):
-        """Test formatting list value."""
-        from yanex.cli.commands.get import format_value
+    def test_format_display_value_list(self):
+        """Test formatting list value for display."""
+        from yanex.cli.formatters import GetterOutput, GetterType, OutputFormat
 
-        assert format_value(["a", "b", "c"]) == "a, b, c"
+        output = GetterOutput("test", OutputFormat.DEFAULT)
+        assert (
+            output._format_display_value(["a", "b", "c"], GetterType.LIST) == "a, b, c"
+        )
 
-    def test_format_dict_dependencies(self):
-        """Test formatting dict as slot=id pairs."""
-        from yanex.cli.commands.get import format_value
+    def test_format_display_value_dict_dependencies(self):
+        """Test formatting dict as slot=id pairs for display."""
+        from yanex.cli.formatters import GetterOutput, GetterType, OutputFormat
 
-        result = format_value({"data": "abc123", "model": "def456"})
+        output = GetterOutput("test", OutputFormat.DEFAULT)
+        result = output._format_display_value(
+            {"data": "abc123", "model": "def456"}, GetterType.COMPLEX
+        )
         assert "data=abc123" in result
         assert "model=def456" in result
 
-    def test_format_json_mode(self):
-        """Test formatting with JSON mode."""
-        from yanex.cli.commands.get import format_value
-
-        result = format_value({"key": "value"}, json_output=True)
-        data = json.loads(result)
-        assert data == {"key": "value"}
-
-
-class TestFormatValueForCSVUnit:
-    """Unit tests for format_value_for_csv function."""
-
-    def test_format_csv_string(self):
+    def test_format_csv_value_string(self):
         """Test CSV formatting string value."""
-        from yanex.cli.commands.get import format_value_for_csv
+        from yanex.cli.formatters import GetterOutput, GetterType, OutputFormat
 
-        assert format_value_for_csv("hello") == "hello"
+        output = GetterOutput("test", OutputFormat.CSV)
+        assert output._format_csv_value("hello", GetterType.SCALAR) == "hello"
 
-    def test_format_csv_none(self):
+    def test_format_csv_value_none(self):
         """Test CSV formatting None value."""
-        from yanex.cli.commands.get import format_value_for_csv
+        from yanex.cli.formatters import GetterOutput, GetterType, OutputFormat
 
-        assert format_value_for_csv(None) == ""
+        output = GetterOutput("test", OutputFormat.CSV)
+        assert output._format_csv_value(None, GetterType.SCALAR) == ""
 
-    def test_format_csv_list(self):
-        """Test CSV formatting list value (comma-separated, no spaces)."""
-        from yanex.cli.commands.get import format_value_for_csv
+    def test_format_csv_value_list(self):
+        """Test CSV formatting list value (quoted if contains comma)."""
+        from yanex.cli.formatters import GetterOutput, GetterType, OutputFormat
 
-        assert format_value_for_csv(["a", "b", "c"]) == "a,b,c"
-
-    def test_format_csv_dict(self):
-        """Test CSV formatting dict as slot=id pairs (comma-separated)."""
-        from yanex.cli.commands.get import format_value_for_csv
-
-        result = format_value_for_csv({"a": "1", "b": "2"})
-        assert "a=1" in result
-        assert "b=2" in result
-        assert "," in result
+        output = GetterOutput("test", OutputFormat.CSV)
+        result = output._format_csv_value(["a", "b", "c"], GetterType.LIST)
+        # Contains comma, so should be quoted
+        assert result == '"a,b,c"'
 
 
 class TestGetStdoutStderr:
@@ -804,7 +803,11 @@ class TestGetStdoutStderr:
         result = self.runner.invoke(cli, ["get", "stdout", exp_id, "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output.strip())
-        assert isinstance(data, str)
+        # Multiline JSON uses field name as key: [{"id": "...", "stdout": "..."}]
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert "id" in data[0]
+        assert "stdout" in data[0]
 
     def _extract_experiment_id(self, output: str) -> str | None:
         """Extract experiment ID from yanex run output."""
@@ -856,7 +859,7 @@ class TestGetStdoutStderrValidation:
     def test_csv_not_supported_for_stdout(
         self, clean_git_repo, sample_experiment_script
     ):
-        """Test that --csv is rejected for stdout field."""
+        """Test that --format csv is rejected for stdout field."""
         result = self.runner.invoke(
             cli, ["run", str(sample_experiment_script), "--name", "get-csv-validate"]
         )
@@ -864,10 +867,10 @@ class TestGetStdoutStderrValidation:
         exp_id = self._extract_experiment_id(result.output)
         assert exp_id is not None
 
-        # Try to use --csv with stdout field
-        result = self.runner.invoke(cli, ["get", "stdout", exp_id, "--csv"])
+        # Try to use --format csv with stdout field
+        result = self.runner.invoke(cli, ["get", "stdout", exp_id, "-F", "csv"])
         assert result.exit_code != 0
-        assert "--csv output is not supported" in result.output
+        assert "not supported for 'stdout'" in result.output
 
     def _extract_experiment_id(self, output: str) -> str | None:
         """Extract experiment ID from yanex run output."""
@@ -983,8 +986,11 @@ class TestGetCommandReconstructedCommands:
         result = self.runner.invoke(cli, ["get", "cli-command", exp_id, "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output.strip())
-        assert isinstance(data, str)
-        assert "yanex run" in data
+        # New JSON structure: {"id": "...", "value": "..."}
+        assert "id" in data
+        assert "value" in data
+        assert isinstance(data["value"], str)
+        assert "yanex run" in data["value"]
 
     def test_get_commands_help_lists_new_fields(self):
         """Test that help includes cli-command and run-command fields."""
@@ -1405,7 +1411,7 @@ class TestFollowValidation:
     def test_follow_incompatible_with_csv(
         self, clean_git_repo, sample_experiment_script
     ):
-        """Test that --follow cannot be used with --csv."""
+        """Test that --follow cannot be used with --format sweep (legacy --csv)."""
         # Create an experiment first
         result = self.runner.invoke(
             cli,
@@ -1414,11 +1420,12 @@ class TestFollowValidation:
         assert result.exit_code == 0
         exp_id = self._extract_experiment_id(result.output)
 
-        # Try to use --follow with --csv
-        result = self.runner.invoke(cli, ["get", "stdout", exp_id, "--follow", "--csv"])
+        # Try to use --follow with --format sweep
+        result = self.runner.invoke(
+            cli, ["get", "stdout", exp_id, "--follow", "-F", "sweep"]
+        )
         assert result.exit_code != 0
-        # Either validation error is acceptable (--csv not supported for stdout, or --follow+--csv incompatible)
-        assert "csv" in result.output.lower()
+        assert "cannot be used with --format" in result.output
 
     def test_follow_incompatible_with_json(
         self, clean_git_repo, sample_experiment_script
@@ -1435,7 +1442,7 @@ class TestFollowValidation:
             cli, ["get", "stdout", exp_id, "--follow", "--json"]
         )
         assert result.exit_code != 0
-        assert "cannot be used with --json" in result.output
+        assert "cannot be used with --format" in result.output
 
     def test_follow_incompatible_with_head(
         self, clean_git_repo, sample_experiment_script
@@ -1483,7 +1490,7 @@ class TestFollowValidation:
         """Test that --follow option is shown in help."""
         result = self.runner.invoke(cli, ["get", "--help"])
         assert result.exit_code == 0
-        assert "--follow" in result.output or "-f" in result.output
+        assert "--follow" in result.output
 
     def _extract_experiment_id(self, output: str) -> str | None:
         """Extract experiment ID from yanex run output."""

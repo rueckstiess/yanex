@@ -5,7 +5,6 @@ This command is optimized for AI agents and scripting, with support for
 bash command substitution to build dynamic sweeps.
 """
 
-import json
 import sys
 import time
 from typing import Any
@@ -16,7 +15,13 @@ import yanex.results as yr
 from yanex.cli.error_handling import CLIErrorHandler
 from yanex.cli.filters import ExperimentFilter
 from yanex.cli.filters.arguments import experiment_filter_options
-from yanex.cli.formatters import format_markdown_table
+from yanex.cli.formatters import (
+    GetterOutput,
+    OutputFormat,
+    format_options,
+    get_getter_type,
+    resolve_output_format,
+)
 from yanex.utils.dict_utils import get_nested_value
 
 from .confirm import find_experiment
@@ -330,44 +335,6 @@ def resolve_field_value(
     return default_value, False
 
 
-def format_value(value: Any, json_output: bool = False) -> str:
-    """Format a value for output."""
-    if json_output:
-        return json.dumps(value)
-
-    if value is None:
-        return ""
-
-    if isinstance(value, dict):
-        # Format dependencies as slot=id pairs
-        if all(isinstance(k, str) and isinstance(v, str) for k, v in value.items()):
-            return " ".join(f"{k}={v}" for k, v in sorted(value.items()))
-        return json.dumps(value)
-
-    if isinstance(value, list):
-        # Format lists as comma-separated
-        return ", ".join(str(v) for v in value)
-
-    return str(value)
-
-
-def format_value_for_csv(value: Any) -> str:
-    """Format a value for CSV output (no ID prefix, comma-separated)."""
-    if value is None:
-        return ""
-
-    if isinstance(value, dict):
-        # Format dependencies as slot=id pairs
-        if all(isinstance(k, str) and isinstance(v, str) for k, v in value.items()):
-            return ",".join(f"{k}={v}" for k, v in sorted(value.items()))
-        return json.dumps(value)
-
-    if isinstance(value, list):
-        return ",".join(str(v) for v in value)
-
-    return str(value)
-
-
 def follow_output(
     exp: yr.Experiment,
     field: str,
@@ -450,30 +417,12 @@ def follow_output(
 @click.argument("field", required=True)
 @click.argument("experiment_id", required=False)
 @experiment_filter_options(include_ids=True, include_archived=True, include_limit=True)
+@format_options(include_sweep=True)
 @click.option(
     "--no-id",
     is_flag=True,
-    help="Omit experiment ID prefix in multi-experiment output",
-)
-@click.option(
-    "--csv",
-    "csv_output",
-    is_flag=True,
-    help="Output comma-separated values on single line (for bash substitution)",
-)
-@click.option(
-    "--json",
-    "-j",
-    "json_output",
-    is_flag=True,
-    help="Output as JSON (useful for complex values)",
-)
-@click.option(
-    "--markdown",
-    "-m",
-    "markdown_output",
-    is_flag=True,
-    help="Output as GitHub-flavored markdown table (for multi-experiment output)",
+    help="Omit experiment ID prefix in multi-experiment output (legacy, use --format instead)",
+    hidden=True,
 )
 @click.option(
     "--default",
@@ -495,7 +444,6 @@ def follow_output(
 )
 @click.option(
     "--follow",
-    "-f",
     is_flag=True,
     help="Follow output in real-time (only for stdout/stderr on single experiment)",
 )
@@ -517,11 +465,13 @@ def get_field(
     ended_before: str | None,
     archived: bool,
     limit: int | None,
-    # Output options
+    # Output format options
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
+    # Other options
     no_id: bool,
-    csv_output: bool,
-    json_output: bool,
-    markdown_output: bool,
     default_value: str,
     tail: int | None,
     head: int | None,
@@ -539,7 +489,7 @@ def get_field(
       - Core: id, name, status, description, tags
       - Timing: created_at, started_at, completed_at
       - Script: script_path, error_message
-      - Output: stdout, stderr (with --head/--tail N, or --follow/-f)
+      - Output: stdout, stderr (with --head/--tail N, or --follow)
       - Commands: cli-command (original), run-command (reproducible)
       - Paths: experiment-dir, artifacts-dir
       - Git: git.branch, git.commit_hash
@@ -547,6 +497,15 @@ def get_field(
       - Parameters: params (list names), params.<key> (get value)
       - Metrics: metrics (list names), metrics.<key> (last value)
       - Dependencies: dependencies - returns slot=id pairs
+
+    Output formats (--format / -F):
+
+    \b
+      default    Human-readable output (ID: value for multi-experiment)
+      json       JSON output with {"id": "...", "value": ...} structure
+      csv        CSV with ID column (ID,field header)
+      markdown   GitHub-flavored markdown table
+      sweep      Comma-separated values only (for bash substitution)
 
     \b
     Examples:
@@ -559,8 +518,8 @@ def get_field(
       yanex get stdout abc123 --tail 50    Get last 50 lines of stdout
       yanex get stdout abc123 --head 10    Get first 10 lines of stdout
       yanex get stdout abc123 --head 5 --tail 5  Show first 5 and last 5 lines
-      yanex get stdout abc123 -f           Follow stdout in real-time
-      yanex get stdout abc123 --tail 20 -f Show last 20 lines then follow
+      yanex get stdout abc123 --follow     Follow stdout in real-time
+      yanex get stdout abc123 --tail 20 --follow  Show last 20 lines then follow
       yanex get stderr abc123              Get stderr output
       yanex get stdout -s running --tail 5 Check running experiments progress
       yanex get cli-command abc123         Get original CLI invocation (with sweep syntax)
@@ -569,21 +528,20 @@ def get_field(
       yanex get artifacts-dir abc123       Get artifacts directory path
       yanex get dependencies abc123        Get dependencies as slot=id pairs
       yanex get id -n "train-*"            Get IDs of matching experiments
-      yanex get id -n "train-*" --csv      Get IDs comma-separated (for sweeps)
-      yanex get params.lr -s completed --csv   Get learning rates for sweep
-      yanex get tags abc123 --json         Get tags as JSON array
+      yanex get id -n "train-*" -F sweep   Get IDs comma-separated (for sweeps)
+      yanex get params.lr -s completed -F csv  Get learning rates as CSV
+      yanex get tags abc123 -F json        Get tags as JSON
 
     \b
     Bash substitution for sweeps:
-      yanex run train.py -D data=$(yanex get id -n "*-prep-*" --csv)
-      yanex run train.py -p lr=$(yanex get params.lr -s completed --csv)
+      yanex run train.py -D data=$(yanex get id -n "*-prep-*" -F sweep)
+      yanex run train.py -p lr=$(yanex get params.lr -s completed -F sweep)
     """
-    # Validate mutually exclusive output modes
-    output_mode_count = sum([json_output, csv_output, markdown_output])
-    if output_mode_count > 1:
-        raise click.ClickException(
-            "Cannot specify multiple output formats. Choose one of --json, --csv, or --markdown."
-        )
+    # Resolve output format from --format option or legacy flags
+    # Legacy --csv maps to SWEEP for backwards compatibility
+    fmt = resolve_output_format(
+        output_format, json_flag, csv_flag, markdown_flag, csv_means_sweep=True
+    )
 
     # Validate --head/--tail only applies to stdout/stderr
     if tail is not None and field not in HEAD_TAIL_SUPPORTED_FIELDS:
@@ -595,27 +553,15 @@ def get_field(
             f"--head option only applies to stdout/stderr fields, not '{field}'"
         )
 
-    # Validate --csv and --markdown not supported for stdout/stderr
-    if csv_output and field in HEAD_TAIL_SUPPORTED_FIELDS:
-        raise click.ClickException(f"--csv output is not supported for '{field}' field")
-    if markdown_output and field in HEAD_TAIL_SUPPORTED_FIELDS:
-        raise click.ClickException(
-            f"--markdown output is not supported for '{field}' field"
-        )
-
     # Validate --follow only applies to stdout/stderr
     if follow and field not in HEAD_TAIL_SUPPORTED_FIELDS:
         raise click.ClickException(
             f"--follow option only applies to stdout/stderr fields, not '{field}'"
         )
 
-    # Validate --follow incompatible with --csv/--json/--markdown
-    if follow and csv_output:
-        raise click.ClickException("--follow cannot be used with --csv output")
-    if follow and json_output:
-        raise click.ClickException("--follow cannot be used with --json output")
-    if follow and markdown_output:
-        raise click.ClickException("--follow cannot be used with --markdown output")
+    # Validate --follow incompatible with non-default formats
+    if follow and fmt != OutputFormat.DEFAULT:
+        raise click.ClickException(f"--follow cannot be used with --format {fmt.value}")
 
     # Validate --follow incompatible with --head (but --tail is ok for initial display)
     if follow and head is not None:
@@ -682,17 +628,10 @@ def get_field(
 
         value, found = resolve_field_value(exp, field, default_value, tail, head)
 
-        # Output single value
-        if json_output:
-            click.echo(json.dumps(value))
-        elif csv_output:
-            click.echo(format_value_for_csv(value), nl=False)
-        elif markdown_output:
-            # Single row markdown table
-            rows = [{"ID": experiment["id"], field: format_value(value)}]
-            click.echo(format_markdown_table(rows, ["ID", field]))
-        else:
-            click.echo(format_value(value))
+        # Determine getter type and output using unified handler
+        getter_type = get_getter_type(field, value)
+        output_handler = GetterOutput(field, fmt)
+        output_handler.output([(exp.id, value)], getter_type)
 
         return
 
@@ -735,51 +674,10 @@ def get_field(
         value, found = resolve_field_value(exp, field, default_value, tail, head)
         results.append((exp.id, value))
 
-    # Output based on mode
-    if json_output:
-        if field == "id":
-            # Just list of IDs
-            output = [exp_id for exp_id, _ in results]
-        elif field in HEAD_TAIL_SUPPORTED_FIELDS:
-            # For stdout/stderr, use the field name as key
-            output = [{"id": exp_id, field: value} for exp_id, value in results]
-        else:
-            # List of {id, value} objects
-            output = [{"id": exp_id, "value": value} for exp_id, value in results]
-        click.echo(json.dumps(output))
-        return
+    # Determine getter type using first non-None value
+    first_value = next((v for _, v in results if v is not None), None)
+    getter_type = get_getter_type(field, first_value)
 
-    if csv_output:
-        # Comma-separated values, no ID prefix
-        values = [format_value_for_csv(value) for _, value in results]
-        # Output without trailing newline for bash substitution
-        click.echo(",".join(values), nl=False)
-        return
-
-    if markdown_output:
-        # Markdown table with ID and value columns
-        rows = []
-        for exp_id, value in results:
-            rows.append({"ID": exp_id, field: format_value(value)})
-        click.echo(format_markdown_table(rows, ["ID", field]))
-        return
-
-    # Special header format for stdout/stderr multi-experiment output
-    if field in HEAD_TAIL_SUPPORTED_FIELDS:
-        for i, (exp_id, value) in enumerate(results):
-            if i > 0:
-                click.echo()  # Blank line between experiments
-            click.echo(f"[experiment: {exp_id}]")
-            if value and value != default_value:
-                click.echo(value)
-        return
-
-    # Default mode: one line per experiment
-    for exp_id, value in results:
-        formatted = format_value(value)
-        if field == "id" or no_id:
-            # Just the value (no ID prefix for 'id' field or when --no-id)
-            click.echo(formatted)
-        else:
-            # ID: value format
-            click.echo(f"{exp_id}: {formatted}")
+    # Output using unified handler
+    output_handler = GetterOutput(field, fmt)
+    output_handler.output(results, getter_type)

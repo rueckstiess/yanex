@@ -9,21 +9,20 @@ from ...ui.compare_table import run_comparison_table
 from ..filters import ExperimentFilter, parse_time_spec
 from ..filters.arguments import experiment_filter_options
 from ..formatters import (
-    OutputMode,
-    echo_info,
+    OutputFormat,
+    echo_format_info,
     format_csv,
     format_json,
     format_markdown_table,
-    get_output_mode,
-    output_mode_options,
-    validate_output_mode_flags,
+    format_options,
+    resolve_output_format,
 )
 from .confirm import find_experiments_by_filters, find_experiments_by_identifiers
 
 
 @click.command("compare")
 @click.argument("experiment_identifiers", nargs=-1)
-@output_mode_options
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=True, include_limit=False
 )
@@ -54,9 +53,10 @@ from .confirm import find_experiments_by_filters, find_experiments_by_identifier
 def compare_experiments(
     ctx,
     experiment_identifiers: tuple,
-    json_output: bool,
-    csv_output: bool,
-    markdown_output: bool,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -81,9 +81,9 @@ def compare_experiments(
     Supports multiple output formats:
 
     \b
-      --json      Output as JSON (for scripting/AI processing)
-      --csv       Output as CSV (pipe to file: --csv > results.csv)
-      --markdown  Output as GitHub-flavored markdown
+      --format json      Output as JSON (for scripting/AI processing)
+      --format csv       Output as CSV (pipe to file: --format csv > results.csv)
+      --format markdown  Output as GitHub-flavored markdown
 
     The interactive table supports:
     - Navigation with arrow keys or hjkl
@@ -99,13 +99,12 @@ def compare_experiments(
         yanex compare -s completed                      # Completed experiments
         yanex compare -t training --only-different      # Training experiments, show differences only
         yanex compare --params learning_rate,epochs    # Show only specified parameters
-        yanex compare --csv > results.csv              # Export to CSV file
-        yanex compare --json                            # Export as JSON
+        yanex compare --format csv > results.csv       # Export to CSV file
+        yanex compare --format json                     # Export as JSON
         yanex compare --no-interactive                  # Static table output
     """
-    # Validate output mode flags
-    validate_output_mode_flags(json_output, csv_output, markdown_output)
-    output_mode = get_output_mode(json_output, csv_output, markdown_output)
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     try:
         filter_obj = ExperimentFilter()
 
@@ -194,19 +193,19 @@ def compare_experiments(
         )
 
         if not comparison_data.get("rows"):
-            echo_info("No comparison data available.", output_mode)
+            echo_format_info("No comparison data available.", fmt)
             return
 
-        # Handle output modes
-        if output_mode == OutputMode.JSON:
+        # Handle output formats
+        if fmt == OutputFormat.JSON:
             _output_comparison_json(comparison_data)
             return
 
-        if output_mode == OutputMode.CSV:
+        if fmt == OutputFormat.CSV:
             _output_comparison_csv(comparison_data)
             return
 
-        if output_mode == OutputMode.MARKDOWN:
+        if fmt == OutputFormat.MARKDOWN:
             _output_comparison_markdown(comparison_data)
             return
 

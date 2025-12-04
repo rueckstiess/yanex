@@ -12,11 +12,10 @@ from ..error_handling import (
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
 from ..formatters import (
-    echo_info,
-    get_output_mode,
-    is_machine_output,
-    output_mode_options,
-    validate_output_mode_flags,
+    echo_format_info,
+    format_options,
+    is_machine_format,
+    resolve_output_format,
 )
 from .confirm import (
     confirm_experiment_operation,
@@ -27,7 +26,7 @@ from .confirm import (
 
 @click.command("update")
 @click.argument("experiment_identifiers", nargs=-1)
-@output_mode_options
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=True, include_limit=False
 )
@@ -65,9 +64,10 @@ from .confirm import (
 def update_experiments(
     ctx,
     experiment_identifiers: tuple,
-    json_output: bool,
-    csv_output: bool,
-    markdown_output: bool,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -94,9 +94,9 @@ def update_experiments(
     Supports multiple output formats:
 
     \b
-      --json      Output result as JSON (for scripting/AI processing)
-      --csv       Output result as CSV (for data analysis)
-      --markdown  Output result as markdown
+      --format json      Output result as JSON (for scripting/AI processing)
+      --format csv       Output result as CSV (for data analysis)
+      --format markdown  Output result as markdown
 
     Examples:
 
@@ -115,11 +115,10 @@ def update_experiments(
         yanex update exp1 --set-name "New Name" --dry-run
 
         # Output result as JSON
-        yanex update exp1 --add-tag test --json
+        yanex update exp1 --add-tag test --format json
     """
-    # Validate output mode flags
-    validate_output_mode_flags(json_output, csv_output, markdown_output)
-    output_mode = get_output_mode(json_output, csv_output, markdown_output)
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     filter_obj = ExperimentFilter()
 
     # Validate that we have something to update
@@ -198,7 +197,7 @@ def update_experiments(
             raise click.ClickException(message)
         else:
             # When using filters, not finding experiments is just informational
-            echo_info(message, output_mode)
+            echo_format_info(message, fmt)
             return
 
     # Prepare update dictionary
@@ -216,7 +215,7 @@ def update_experiments(
         updates["remove_tags"] = list(remove_tags)
 
     # Show what will be updated (only for console output)
-    if not is_machine_output(output_mode):
+    if not is_machine_format(fmt):
         click.echo("Updates to apply:")
         for key, value in updates.items():
             if key == "add_tags":
@@ -230,23 +229,23 @@ def update_experiments(
         click.echo()
 
     # For machine-readable output, skip confirmation
-    effective_force = force or is_machine_output(output_mode)
+    effective_force = force or is_machine_format(fmt)
 
     # Show experiments and get confirmation for bulk operations or dry run
     if len(experiments) > 1 or dry_run:
         if not confirm_experiment_operation(
             experiments, "update", effective_force or dry_run, "updated"
         ):
-            echo_info("Update operation cancelled.", output_mode)
+            echo_format_info("Update operation cancelled.", fmt)
             return
 
     if dry_run:
-        echo_info("Dry run completed. No changes were made.", output_mode)
+        echo_format_info("Dry run completed. No changes were made.", fmt)
         return
 
-    # Update experiments using centralized reporter with output mode
-    echo_info(f"Updating {len(experiments)} experiment(s)...", output_mode)
-    reporter = BulkOperationReporter("update", output_mode=output_mode)
+    # Update experiments using centralized reporter with output format
+    echo_format_info(f"Updating {len(experiments)} experiment(s)...", fmt)
+    reporter = BulkOperationReporter("update", output_format=fmt)
 
     for exp in experiments:
         experiment_id = exp["id"]

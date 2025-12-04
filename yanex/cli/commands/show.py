@@ -8,12 +8,11 @@ import click
 
 from yanex.cli.filters import ExperimentFilter
 from yanex.cli.formatters import (
-    OutputMode,
+    OutputFormat,
     experiment_to_dict,
-    get_output_mode,
+    format_options,
     output_json,
-    output_mode_options,
-    validate_output_mode_flags,
+    resolve_output_format,
 )
 from yanex.cli.formatters.console import ExperimentTableFormatter
 from yanex.cli.formatters.theme import STATUS_COLORS, STATUS_SYMBOLS
@@ -24,7 +23,7 @@ from .confirm import find_experiment
 
 @click.command("show")
 @click.argument("experiment_identifier", required=True)
-@output_mode_options
+@format_options()
 @click.option(
     "--show-metric",
     "show_metrics",
@@ -35,9 +34,10 @@ from .confirm import find_experiment
 def show_experiment(
     ctx,
     experiment_identifier: str,
-    json_output: bool,
-    csv_output: bool,
-    markdown_output: bool,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     show_metrics: str | None,
     archived: bool,
 ):
@@ -52,16 +52,15 @@ def show_experiment(
     Supports multiple output formats:
 
     \b
-      --json      Output as JSON (for scripting/AI processing)
-      --csv       Output as CSV (for data analysis)
-      --markdown  Output as GitHub-flavored markdown
+      --format json      Output as JSON (for scripting/AI processing)
+      --format csv       Output as CSV (for data analysis)
+      --format markdown  Output as GitHub-flavored markdown
 
     If multiple experiments have the same name, a list will be shown
     and you'll need to use the unique experiment ID instead.
     """
-    # Validate output mode flags
-    validate_output_mode_flags(json_output, csv_output, markdown_output)
-    output_mode = get_output_mode(json_output, csv_output, markdown_output)
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
 
     try:
         # Create filter and formatter (filter creates default manager)
@@ -100,14 +99,14 @@ def show_experiment(
                 metric.strip() for metric in show_metrics.split(",") if metric.strip()
             ]
 
-        # Handle different output modes
-        if output_mode == OutputMode.JSON:
+        # Handle different output formats
+        if fmt == OutputFormat.JSON:
             output_experiment_json(filter_obj.manager, experiment, archived)
             return
-        elif output_mode == OutputMode.CSV:
+        elif fmt == OutputFormat.CSV:
             output_experiment_csv(filter_obj.manager, experiment, archived)
             return
-        elif output_mode == OutputMode.MARKDOWN:
+        elif fmt == OutputFormat.MARKDOWN:
             output_experiment_markdown(
                 filter_obj.manager, experiment, requested_metrics, archived
             )

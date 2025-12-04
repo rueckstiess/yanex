@@ -11,11 +11,10 @@ from ..error_handling import (
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
 from ..formatters import (
-    echo_info,
-    get_output_mode,
-    is_machine_output,
-    output_mode_options,
-    validate_output_mode_flags,
+    echo_format_info,
+    format_options,
+    is_machine_format,
+    resolve_output_format,
 )
 from .confirm import (
     confirm_experiment_operation,
@@ -26,7 +25,7 @@ from .confirm import (
 
 @click.command("unarchive")
 @click.argument("experiment_identifiers", nargs=-1)
-@output_mode_options
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=False, include_limit=False
 )
@@ -36,9 +35,10 @@ from .confirm import (
 def unarchive_experiments(
     ctx,
     experiment_identifiers: tuple,
-    json_output: bool,
-    csv_output: bool,
-    markdown_output: bool,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -58,9 +58,9 @@ def unarchive_experiments(
     Supports multiple output formats:
 
     \b
-      --json      Output result as JSON (for scripting/AI processing)
-      --csv       Output result as CSV (for data analysis)
-      --markdown  Output result as markdown
+      --format json      Output result as JSON (for scripting/AI processing)
+      --format csv       Output result as CSV (for data analysis)
+      --format markdown  Output result as markdown
 
     Examples:
 
@@ -69,11 +69,10 @@ def unarchive_experiments(
         yanex unarchive -s completed         # Unarchive all completed experiments
         yanex unarchive -n "*training*"      # Unarchive experiments with "training" in name
         yanex unarchive -t experiment-v1     # Unarchive experiments with specific tag
-        yanex unarchive -s completed --json  # Unarchive and output result as JSON
+        yanex unarchive -s completed --format json  # Unarchive and output result as JSON
     """
-    # Validate output mode flags
-    validate_output_mode_flags(json_output, csv_output, markdown_output)
-    output_mode = get_output_mode(json_output, csv_output, markdown_output)
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     filter_obj = ExperimentFilter()
 
     # Validate mutually exclusive targeting
@@ -129,22 +128,22 @@ def unarchive_experiments(
     experiments = [exp for exp in experiments if exp.get("archived", False)]
 
     if not experiments:
-        echo_info("No archived experiments found to unarchive.", output_mode)
+        echo_format_info("No archived experiments found to unarchive.", fmt)
         return
 
     # For machine-readable output, skip confirmation
-    effective_force = force or is_machine_output(output_mode)
+    effective_force = force or is_machine_format(fmt)
 
     # Show experiments and get confirmation
     if not confirm_experiment_operation(
         experiments, "unarchive", effective_force, "unarchived", default_yes=True
     ):
-        echo_info("Unarchive operation cancelled.", output_mode)
+        echo_format_info("Unarchive operation cancelled.", fmt)
         return
 
-    # Unarchive experiments using centralized reporter with output mode
-    echo_info(f"Unarchiving {len(experiments)} experiment(s)...", output_mode)
-    reporter = BulkOperationReporter("unarchive", output_mode=output_mode)
+    # Unarchive experiments using centralized reporter with output format
+    echo_format_info(f"Unarchiving {len(experiments)} experiment(s)...", fmt)
+    reporter = BulkOperationReporter("unarchive", output_format=fmt)
 
     for exp in experiments:
         experiment_id = exp["id"]

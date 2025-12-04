@@ -18,10 +18,11 @@ from .formatters import (
     WARNING_SYMBOL as _WARNING_SYMBOL,
 )
 from .formatters import (
+    OutputFormat,
     OutputMode,
     format_action_result,
     format_action_result_markdown,
-    is_machine_output,
+    is_machine_format,
     output_action_result_csv,
     output_json,
 )
@@ -153,21 +154,49 @@ class BulkOperationReporter:
     def __init__(
         self,
         operation_name: str,
-        output_mode: OutputMode = OutputMode.CONSOLE,
+        output_mode: OutputMode | None = None,
         show_progress: bool = True,
+        output_format: OutputFormat | None = None,
     ):
         """
         Initialize bulk operation reporter.
 
         Args:
             operation_name: Name of the operation (e.g., "archive", "delete")
-            output_mode: Output format mode (console, json, csv, markdown)
+            output_mode: Legacy output mode (deprecated, use output_format)
             show_progress: Whether to show individual operation progress
+            output_format: Output format (preferred over output_mode)
         """
         self.operation_name = operation_name
-        self.output_mode = output_mode
-        # Suppress progress for machine-readable output modes
-        self.show_progress = show_progress and not is_machine_output(output_mode)
+
+        # Support both OutputFormat (new) and OutputMode (legacy)
+        if output_format is not None:
+            self.output_format = output_format
+            # Map OutputFormat to OutputMode for backward compatibility
+            mode_map = {
+                OutputFormat.DEFAULT: OutputMode.CONSOLE,
+                OutputFormat.JSON: OutputMode.JSON,
+                OutputFormat.CSV: OutputMode.CSV,
+                OutputFormat.MARKDOWN: OutputMode.MARKDOWN,
+                OutputFormat.SWEEP: OutputMode.CSV,  # SWEEP is similar to CSV
+            }
+            self.output_mode = mode_map.get(output_format, OutputMode.CONSOLE)
+        elif output_mode is not None:
+            self.output_mode = output_mode
+            # Map OutputMode to OutputFormat
+            format_map = {
+                OutputMode.CONSOLE: OutputFormat.DEFAULT,
+                OutputMode.JSON: OutputFormat.JSON,
+                OutputMode.CSV: OutputFormat.CSV,
+                OutputMode.MARKDOWN: OutputFormat.MARKDOWN,
+            }
+            self.output_format = format_map.get(output_mode, OutputFormat.DEFAULT)
+        else:
+            self.output_mode = OutputMode.CONSOLE
+            self.output_format = OutputFormat.DEFAULT
+
+        # Suppress progress for machine-readable output formats
+        self.show_progress = show_progress and not is_machine_format(self.output_format)
         self.success_count = 0
         self.failure_count = 0
         self.successful_ids: list[str] = []

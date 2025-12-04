@@ -11,11 +11,10 @@ from ..error_handling import (
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
 from ..formatters import (
-    echo_info,
-    get_output_mode,
-    is_machine_output,
-    output_mode_options,
-    validate_output_mode_flags,
+    echo_format_info,
+    format_options,
+    is_machine_format,
+    resolve_output_format,
 )
 from .confirm import (
     confirm_experiment_operation,
@@ -26,7 +25,7 @@ from .confirm import (
 
 @click.command("delete")
 @click.argument("experiment_identifiers", nargs=-1)
-@output_mode_options
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=True, include_limit=False
 )
@@ -36,9 +35,10 @@ from .confirm import (
 def delete_experiments(
     ctx,
     experiment_identifiers: tuple,
-    json_output: bool,
-    csv_output: bool,
-    markdown_output: bool,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -61,9 +61,9 @@ def delete_experiments(
     Supports multiple output formats:
 
     \b
-      --json      Output result as JSON (for scripting/AI processing)
-      --csv       Output result as CSV (for data analysis)
-      --markdown  Output result as markdown
+      --format json      Output result as JSON (for scripting/AI processing)
+      --format csv       Output result as CSV (for data analysis)
+      --format markdown  Output result as markdown
 
     Examples:
 
@@ -73,11 +73,10 @@ def delete_experiments(
         yanex delete -a --ended-before "6 months ago"
         yanex delete -n "*test*"             # Delete experiments with "test" in name
         yanex delete -t temp                 # Delete experiments with "temp" tag
-        yanex delete -s failed --json        # Delete and output result as JSON
+        yanex delete -s failed --format json # Delete and output result as JSON
     """
-    # Validate output mode flags
-    validate_output_mode_flags(json_output, csv_output, markdown_output)
-    output_mode = get_output_mode(json_output, csv_output, markdown_output)
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     filter_obj = ExperimentFilter()
 
     # Validate mutually exclusive targeting
@@ -135,18 +134,18 @@ def delete_experiments(
 
     if not experiments:
         location = "archived" if archived else "regular"
-        echo_info(f"No {location} experiments found to delete.", output_mode)
+        echo_format_info(f"No {location} experiments found to delete.", fmt)
         return
 
     # For machine-readable output, skip confirmation
-    effective_force = force or is_machine_output(output_mode)
+    effective_force = force or is_machine_format(fmt)
 
     # Show experiments and get confirmation (always required for deletion)
     operation_verb = "permanently deleted"
     if not confirm_experiment_operation(
         experiments, "delete", effective_force, operation_verb
     ):
-        echo_info("Delete operation cancelled.", output_mode)
+        echo_format_info("Delete operation cancelled.", fmt)
         return
 
     # Additional warning for bulk deletions (only in console mode)
@@ -155,12 +154,12 @@ def delete_experiments(
         click.echo("WARNING: You are about to permanently delete multiple experiments.")
         click.echo("   This action cannot be undone!")
         if not click.confirm("Are you absolutely sure?", default=False):
-            echo_info("Delete operation cancelled.", output_mode)
+            echo_format_info("Delete operation cancelled.", fmt)
             return
 
-    # Delete experiments using centralized reporter with output mode
-    echo_info(f"Deleting {len(experiments)} experiment(s)...", output_mode)
-    reporter = BulkOperationReporter("delete", output_mode=output_mode)
+    # Delete experiments using centralized reporter with output format
+    echo_format_info(f"Deleting {len(experiments)} experiment(s)...", fmt)
+    reporter = BulkOperationReporter("delete", output_format=fmt)
 
     for exp in experiments:
         experiment_id = exp["id"]

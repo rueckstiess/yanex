@@ -18,11 +18,11 @@ from ..error_handling import (
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
 from ..formatters import (
-    echo_info,
-    get_output_mode,
-    is_machine_output,
-    output_mode_options,
-    validate_output_mode_flags,
+    OutputFormat,
+    echo_format_info,
+    format_options,
+    is_machine_format,
+    resolve_output_format,
 )
 from .confirm import (
     confirm_experiment_operation,
@@ -33,7 +33,7 @@ from .confirm import (
 
 @click.command("migrate")
 @click.argument("experiment_identifiers", nargs=-1)
-@output_mode_options
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=True, include_limit=False
 )
@@ -54,9 +54,10 @@ from .confirm import (
 def migrate_experiments(
     ctx,
     experiment_identifiers: tuple,
-    json_output: bool,
-    csv_output: bool,
-    markdown_output: bool,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -82,9 +83,9 @@ def migrate_experiments(
     Supports multiple output formats:
 
     \\b
-      --json      Output result as JSON (for scripting/AI processing)
-      --csv       Output result as CSV (for data analysis)
-      --markdown  Output result as markdown
+      --format json      Output result as JSON (for scripting/AI processing)
+      --format csv       Output result as CSV (for data analysis)
+      --format markdown  Output result as markdown
 
     Examples:
 
@@ -105,11 +106,10 @@ def migrate_experiments(
         yanex migrate --all --force
 
         # Output result as JSON
-        yanex migrate --all --json
+        yanex migrate --all --format json
     """
-    # Validate output mode flags
-    validate_output_mode_flags(json_output, csv_output, markdown_output)
-    output_mode = get_output_mode(json_output, csv_output, markdown_output)
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     filter_obj = ExperimentFilter()
 
     # Validate targeting options
@@ -216,7 +216,7 @@ def migrate_experiments(
             experiments = [exp for exp in experiments if not exp.get("archived", False)]
 
     if not experiments:
-        echo_info("No experiments found.", output_mode)
+        echo_format_info("No experiments found.", fmt)
         return
 
     # Check which experiments need migration
@@ -230,7 +230,7 @@ def migrate_experiments(
             up_to_date.append(exp)
 
     # Report status (only in console mode)
-    if not is_machine_output(output_mode):
+    if not is_machine_format(fmt):
         click.echo(
             f"Checking {len(experiments)} experiment(s) for pending migrations..."
         )
@@ -238,18 +238,18 @@ def migrate_experiments(
 
     if dry_run:
         # Detailed dry-run output
-        _show_dry_run_details(filter_obj, needs_update, up_to_date, output_mode)
+        _show_dry_run_details(filter_obj, needs_update, up_to_date, fmt)
         return
 
     if not needs_update:
-        echo_info(
+        echo_format_info(
             f"All {len(experiments)} experiment(s) are up to date (v{CURRENT_VERSION}).",
-            output_mode,
+            fmt,
         )
         return
 
     # Show confirmation for migrations (only in console mode)
-    if not is_machine_output(output_mode):
+    if not is_machine_format(fmt):
         click.echo(f"{len(needs_update)} experiment(s) need migration:")
         for exp in needs_update:
             version = get_storage_version(exp)
@@ -265,19 +265,19 @@ def migrate_experiments(
             click.echo()
 
     # For machine-readable output, skip confirmation
-    effective_force = force or is_machine_output(output_mode)
+    effective_force = force or is_machine_format(fmt)
 
     # Get confirmation
     if not effective_force:
         if not confirm_experiment_operation(
             needs_update, "migrate", effective_force, "migrated", default_yes=True
         ):
-            echo_info("Migration cancelled.", output_mode)
+            echo_format_info("Migration cancelled.", fmt)
             return
 
     # Migrate experiments
-    echo_info(f"Migrating {len(needs_update)} experiment(s)...", output_mode)
-    reporter = BulkOperationReporter("migrate", output_mode=output_mode)
+    echo_format_info(f"Migrating {len(needs_update)} experiment(s)...", fmt)
+    reporter = BulkOperationReporter("migrate", output_format=fmt)
 
     for exp in needs_update:
         experiment_id = exp["id"]
@@ -311,13 +311,13 @@ def _show_dry_run_details(
     filter_obj: ExperimentFilter,
     needs_update: list[dict],
     up_to_date: list[dict],
-    output_mode: str,
+    fmt: OutputFormat,
 ) -> None:
     """Show detailed dry-run output for migrations."""
-    from ..formatters import OutputMode, format_json, format_markdown_table
+    from ..formatters import format_json, format_markdown_table
 
     # For machine-readable output, format as JSON/CSV/markdown
-    if output_mode == OutputMode.JSON:
+    if fmt == OutputFormat.JSON:
         data = {
             "dry_run": True,
             "needs_migration": [
@@ -341,7 +341,7 @@ def _show_dry_run_details(
         click.echo(format_json(data))
         return
 
-    if output_mode == OutputMode.CSV:
+    if fmt == OutputFormat.CSV:
         from ..formatters import format_csv
 
         rows = []
@@ -381,7 +381,7 @@ def _show_dry_run_details(
             )
         return
 
-    if output_mode == OutputMode.MARKDOWN:
+    if fmt == OutputFormat.MARKDOWN:
         rows = []
         for exp in needs_update:
             rows.append(
