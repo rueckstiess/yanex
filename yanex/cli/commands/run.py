@@ -950,6 +950,9 @@ def _execute_staged_parallel(
     # Track results
     completed = 0
     failed = 0
+    cancelled = 0
+    interrupted = False
+    processed_ids: set[str] = set()
 
     # Execute in parallel
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -965,26 +968,78 @@ def _execute_staged_parallel(
             for exp_data in experiment_data
         }
 
-        # Process results as they complete
-        for future in as_completed(future_to_exp):
-            experiment_id = future_to_exp[future]
-            try:
-                success = future.result()
-                if success:
-                    completed += 1
-                    console.print(f"[green]✓ Experiment completed: {experiment_id}[/]")
-                else:
+        try:
+            # Process results as they complete
+            for future in as_completed(future_to_exp):
+                experiment_id = future_to_exp[future]
+                processed_ids.add(experiment_id)
+                try:
+                    status = future.result()
+                    if status == "completed":
+                        completed += 1
+                        console.print(
+                            f"[green]✓ Experiment completed: {experiment_id}[/]"
+                        )
+                    elif status == "cancelled":
+                        cancelled += 1
+                        console.print(
+                            f"[yellow]✖ Experiment cancelled: {experiment_id}[/]"
+                        )
+                    else:
+                        failed += 1
+                        console.print(f"[red]✗ Experiment failed: {experiment_id}[/]")
+                except Exception as e:
                     failed += 1
-                    console.print(f"[red]✗ Experiment failed: {experiment_id}[/]")
-            except Exception as e:
-                failed += 1
-                console.print(f"[red]✗ Experiment error: {experiment_id}: {e}[/]")
+                    console.print(f"[red]✗ Experiment error: {experiment_id}: {e}[/]")
+
+        except KeyboardInterrupt:
+            interrupted = True
+            console.print("\n[yellow]Interrupted! Cancelling pending experiments...[/]")
+
+            # Cancel pending futures
+            for future in future_to_exp:
+                future.cancel()
+
+            # Collect results from completed futures
+            for future, experiment_id in future_to_exp.items():
+                if experiment_id not in processed_ids and future.done():
+                    try:
+                        status = future.result()
+                        processed_ids.add(experiment_id)
+                        if status == "completed":
+                            completed += 1
+                        elif status == "cancelled":
+                            cancelled += 1
+                        else:
+                            failed += 1
+                    except Exception:
+                        pass
+
+    # After executor shutdown, cancel any still-running experiments
+    if interrupted:
+        for exp_data in experiment_data:
+            experiment_id = exp_data["experiment_id"]
+            if experiment_id not in processed_ids:
+                try:
+                    manager.cancel_experiment(
+                        experiment_id, "Interrupted by user (Ctrl+C)"
+                    )
+                    console.print(f"[yellow]✖ Cancelled: {experiment_id}[/]")
+                    cancelled += 1
+                except Exception:
+                    pass
 
     # Summary
     console.print("\n[bold]Execution Summary:[/]")
     console.print(f"  Total: {len(experiment_data)}")
     console.print(f"  [green]Completed: {completed}[/]")
-    console.print(f"  [red]Failed: {failed}[/]")
+    if failed:
+        console.print(f"  [red]Failed: {failed}[/]")
+    if cancelled:
+        console.print(f"  [yellow]Cancelled: {cancelled}[/]")
+
+    if interrupted:
+        raise KeyboardInterrupt
 
 
 def _execute_single_experiment_worker(
@@ -992,13 +1047,13 @@ def _execute_single_experiment_worker(
     script_path: Path,
     config: dict[str, Any],
     verbose: bool,
-) -> bool:
+) -> str:
     """Worker function for parallel experiment execution.
 
     This runs in a separate process, so it needs to create its own manager.
 
     Returns:
-        True if experiment succeeded, False otherwise
+        Status string: "completed", "failed", or "cancelled"
     """
     # Create fresh manager in this process
     manager = ExperimentManager()
@@ -1016,7 +1071,16 @@ def _execute_single_experiment_worker(
             verbose=verbose,
         )
 
-        return True
+        return "completed"
+
+    except KeyboardInterrupt:
+        # User interrupted - mark as cancelled
+        try:
+            manager.cancel_experiment(experiment_id, "Interrupted by user (Ctrl+C)")
+        except Exception:
+            pass  # Best effort
+
+        return "cancelled"
 
     except Exception as e:
         # Record failure
@@ -1027,7 +1091,7 @@ def _execute_single_experiment_worker(
         except Exception:
             pass  # Best effort
 
-        return False
+        return "failed"
 
 
 def _execute_staged_script(

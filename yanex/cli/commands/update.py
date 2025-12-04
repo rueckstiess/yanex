@@ -11,6 +11,13 @@ from ..error_handling import (
 )
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
+from ..formatters import (
+    echo_info,
+    get_output_mode,
+    is_machine_output,
+    output_mode_options,
+    validate_output_mode_flags,
+)
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -20,6 +27,7 @@ from .confirm import (
 
 @click.command("update")
 @click.argument("experiment_identifiers", nargs=-1)
+@output_mode_options
 @experiment_filter_options(
     include_ids=False, include_archived=True, include_limit=False
 )
@@ -57,6 +65,9 @@ from .confirm import (
 def update_experiments(
     ctx,
     experiment_identifiers: tuple,
+    json_output: bool,
+    csv_output: bool,
+    markdown_output: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -80,8 +91,16 @@ def update_experiments(
     EXPERIMENT_IDENTIFIERS can be experiment IDs or names.
     For bulk updates, use filter options instead of identifiers.
 
+    Supports multiple output formats:
+
+    \b
+      --json      Output result as JSON (for scripting/AI processing)
+      --csv       Output result as CSV (for data analysis)
+      --markdown  Output result as markdown
+
     Examples:
-    \\b
+
+    \b
         # Update single experiment
         yanex update exp1 --set-name "New Name" --set-description "New description"
         yanex update "my experiment" --add-tag production --remove-tag testing
@@ -94,7 +113,13 @@ def update_experiments(
 
         # Preview changes without applying
         yanex update exp1 --set-name "New Name" --dry-run
+
+        # Output result as JSON
+        yanex update exp1 --add-tag test --json
     """
+    # Validate output mode flags
+    validate_output_mode_flags(json_output, csv_output, markdown_output)
+    output_mode = get_output_mode(json_output, csv_output, markdown_output)
     filter_obj = ExperimentFilter()
 
     # Validate that we have something to update
@@ -173,7 +198,7 @@ def update_experiments(
             raise click.ClickException(message)
         else:
             # When using filters, not finding experiments is just informational
-            click.echo(message)
+            echo_info(message, output_mode)
             return
 
     # Prepare update dictionary
@@ -190,34 +215,38 @@ def update_experiments(
     if remove_tags:
         updates["remove_tags"] = list(remove_tags)
 
-    # Show what will be updated
-    click.echo("Updates to apply:")
-    for key, value in updates.items():
-        if key == "add_tags":
-            click.echo(f"  Add tags: {', '.join(value)}")
-        elif key == "remove_tags":
-            click.echo(f"  Remove tags: {', '.join(value)}")
-        elif key in ["name", "description"] and value == "":
-            click.echo(f"  Clear {key}")
-        else:
-            click.echo(f"  Set {key}: {value}")
-    click.echo()
+    # Show what will be updated (only for console output)
+    if not is_machine_output(output_mode):
+        click.echo("Updates to apply:")
+        for key, value in updates.items():
+            if key == "add_tags":
+                click.echo(f"  Add tags: {', '.join(value)}")
+            elif key == "remove_tags":
+                click.echo(f"  Remove tags: {', '.join(value)}")
+            elif key in ["name", "description"] and value == "":
+                click.echo(f"  Clear {key}")
+            else:
+                click.echo(f"  Set {key}: {value}")
+        click.echo()
+
+    # For machine-readable output, skip confirmation
+    effective_force = force or is_machine_output(output_mode)
 
     # Show experiments and get confirmation for bulk operations or dry run
     if len(experiments) > 1 or dry_run:
         if not confirm_experiment_operation(
-            experiments, "update", force or dry_run, "updated"
+            experiments, "update", effective_force or dry_run, "updated"
         ):
-            click.echo("Update operation cancelled.")
+            echo_info("Update operation cancelled.", output_mode)
             return
 
     if dry_run:
-        click.echo("Dry run completed. No changes were made.")
+        echo_info("Dry run completed. No changes were made.", output_mode)
         return
 
-    # Update experiments using centralized reporter
-    click.echo(f"Updating {len(experiments)} experiment(s)...")
-    reporter = BulkOperationReporter("update")
+    # Update experiments using centralized reporter with output mode
+    echo_info(f"Updating {len(experiments)} experiment(s)...", output_mode)
+    reporter = BulkOperationReporter("update", output_mode=output_mode)
 
     for exp in experiments:
         experiment_id = exp["id"]

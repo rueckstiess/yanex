@@ -46,11 +46,8 @@ class TestListCommandBasicBehavior:
         """Test basic list invocation works without errors."""
         result = self.runner.invoke(cli, ["list"])
         assert result.exit_code == 0
-        # Should show either experiments or "No experiments found"
-        assert (
-            "Yanex Experiments" in result.output
-            or "No experiments found" in result.output
-        )
+        # Should show either experiments table or "No experiments found"
+        assert "ID" in result.output or "No experiments found" in result.output
 
     def test_list_shows_default_limit_message(self):
         """Test that list shows default 10 experiments message."""
@@ -277,7 +274,6 @@ class TestListCommandIntegration:
         result = self.runner.invoke(cli, ["list"])
         assert result.exit_code == 0
         assert "test-exp" in result.output
-        assert "Yanex Experiments" in result.output
 
     def test_list_multiple_experiments(self, clean_git_repo, sample_experiment_script):
         """Test listing multiple experiments."""

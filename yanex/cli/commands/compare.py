@@ -8,11 +8,22 @@ from ...core.comparison import ExperimentComparisonData
 from ...ui.compare_table import run_comparison_table
 from ..filters import ExperimentFilter, parse_time_spec
 from ..filters.arguments import experiment_filter_options
+from ..formatters import (
+    OutputMode,
+    echo_info,
+    format_csv,
+    format_json,
+    format_markdown_table,
+    get_output_mode,
+    output_mode_options,
+    validate_output_mode_flags,
+)
 from .confirm import find_experiments_by_filters, find_experiments_by_identifiers
 
 
 @click.command("compare")
 @click.argument("experiment_identifiers", nargs=-1)
+@output_mode_options
 @experiment_filter_options(
     include_ids=False, include_archived=True, include_limit=False
 )
@@ -30,11 +41,6 @@ from .confirm import find_experiments_by_filters, find_experiments_by_identifier
     help="Show only columns where values differ between experiments",
 )
 @click.option(
-    "--export",
-    "export_path",
-    help="Export comparison data to CSV file instead of interactive view",
-)
-@click.option(
     "--no-interactive",
     is_flag=True,
     help="Print static table instead of interactive view",
@@ -48,6 +54,9 @@ from .confirm import find_experiments_by_filters, find_experiments_by_identifier
 def compare_experiments(
     ctx,
     experiment_identifiers: tuple,
+    json_output: bool,
+    csv_output: bool,
+    markdown_output: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -60,7 +69,6 @@ def compare_experiments(
     params: str | None,
     metrics: str | None,
     only_different: bool,
-    export_path: str | None,
     no_interactive: bool,
     max_rows: int | None,
 ):
@@ -70,6 +78,13 @@ def compare_experiments(
     EXPERIMENT_IDENTIFIERS can be experiment IDs or names.
     If no identifiers provided, experiments are filtered by options.
 
+    Supports multiple output formats:
+
+    \b
+      --json      Output as JSON (for scripting/AI processing)
+      --csv       Output as CSV (pipe to file: --csv > results.csv)
+      --markdown  Output as GitHub-flavored markdown
+
     The interactive table supports:
     - Navigation with arrow keys or hjkl
     - Sorting by any column (s/S for asc/desc, 1/2 for numeric)
@@ -77,15 +92,20 @@ def compare_experiments(
     - Help (press '?' for keyboard shortcuts)
 
     Examples:
-    \\b
+
+    \b
         yanex compare                                    # All experiments
         yanex compare exp1 exp2 exp3                    # Specific experiments
         yanex compare -s completed                      # Completed experiments
         yanex compare -t training --only-different      # Training experiments, show differences only
         yanex compare --params learning_rate,epochs    # Show only specified parameters
-        yanex compare --export results.csv             # Export to CSV
+        yanex compare --csv > results.csv              # Export to CSV file
+        yanex compare --json                            # Export as JSON
         yanex compare --no-interactive                  # Static table output
     """
+    # Validate output mode flags
+    validate_output_mode_flags(json_output, csv_output, markdown_output)
+    output_mode = get_output_mode(json_output, csv_output, markdown_output)
     try:
         filter_obj = ExperimentFilter()
 
@@ -174,13 +194,20 @@ def compare_experiments(
         )
 
         if not comparison_data.get("rows"):
-            click.echo("No comparison data available.")
+            echo_info("No comparison data available.", output_mode)
             return
 
-        # Handle export mode
-        if export_path:
-            _export_comparison_data(comparison_data, export_path)
-            click.echo(f"Comparison data exported to {export_path}")
+        # Handle output modes
+        if output_mode == OutputMode.JSON:
+            _output_comparison_json(comparison_data)
+            return
+
+        if output_mode == OutputMode.CSV:
+            _output_comparison_csv(comparison_data)
+            return
+
+        if output_mode == OutputMode.MARKDOWN:
+            _output_comparison_markdown(comparison_data)
             return
 
         # Handle static table mode
@@ -195,10 +222,9 @@ def compare_experiments(
 
         title = f"yanex compare - {total_experiments} experiments, {param_count} params, {metric_count} metrics"
 
-        # Set default export path
-        default_export = export_path or "yanex_comparison.csv"
-
-        run_comparison_table(comparison_data, title=title, export_path=default_export)
+        run_comparison_table(
+            comparison_data, title=title, export_path="yanex_comparison.csv"
+        )
 
     except click.ClickException:
         raise  # Re-raise ClickException to show proper error message
@@ -207,47 +233,97 @@ def compare_experiments(
         ctx.exit(1)
 
 
-def _export_comparison_data(comparison_data: dict, file_path: str) -> None:
-    """Export comparison data to CSV file."""
-    import csv
-    from pathlib import Path
+def _output_comparison_json(comparison_data: dict) -> None:
+    """Output comparison data as JSON to stdout."""
+    rows = comparison_data.get("rows", [])
 
+    # Convert rows to clean format (remove prefixes from keys)
+    clean_rows = []
+    for row in rows:
+        clean_row = {}
+        for key, value in row.items():
+            if key.startswith("param:"):
+                clean_row[f"param_{key[6:]}"] = value
+            elif key.startswith("metric:"):
+                clean_row[f"metric_{key[7:]}"] = value
+            else:
+                clean_row[key] = value
+        clean_rows.append(clean_row)
+
+    json_output = format_json(
+        {
+            "experiments": clean_rows,
+            "total_experiments": comparison_data.get("total_experiments", len(rows)),
+            "param_columns": comparison_data.get("param_columns", []),
+            "metric_columns": comparison_data.get("metric_columns", []),
+        }
+    )
+    click.echo(json_output)
+
+
+def _output_comparison_csv(comparison_data: dict) -> None:
+    """Output comparison data as CSV to stdout."""
     rows = comparison_data.get("rows", [])
     if not rows:
-        raise ValueError("No data to export")
+        return
 
-    # Get column order - use same order as UI
+    # Get column order and generate clean headers
     first_row = rows[0]
     column_keys = list(first_row.keys())
 
-    # Generate headers
-    column_headers = []
+    headers = {}
     for key in column_keys:
         if key.startswith("param:"):
-            column_headers.append(f"param_{key[6:]}")  # Remove emoji for CSV
+            headers[key] = f"param_{key[6:]}"
         elif key.startswith("metric:"):
-            column_headers.append(f"metric_{key[7:]}")  # Remove emoji for CSV
+            headers[key] = f"metric_{key[7:]}"
         else:
-            column_headers.append(key)
+            headers[key] = key
 
-    # Write CSV
-    path = Path(file_path)
-    with path.open("w", newline="", encoding="utf-8") as csvfile:
-        writer = csv.writer(csvfile)
-
-        # Write header
-        writer.writerow(column_headers)
-
-        # Write data rows
-        for row_data in rows:
-            row_values = [row_data.get(key, "-") for key in column_keys]
-            writer.writerow(row_values)
+    csv_output = format_csv(rows, columns=column_keys, headers=headers)
+    click.echo(csv_output, nl=False)
 
 
-def _print_static_table(comparison_data: dict) -> None:
-    """Print comparison data as a static table."""
+def _output_comparison_markdown(comparison_data: dict) -> None:
+    """Output comparison data as markdown table to stdout."""
+    rows = comparison_data.get("rows", [])
+    if not rows:
+        return
+
+    # Get column order and generate clean headers
+    first_row = rows[0]
+    column_keys = list(first_row.keys())
+
+    headers = {}
+    for key in column_keys:
+        if key.startswith("param:"):
+            headers[key] = f"param_{key[6:]}"
+        elif key.startswith("metric:"):
+            headers[key] = f"metric_{key[7:]}"
+        elif key == "id":
+            headers[key] = "ID"
+        elif key == "name":
+            headers[key] = "Name"
+        else:
+            headers[key] = key.title()
+
+    click.echo(format_markdown_table(rows, column_keys, headers))
+
+
+def _print_static_table(
+    comparison_data: dict, max_params: int = 5, max_metrics: int = 5
+) -> None:
+    """Print comparison data as a static table.
+
+    Args:
+        comparison_data: Comparison data dict with rows, param_columns, metric_columns
+        max_params: Maximum number of parameter columns to display
+        max_metrics: Maximum number of metric columns to display
+    """
     from rich.console import Console
     from rich.table import Table
+
+    from ..formatters.theme import DATA_TABLE_BOX, TABLE_HEADER_STYLE
 
     console = Console()
     rows = comparison_data.get("rows", [])
@@ -256,23 +332,42 @@ def _print_static_table(comparison_data: dict) -> None:
         console.print("No data to display")
         return
 
-    # Create table
-    table = Table(show_header=True, header_style="bold magenta")
-
-    # Get column order
+    # Get all columns from first row
     first_row = rows[0]
-    column_keys = list(first_row.keys())
+    all_column_keys = list(first_row.keys())
+
+    # Separate columns by type
+    fixed_columns = []
+    param_columns = []
+    metric_columns = []
+
+    for key in all_column_keys:
+        if key.startswith("param:"):
+            param_columns.append(key)
+        elif key.startswith("metric:"):
+            metric_columns.append(key)
+        else:
+            fixed_columns.append(key)
+
+    # Limit param and metric columns
+    shown_params = param_columns[:max_params]
+    hidden_params = len(param_columns) - len(shown_params)
+
+    shown_metrics = metric_columns[:max_metrics]
+    hidden_metrics = len(metric_columns) - len(shown_metrics)
+
+    # Build final column list: fixed + limited params + limited metrics
+    display_columns = fixed_columns + shown_params + shown_metrics
+
+    # Create table with theme styling
+    table = Table(show_header=True, header_style=TABLE_HEADER_STYLE, box=DATA_TABLE_BOX)
 
     # Add columns with formatted headers
-    for key in column_keys:
+    for key in display_columns:
         if key.startswith("param:"):
-            header = f"📊 {key[6:]}"
+            header = key[6:]  # Just the param name
         elif key.startswith("metric:"):
-            header = f"📈 {key[7:]}"
-        elif key == "duration":
-            header = "Duration"
-        elif key == "tags":
-            header = "Tags"
+            header = key[7:]  # Just the metric name
         elif key == "id":
             header = "ID"
         elif key == "name":
@@ -283,16 +378,44 @@ def _print_static_table(comparison_data: dict) -> None:
 
     # Add rows
     for row_data in rows:
-        row_values = [str(row_data.get(key, "-")) for key in column_keys]
+        row_values = [str(row_data.get(key, "-")) for key in display_columns]
         table.add_row(*row_values)
 
     # Print table
     console.print(table)
 
-    # Print summary
-    param_count = len(comparison_data.get("param_columns", []))
-    metric_count = len(comparison_data.get("metric_columns", []))
+    # Print summary with hidden column info
+    total_params = len(param_columns)
+    total_metrics = len(metric_columns)
 
-    console.print(
-        f"\n[dim]Showing {len(rows)} experiments with {param_count} parameters and {metric_count} metrics[/dim]"
-    )
+    summary_parts = [f"Showing {len(rows)} experiments"]
+
+    if hidden_params > 0 or hidden_metrics > 0:
+        shown_parts = []
+        if total_params > 0:
+            if hidden_params > 0:
+                shown_parts.append(f"{len(shown_params)}/{total_params} params")
+            else:
+                shown_parts.append(f"{total_params} params")
+        if total_metrics > 0:
+            if hidden_metrics > 0:
+                shown_parts.append(f"{len(shown_metrics)}/{total_metrics} metrics")
+            else:
+                shown_parts.append(f"{total_metrics} metrics")
+        summary_parts.append(f"with {', '.join(shown_parts)}")
+
+        # Add hint about viewing more
+        hidden_hints = []
+        if hidden_params > 0:
+            hidden_hints.append(f"+{hidden_params} params")
+        if hidden_metrics > 0:
+            hidden_hints.append(f"+{hidden_metrics} metrics")
+        summary_parts.append(f"({', '.join(hidden_hints)} hidden)")
+    else:
+        summary_parts.append(f"with {total_params} params, {total_metrics} metrics")
+
+    console.print(f"\n[dim]{' '.join(summary_parts)}[/dim]")
+    if hidden_params > 0 or hidden_metrics > 0:
+        console.print(
+            "[dim]Use --params/--metrics to select specific columns, or --csv/--json for full data[/dim]"
+        )

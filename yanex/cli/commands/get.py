@@ -16,6 +16,7 @@ import yanex.results as yr
 from yanex.cli.error_handling import CLIErrorHandler
 from yanex.cli.filters import ExperimentFilter
 from yanex.cli.filters.arguments import experiment_filter_options
+from yanex.cli.formatters import format_markdown_table
 from yanex.utils.dict_utils import get_nested_value
 
 from .confirm import find_experiment
@@ -468,6 +469,13 @@ def follow_output(
     help="Output as JSON (useful for complex values)",
 )
 @click.option(
+    "--markdown",
+    "-m",
+    "markdown_output",
+    is_flag=True,
+    help="Output as GitHub-flavored markdown table (for multi-experiment output)",
+)
+@click.option(
     "--default",
     "default_value",
     default="[not_found]",
@@ -513,6 +521,7 @@ def get_field(
     no_id: bool,
     csv_output: bool,
     json_output: bool,
+    markdown_output: bool,
     default_value: str,
     tail: int | None,
     head: int | None,
@@ -569,6 +578,13 @@ def get_field(
       yanex run train.py -D data=$(yanex get id -n "*-prep-*" --csv)
       yanex run train.py -p lr=$(yanex get params.lr -s completed --csv)
     """
+    # Validate mutually exclusive output modes
+    output_mode_count = sum([json_output, csv_output, markdown_output])
+    if output_mode_count > 1:
+        raise click.ClickException(
+            "Cannot specify multiple output formats. Choose one of --json, --csv, or --markdown."
+        )
+
     # Validate --head/--tail only applies to stdout/stderr
     if tail is not None and field not in HEAD_TAIL_SUPPORTED_FIELDS:
         raise click.ClickException(
@@ -579,9 +595,13 @@ def get_field(
             f"--head option only applies to stdout/stderr fields, not '{field}'"
         )
 
-    # Validate --csv not supported for stdout/stderr
+    # Validate --csv and --markdown not supported for stdout/stderr
     if csv_output and field in HEAD_TAIL_SUPPORTED_FIELDS:
         raise click.ClickException(f"--csv output is not supported for '{field}' field")
+    if markdown_output and field in HEAD_TAIL_SUPPORTED_FIELDS:
+        raise click.ClickException(
+            f"--markdown output is not supported for '{field}' field"
+        )
 
     # Validate --follow only applies to stdout/stderr
     if follow and field not in HEAD_TAIL_SUPPORTED_FIELDS:
@@ -589,11 +609,13 @@ def get_field(
             f"--follow option only applies to stdout/stderr fields, not '{field}'"
         )
 
-    # Validate --follow incompatible with --csv/--json
+    # Validate --follow incompatible with --csv/--json/--markdown
     if follow and csv_output:
         raise click.ClickException("--follow cannot be used with --csv output")
     if follow and json_output:
         raise click.ClickException("--follow cannot be used with --json output")
+    if follow and markdown_output:
+        raise click.ClickException("--follow cannot be used with --markdown output")
 
     # Validate --follow incompatible with --head (but --tail is ok for initial display)
     if follow and head is not None:
@@ -665,6 +687,10 @@ def get_field(
             click.echo(json.dumps(value))
         elif csv_output:
             click.echo(format_value_for_csv(value), nl=False)
+        elif markdown_output:
+            # Single row markdown table
+            rows = [{"ID": experiment["id"], field: format_value(value)}]
+            click.echo(format_markdown_table(rows, ["ID", field]))
         else:
             click.echo(format_value(value))
 
@@ -728,6 +754,14 @@ def get_field(
         values = [format_value_for_csv(value) for _, value in results]
         # Output without trailing newline for bash substitution
         click.echo(",".join(values), nl=False)
+        return
+
+    if markdown_output:
+        # Markdown table with ID and value columns
+        rows = []
+        for exp_id, value in results:
+            rows.append({"ID": exp_id, field: format_value(value)})
+        click.echo(format_markdown_table(rows, ["ID", field]))
         return
 
     # Special header format for stdout/stderr multi-experiment output

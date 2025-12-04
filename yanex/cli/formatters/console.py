@@ -14,6 +14,16 @@ from ...utils.datetime_utils import (
     format_relative_time,
     parse_iso_timestamp,
 )
+from .theme import (
+    DATA_TABLE_BOX,
+    ID_STYLE,
+    SCRIPT_STYLE,
+    STATUS_COLORS,
+    STATUS_SYMBOLS,
+    TABLE_HEADER_STYLE,
+    TAGS_STYLE,
+    TIMESTAMP_STYLE,
+)
 
 
 class ExperimentTableFormatter:
@@ -21,27 +31,8 @@ class ExperimentTableFormatter:
     Rich console formatter for experiment tables.
 
     Provides colored status indicators, formatted durations, and clean table layout.
+    Uses centralized theme constants for consistent styling.
     """
-
-    # Status color mapping
-    STATUS_COLORS = {
-        "completed": "green",
-        "failed": "red",
-        "running": "yellow",
-        "created": "white",
-        "cancelled": "bright_red",
-        "staged": "cyan",
-    }
-
-    # Status symbols for better visual distinction
-    STATUS_SYMBOLS = {
-        "completed": "✓",
-        "failed": "✗",
-        "running": "⚡",
-        "created": "○",
-        "cancelled": "✖",
-        "staged": "⏲",
-    }
 
     def __init__(self, console: Console = None):
         """
@@ -73,17 +64,21 @@ class ExperimentTableFormatter:
         # Store name_width for use in _format_name
         self._current_name_width = name_width
 
-        # Create table with columns
-        table = Table(show_header=True, header_style="bold")
+        # Create table with borderless style and consistent header
+        table = Table(
+            show_header=True,
+            header_style=TABLE_HEADER_STYLE,
+            box=DATA_TABLE_BOX,
+        )
 
-        # Add columns
-        table.add_column("ID", style="dim", width=8)
-        table.add_column("Script", style="cyan", width=script_width)
+        # Add columns with theme-consistent styles
+        table.add_column("ID", style=ID_STYLE, width=8)
+        table.add_column("Script", style=SCRIPT_STYLE, width=script_width)
         table.add_column("Name", min_width=12, max_width=name_width)
         table.add_column("Status", width=12)
         table.add_column("Duration", width=10, justify="right")
-        table.add_column("Tags", min_width=8, max_width=20)
-        table.add_column("Started", width=15, justify="right")
+        table.add_column("Tags", style=TAGS_STYLE, min_width=8, max_width=20)
+        table.add_column("Started", style=TIMESTAMP_STYLE, width=15, justify="right")
 
         # Add rows
         for exp in experiments:
@@ -219,12 +214,12 @@ class ExperimentTableFormatter:
 
         script_name = Path(script_path).name  # Full filename: "train.py"
 
-        return Text(script_name, style="cyan")
+        return Text(script_name, style=SCRIPT_STYLE)
 
     def _format_status(self, status: str) -> Text:
         """Format status with color and symbol."""
-        color = self.STATUS_COLORS.get(status, "white")
-        symbol = self.STATUS_SYMBOLS.get(status, "?")
+        color = STATUS_COLORS.get(status, "white")
+        symbol = STATUS_SYMBOLS.get(status, "?")
 
         return Text(f"{symbol} {status}", style=color)
 
@@ -293,7 +288,7 @@ class ExperimentTableFormatter:
         if len(tag_str) > 23:
             tag_str = tag_str[:20] + "..."
 
-        return Text(tag_str, style="blue")
+        return Text(tag_str, style=TAGS_STYLE)
 
     def _format_started_time(self, started_at: str) -> Text:
         """Format started time as relative time."""
@@ -305,7 +300,7 @@ class ExperimentTableFormatter:
             return Text("unknown", style="dim")
 
         relative_str = format_relative_time(start_time)
-        return Text(relative_str, style="cyan")
+        return Text(relative_str, style=TIMESTAMP_STYLE)
 
     def _format_time(self, time_str: str) -> str:
         """Format timestamp for detailed display."""

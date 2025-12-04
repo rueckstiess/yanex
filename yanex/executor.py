@@ -315,6 +315,7 @@ def _run_parallel(
     )
 
     results: list[ExperimentResult] = []
+    interrupted = False
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # Submit all experiments
@@ -323,46 +324,146 @@ def _run_parallel(
             for spec in experiments
         }
 
-        # Process as they complete
-        completed_count = 0
-        for future in as_completed(future_to_spec):
-            spec = future_to_spec[future]
-            try:
-                result = future.result()
-                results.append(result)
+        try:
+            # Process as they complete
+            completed_count = 0
+            for future in as_completed(future_to_spec):
+                spec = future_to_spec[future]
+                try:
+                    result = future.result()
+                    results.append(result)
 
-                if result.status == "completed":
-                    completed_count += 1
-                    console.print(
-                        f"[green]✓ {completed_count}/{len(experiments)} completed: {result.experiment_id}[/]"
-                    )
-                else:
-                    console.print(
-                        f"[red]✗ Failed: {spec.name} - {result.error_message}[/]"
+                    if result.status == "completed":
+                        completed_count += 1
+                        console.print(
+                            f"[green]✓ {completed_count}/{len(experiments)} completed: {result.experiment_id}[/]"
+                        )
+                    elif result.status == "cancelled":
+                        console.print(f"[yellow]✖ Cancelled: {result.experiment_id}[/]")
+                    else:
+                        console.print(
+                            f"[red]✗ Failed: {spec.name} - {result.error_message}[/]"
+                        )
+
+                except Exception as e:
+                    # Worker process crashed
+                    console.print(f"[red]✗ Worker crashed for {spec.name}: {e}[/]")
+                    results.append(
+                        ExperimentResult(
+                            experiment_id="unknown",
+                            status="failed",
+                            error_message=f"Worker process crashed: {e}",
+                            name=spec.name,
+                        )
                     )
 
-            except Exception as e:
-                # Worker process crashed
-                console.print(f"[red]✗ Worker crashed for {spec.name}: {e}[/]")
-                results.append(
-                    ExperimentResult(
-                        experiment_id="unknown",
-                        status="failed",
-                        error_message=f"Worker process crashed: {e}",
-                        name=spec.name,
-                    )
-                )
+        except KeyboardInterrupt:
+            interrupted = True
+            console.print("\n[yellow]Interrupted! Cancelling pending experiments...[/]")
+
+            # Cancel pending futures (ones not yet started)
+            for future in future_to_spec:
+                future.cancel()
+
+            # Collect results from futures that completed before interrupt
+            for future in future_to_spec:
+                if future.done() and not future.cancelled():
+                    try:
+                        result = future.result()
+                        if result not in results:
+                            results.append(result)
+                    except Exception:
+                        pass
+
+            # Wait briefly for workers to finish (they should catch the signal)
+            # ProcessPoolExecutor.__exit__ will call shutdown(wait=True)
+
+    # After executor shutdown, mark any still-running experiments as cancelled
+    if interrupted:
+        _cancel_running_experiments(results, experiments, console)
 
     # Summary
     completed = [r for r in results if r.status == "completed"]
     failed = [r for r in results if r.status == "failed"]
+    cancelled = [r for r in results if r.status == "cancelled"]
 
     console.print("\n[bold]Parallel execution completed:[/]")
     console.print(f"  ✓ Completed: {len(completed)}/{len(experiments)}")
     if failed:
         console.print(f"  ✗ Failed: {len(failed)}/{len(experiments)}")
+    if cancelled:
+        console.print(f"  ✖ Cancelled: {len(cancelled)}/{len(experiments)}")
+
+    if interrupted:
+        raise KeyboardInterrupt
 
     return results
+
+
+def _cancel_running_experiments(
+    results: list[ExperimentResult],
+    experiments: list[ExperimentSpec],
+    console: Console,
+) -> None:
+    """Cancel any experiments that are still in 'running' status after interrupt.
+
+    This handles the case where worker processes were terminated before they could
+    update the experiment status.
+
+    Args:
+        results: List of results collected so far
+        experiments: Original list of experiment specs
+        console: Console for output
+    """
+    from .core.filtering import ExperimentFilter
+    from .core.manager import ExperimentManager
+
+    # Get IDs of experiments we already have results for
+    known_ids = {r.experiment_id for r in results if r.experiment_id != "unknown"}
+
+    # Find experiments that are still running
+    try:
+        filter_obj = ExperimentFilter()
+        running_experiments = filter_obj.filter_experiments(
+            status="running", include_all=True
+        )
+
+        # Cancel any running experiments that might be from this batch
+        # We check by matching experiment names or script paths
+        batch_names = {spec.name for spec in experiments if spec.name}
+        batch_scripts = {
+            str(spec.script_path) for spec in experiments if spec.script_path
+        }
+
+        for exp in running_experiments:
+            exp_id = exp.get("id")
+            if exp_id and exp_id not in known_ids:
+                # Check if this experiment matches our batch
+                exp_name = exp.get("name")
+                exp_script = exp.get("script_path")
+
+                if (exp_name and exp_name in batch_names) or (
+                    exp_script and exp_script in batch_scripts
+                ):
+                    try:
+                        manager = ExperimentManager()
+                        manager.cancel_experiment(
+                            exp_id, "Interrupted by user (Ctrl+C)"
+                        )
+                        console.print(f"[yellow]✖ Cancelled: {exp_id}[/]")
+                        results.append(
+                            ExperimentResult(
+                                experiment_id=exp_id,
+                                status="cancelled",
+                                error_message="Interrupted by user (Ctrl+C)",
+                                name=exp_name,
+                            )
+                        )
+                    except Exception:
+                        pass  # Best effort
+
+    except Exception:
+        pass  # Best effort cleanup
 
 
 def _execute_single_experiment(
@@ -381,6 +482,9 @@ def _execute_single_experiment(
     Returns:
         ExperimentResult with status and details
     """
+    experiment_id = None
+    manager = None
+
     try:
         # Create manager (each process needs its own)
         manager = ExperimentManager()
@@ -421,11 +525,26 @@ def _execute_single_experiment(
             duration=duration,
         )
 
+    except KeyboardInterrupt:
+        # User interrupted - mark as cancelled
+        if experiment_id and manager:
+            try:
+                manager.cancel_experiment(experiment_id, "Interrupted by user (Ctrl+C)")
+            except Exception:
+                pass  # Best effort
+
+        return ExperimentResult(
+            experiment_id=experiment_id or "unknown",
+            status="cancelled",
+            error_message="Interrupted by user (Ctrl+C)",
+            name=spec.name,
+        )
+
     except Exception as e:
         # Try to mark as failed
         error_msg = str(e)
         try:
-            if "experiment_id" in locals():
+            if experiment_id and manager:
                 # For click.Abort exceptions, error is already stored in metadata
                 # Read it back to get the actual error message
                 import click
@@ -453,7 +572,7 @@ def _execute_single_experiment(
 
         # Return failure result
         return ExperimentResult(
-            experiment_id="unknown",
+            experiment_id=experiment_id or "unknown",
             status="failed",
             error_message=error_msg,
             name=spec.name,
