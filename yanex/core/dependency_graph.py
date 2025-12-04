@@ -5,6 +5,7 @@ dependencies once and enables fast bidirectional traversal for lineage queries.
 """
 
 from collections import deque
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import networkx as nx
@@ -43,13 +44,21 @@ class DependencyGraph:
             # Load metadata for node labels
             try:
                 meta = self._storage.load_metadata(exp_id, include_archived=True)
+                # Extract just the filename from the full script_path
+                script_path = meta.get("script_path", "")
+                script_name = Path(script_path).name if script_path else ""
                 self._exp_metadata[exp_id] = {
                     "name": meta.get("name", ""),
                     "status": meta.get("status", "unknown"),
+                    "script": script_name,
                 }
             except Exception:
                 # Experiment might be corrupted - use defaults
-                self._exp_metadata[exp_id] = {"name": "", "status": "unknown"}
+                self._exp_metadata[exp_id] = {
+                    "name": "",
+                    "status": "unknown",
+                    "script": "",
+                }
 
             # Load dependencies and build graphs
             try:
@@ -127,6 +136,100 @@ class DependencyGraph:
         # Ensure the queried experiment is in the graph even with no deps
         if exp_id not in combined:
             combined.add_node(exp_id)
+
+        self._add_node_metadata(combined)
+        return combined
+
+    def get_multi_upstream(self, exp_ids: list[str], max_depth: int = 10) -> nx.DiGraph:
+        """Get combined upstream dependencies for multiple experiments.
+
+        Merges upstream graphs for all given experiments into one unified graph.
+        Single experiment is just len(exp_ids) == 1.
+
+        Args:
+            exp_ids: List of experiment IDs to get combined upstream for.
+            max_depth: Maximum traversal depth.
+
+        Returns:
+            NetworkX DiGraph with edges in dependency->dependent direction.
+            Nodes have 'name' and 'status' attributes.
+        """
+        combined = nx.DiGraph()
+
+        for exp_id in exp_ids:
+            # get_upstream returns dependent->dependency direction
+            # We need to reverse for consistent dep->dependent display
+            raw = self._bfs_subgraph(exp_id, self._forward, max_depth)
+            for u, v, data in raw.edges(data=True):
+                if not combined.has_edge(v, u):
+                    combined.add_edge(v, u, **data)
+
+            # Ensure experiment node is present even with no deps
+            if exp_id not in combined:
+                combined.add_node(exp_id)
+
+        self._add_node_metadata(combined)
+        return combined
+
+    def get_multi_downstream(
+        self, exp_ids: list[str], max_depth: int = 10
+    ) -> nx.DiGraph:
+        """Get combined downstream dependents for multiple experiments.
+
+        Merges downstream graphs for all given experiments into one unified graph.
+        Single experiment is just len(exp_ids) == 1.
+
+        Args:
+            exp_ids: List of experiment IDs to get combined downstream for.
+            max_depth: Maximum traversal depth.
+
+        Returns:
+            NetworkX DiGraph with edges in dependency->dependent direction.
+            Nodes have 'name' and 'status' attributes.
+        """
+        combined = nx.DiGraph()
+
+        for exp_id in exp_ids:
+            downstream = self._bfs_subgraph(exp_id, self._reverse, max_depth)
+            for u, v, data in downstream.edges(data=True):
+                if not combined.has_edge(u, v):
+                    combined.add_edge(u, v, **data)
+
+            # Ensure experiment node is present even with no dependents
+            if exp_id not in combined:
+                combined.add_node(exp_id)
+
+        self._add_node_metadata(combined)
+        return combined
+
+    def get_multi_lineage(self, exp_ids: list[str], max_depth: int = 10) -> nx.DiGraph:
+        """Get combined lineage for multiple experiments.
+
+        Merges lineage graphs for all given experiments into one unified graph.
+        This is the generalized form - single experiment is just len(exp_ids) == 1.
+
+        Args:
+            exp_ids: List of experiment IDs to get combined lineage for.
+            max_depth: Maximum traversal depth in each direction.
+
+        Returns:
+            NetworkX DiGraph with edges in dependency->dependent direction.
+            Nodes have 'name' and 'status' attributes.
+        """
+        combined = nx.DiGraph()
+
+        for exp_id in exp_ids:
+            lineage = self.get_lineage(exp_id, max_depth=max_depth)
+
+            # Merge edges
+            for u, v, data in lineage.edges(data=True):
+                if not combined.has_edge(u, v):
+                    combined.add_edge(u, v, **data)
+
+            # Merge nodes (including isolated nodes)
+            for node in lineage.nodes():
+                if node not in combined:
+                    combined.add_node(node)
 
         self._add_node_metadata(combined)
         return combined

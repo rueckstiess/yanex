@@ -231,6 +231,24 @@ The codebase has undergone significant refactoring to:
 - Intended for Jupyter notebooks or programmatic control
 - Cannot mix with CLI-first pattern (raises `ExperimentContextError`)
 
+### Experiment Lineage Visualization
+The `yanex get` command supports lineage visualization for experiment dependencies:
+- `yanex get upstream <exp>` - Show what an experiment depends on
+- `yanex get downstream <exp>` - Show what depends on an experiment
+- `yanex get lineage <exp>` - Show both upstream and downstream
+
+**Multi-experiment lineage** supports filtering to visualize multiple experiments:
+```bash
+yanex get lineage -n "train-*"       # All experiments matching pattern
+yanex get upstream -s completed      # Dependencies of all completed experiments
+yanex get lineage --ids a1,b2,c3     # Specific experiments by ID
+```
+
+Output behavior:
+- Connected targets render as a single DAG with all targets highlighted in yellow
+- Disconnected targets render as separate DAGs with blank line separation
+- Single experiment is a special case (list with one element)
+
 ### Web UI Development
 - Frontend: Next.js in `yanex/web/` with static export
 - Backend: FastAPI serves static files + REST API

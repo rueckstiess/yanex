@@ -1,6 +1,5 @@
 """Tests for DependencyGraph class and lineage functionality."""
 
-
 from yanex.core.dependency_graph import DependencyGraph
 from yanex.core.manager import ExperimentManager
 

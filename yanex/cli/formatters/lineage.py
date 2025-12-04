@@ -18,6 +18,7 @@ def format_node_label(
     status: str,
     slots: list[str] | None = None,
     is_target: bool = False,
+    script: str = "",
 ) -> str:
     """Format a node label for DAG visualization.
 
@@ -27,56 +28,60 @@ def format_node_label(
         status: Experiment status (completed, failed, running, etc.).
         slots: List of slot names from incoming edges (e.g., ["data", "model"]).
         is_target: Whether this is the queried experiment.
+        script: Script filename (e.g., "train.py").
 
     Returns:
-        Formatted label like "[data] abc12345 train-model ✓ <-"
+        Formatted label like "<data> abc12345 train-model (train.py) ✓"
     """
     # Get status symbol
     symbol = STATUS_SYMBOLS.get(status, "?")
 
     # Build slot prefix
-    # Use escaped brackets to avoid Rich markup interpretation
     slot_prefix = ""
     if is_target:
-        # Target experiment: show [this] marker instead of slot names
-        slot_prefix = "\\[this] "
+        # Target experiment: show <*> marker instead of slot names
+        slot_prefix = "<*> "
     elif slots:
         # Show all slots if multiple incoming edges
-        # Escape brackets for Rich: \[ renders as literal [
-        slot_prefix = " ".join(f"\\[{s}]" for s in sorted(slots)) + " "
+        slot_prefix = " ".join(f"<{s}>" for s in sorted(slots)) + " "
 
-    # Build label with slot prefix
-    if name:
-        label = f"{slot_prefix}{exp_id} {name} {symbol}"
-    else:
-        label = f"{slot_prefix}{exp_id} {symbol}"
+    # Build script suffix
+    script_suffix = ""
+    if script:
+        script_suffix = f" ({script})"
+
+    # Build label with slot prefix and script suffix
+    # Use Rich markup: \\[ escapes bracket, [italic] styles text, ]] escapes closing bracket
+    display_name = name if name else "\\[[italic]unnamed[/italic]]"
+    label = f"{slot_prefix}{exp_id} {display_name}{script_suffix} {symbol}"
 
     return label
 
 
 def render_lineage_graph(
     graph: nx.DiGraph,
-    target_id: str,
+    target_ids: set[str],
     use_color: bool = True,
 ) -> str:
     """Render lineage graph as git-style ASCII DAG.
 
     Uses py-dagviz to produce topologically-sorted ASCII art with
-    the target experiment highlighted.
+    target experiments highlighted.
 
     Args:
         graph: NetworkX DiGraph with edges in dependency direction
                (dependency -> dependent, i.e., data flow direction).
                Nodes should have 'name' and 'status' attributes.
-        target_id: Experiment ID to highlight in output.
+        target_ids: Set of experiment IDs to highlight in output.
         use_color: Whether to use ANSI colors in output.
 
     Returns:
         Multi-line string with ASCII DAG visualization.
     """
     if graph.number_of_nodes() == 0:
-        # Empty graph - just show the target
-        return f"(no lineage data for {target_id})"
+        # Empty graph - just show the targets
+        targets_str = ", ".join(sorted(target_ids)) if target_ids else "none"
+        return f"(no lineage data for {targets_str})"
 
     # Collect slots for each node
     # Strategy: prefer outgoing edge slots (what role this node plays),
@@ -119,10 +124,11 @@ def render_lineage_graph(
         attrs = graph.nodes[node]
         name = attrs.get("name", "")
         status = attrs.get("status", "unknown")
-        is_target = node == target_id
+        script = attrs.get("script", "")
+        is_target = node in target_ids
         slots = node_slots.get(node, [])
 
-        label = format_node_label(node, name, status, slots, is_target)
+        label = format_node_label(node, name, status, slots, is_target, script)
         id_to_label[node] = label
 
     # Add edges with formatted labels
@@ -145,33 +151,82 @@ def render_lineage_graph(
             attrs = graph.nodes[node]
             name = attrs.get("name", "")
             status = attrs.get("status", "unknown")
-            is_target = node == target_id
+            script = attrs.get("script", "")
+            is_target = node in target_ids
             slots = node_slots.get(node, [])
-            label = format_node_label(node, name, status, slots, is_target)
+            label = format_node_label(node, name, status, slots, is_target, script)
             lines.append(label)
         output = "\n".join(lines)
         output += f"\n(DAG rendering failed: {e})"
 
     # Apply colors if requested
     if use_color:
-        output = _apply_colors(output, target_id)
+        output = _apply_colors(output)
 
     return output
 
 
-def _apply_colors(text: str, target_id: str) -> str:
+def render_lineage_components(
+    graph: nx.DiGraph,
+    target_ids: set[str],
+    use_color: bool = True,
+) -> list[str]:
+    """Render lineage graph, splitting into components if disconnected.
+
+    Args:
+        graph: NetworkX DiGraph with experiment metadata.
+        target_ids: Set of experiment IDs to highlight.
+        use_color: Whether to use ANSI colors.
+
+    Returns:
+        List of rendered strings, one per connected component.
+        Components are sorted by: (1) contains target, (2) size descending.
+    """
+    if graph.number_of_nodes() == 0:
+        targets_str = ", ".join(sorted(target_ids)) if target_ids else "none"
+        return [f"(no lineage data for {targets_str})"]
+
+    # Get weakly connected components
+    components = list(nx.weakly_connected_components(graph))
+
+    if len(components) == 1:
+        # Single connected component - render normally
+        return [render_lineage_graph(graph, target_ids, use_color)]
+
+    # Multiple components - render each separately
+    results = []
+
+    # Sort components: those with targets first, then by size descending
+    def component_sort_key(component: set[str]) -> tuple[int, int]:
+        has_target = 1 if (component & target_ids) else 0
+        return (-has_target, -len(component))
+
+    sorted_components = sorted(components, key=component_sort_key)
+
+    for component in sorted_components:
+        subgraph = graph.subgraph(component).copy()
+        targets_in_component = target_ids & component
+
+        # Render this component (may have no targets if exploring full lineage)
+        rendered = render_lineage_graph(subgraph, targets_in_component, use_color)
+        results.append(rendered)
+
+    return results
+
+
+def _apply_colors(text: str) -> str:
     """Apply Rich-compatible colors to lineage output.
 
     Applies consistent styling:
-    - Slot names [data] → cyan
+    - Target marker <*> → yellow
+    - Slot names <data> → cyan
+    - Script names (script.py) → dim cyan
     - Experiment IDs → dim (gray)
-    - Target experiment name → bold white
-    - Other experiment names → dim white
+    - Experiment names → white
     - Status symbols → colored by status
 
     Args:
         text: Plain text output from dagviz.
-        target_id: The queried experiment ID (for bold styling).
 
     Returns:
         Text with Rich markup for terminal display.
@@ -180,18 +235,17 @@ def _apply_colors(text: str, target_id: str) -> str:
     colored_lines = []
 
     for line in lines:
-        colored_line = _color_line(line, target_id)
+        colored_line = _color_line(line)
         colored_lines.append(colored_line)
 
     return "\n".join(colored_lines)
 
 
-def _color_line(line: str, target_id: str) -> str:
+def _color_line(line: str) -> str:
     """Apply colors to a single line of lineage output.
 
     Args:
         line: Single line from dagviz output.
-        target_id: The queried experiment ID.
 
     Returns:
         Line with Rich markup applied.
@@ -200,21 +254,24 @@ def _color_line(line: str, target_id: str) -> str:
     if not line.strip() or not re.search(r"[0-9a-f]{8}", line):
         return line
 
-    # Check if this line contains the target experiment
-    is_target_line = target_id in line
-
-    # Apply slot colors: \[word] → [cyan]\[word][/cyan]
-    # Special case: \[this] gets yellow (target marker)
-    # The brackets are escaped for Rich (\[), so match that pattern
+    # Apply slot colors: <word> → [bright_blue]<word>[/bright_blue]
+    # Special case: <*> gets yellow (target marker)
     line = re.sub(
-        r"\\(\[this\])",
-        r"[yellow]\\\1[/yellow]",
+        r"(<\*>)",
+        r"[yellow]\1[/yellow]",
         line,
     )
-    # Apply cyan to other slots (exclude [this] which is already yellow)
+    # Apply cyan to other slots (exclude <*> which is already yellow)
     line = re.sub(
-        r"\\(\[(?!this\])([a-zA-Z_][a-zA-Z0-9_]*)\])",
-        r"[cyan]\\\1[/cyan]",
+        r"(<(?!\*)([a-zA-Z_][a-zA-Z0-9_]*)>)",
+        r"[cyan]\1[/cyan]",
+        line,
+    )
+
+    # Apply dim cyan to script names in parentheses: (script.py) → [dim cyan](script.py)[/dim cyan]
+    line = re.sub(
+        r"\(([a-zA-Z0-9_.-]+\.py)\)",
+        r"[dim cyan](\1)[/dim cyan]",
         line,
     )
 
@@ -228,12 +285,8 @@ def _color_line(line: str, target_id: str) -> str:
     # Apply name styling to all experiments
     # Names appear after the ID and before the status symbol
     # NOTE: Must apply before status symbol colors so the regex can match plain symbols
-    if is_target_line:
-        # Target experiment: yellow name (stands out from regular white), no bold
-        line = _style_experiment_name(line, "yellow not bold")
-    else:
-        # Non-target names: explicit white without bold to ensure consistent styling
-        line = _style_experiment_name(line, "white not bold")
+    # Target experiments are distinguished by their [*] marker (yellow), not their name color
+    line = _style_experiment_name(line, "white not bold")
 
     # Apply status symbol colors (last, after name styling)
     for status, symbol in STATUS_SYMBOLS.items():
@@ -294,15 +347,15 @@ def get_lineage_ids(graph: nx.DiGraph) -> list[str]:
         return list(graph.nodes())
 
 
-def lineage_to_json(graph: nx.DiGraph, target_id: str) -> dict:
+def lineage_to_json(graph: nx.DiGraph, target_ids: set[str]) -> dict:
     """Convert lineage graph to JSON-serializable dict.
 
     Args:
         graph: NetworkX DiGraph with experiment metadata.
-        target_id: The queried experiment ID.
+        target_ids: Set of queried experiment IDs.
 
     Returns:
-        Dict with nodes, edges, and target information.
+        Dict with nodes, edges, and targets information.
     """
     nodes = []
     for node in graph.nodes():
@@ -326,7 +379,7 @@ def lineage_to_json(graph: nx.DiGraph, target_id: str) -> dict:
         )
 
     return {
-        "target": target_id,
+        "targets": sorted(target_ids),
         "nodes": nodes,
         "edges": edges,
     }

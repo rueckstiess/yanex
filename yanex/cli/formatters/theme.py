@@ -12,7 +12,7 @@ from rich import box
 
 # Column/field styles
 ID_STYLE = "dim"
-SCRIPT_STYLE = "cyan"
+SCRIPT_STYLE = "dim cyan"
 NAME_STYLE = "white"
 TAGS_STYLE = "blue"
 PARAMS_STYLE = "cyan"

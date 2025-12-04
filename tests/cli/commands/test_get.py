@@ -1600,24 +1600,6 @@ class TestGetLineageValidation:
         """Set up test fixtures."""
         self.runner = create_cli_runner()
 
-    def test_lineage_requires_single_experiment(self):
-        """Test that lineage fields require experiment ID, not filters."""
-        result = self.runner.invoke(cli, ["get", "lineage", "-s", "completed"])
-        assert result.exit_code != 0
-        assert "requires a single experiment ID" in result.output
-
-    def test_upstream_requires_single_experiment(self):
-        """Test that upstream field requires experiment ID."""
-        result = self.runner.invoke(cli, ["get", "upstream", "-n", "test-*"])
-        assert result.exit_code != 0
-        assert "requires a single experiment ID" in result.output
-
-    def test_downstream_requires_single_experiment(self):
-        """Test that downstream field requires experiment ID."""
-        result = self.runner.invoke(cli, ["get", "downstream", "-t", "training"])
-        assert result.exit_code != 0
-        assert "requires a single experiment ID" in result.output
-
     def test_depth_only_for_lineage_fields(self):
         """Test that --depth only applies to lineage fields."""
         result = self.runner.invoke(
@@ -1814,10 +1796,10 @@ class TestGetLineageIntegration:
 
         assert result.exit_code == 0
         data = json.loads(result.output)
-        assert "target" in data
+        assert "targets" in data
         assert "nodes" in data
         assert "edges" in data
-        assert data["target"] == child_id
+        assert child_id in data["targets"]
 
     def test_lineage_depth_limiting(self, per_test_experiments_dir, git_repo):
         """Test that --depth limits traversal."""

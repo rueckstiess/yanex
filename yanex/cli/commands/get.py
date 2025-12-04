@@ -11,7 +11,6 @@ import time
 from typing import Any
 
 import click
-import networkx as nx
 
 import yanex.results as yr
 from yanex.cli.error_handling import CLIErrorHandler
@@ -28,7 +27,6 @@ from yanex.cli.formatters.lineage import (
     get_lineage_ids,
     lineage_to_csv,
     lineage_to_json,
-    render_lineage_graph,
 )
 from yanex.core.dependency_graph import DependencyGraph
 from yanex.core.storage import ExperimentStorage
@@ -438,7 +436,7 @@ def follow_output(
 
 
 def _handle_lineage_field(
-    exp_id: str,
+    exp_ids: list[str],
     field: str,
     depth: int,
     ids_only: bool,
@@ -447,7 +445,7 @@ def _handle_lineage_field(
     """Handle lineage field output (upstream, downstream, lineage).
 
     Args:
-        exp_id: Experiment ID to get lineage for.
+        exp_ids: List of experiment IDs to get lineage for.
         field: One of "upstream", "downstream", or "lineage".
         depth: Maximum traversal depth.
         ids_only: If True, output only IDs comma-separated.
@@ -457,6 +455,8 @@ def _handle_lineage_field(
     from pathlib import Path
 
     from rich.console import Console
+
+    from yanex.cli.formatters.lineage import render_lineage_components
 
     # Get experiments directory from environment (same logic as ExperimentManager)
     env_dir = os.environ.get("YANEX_EXPERIMENTS_DIR")
@@ -469,27 +469,20 @@ def _handle_lineage_field(
     storage = ExperimentStorage(experiments_dir)
     dep_graph = DependencyGraph(storage)
 
-    # Check if experiment exists in graph
-    if not dep_graph.experiment_exists(exp_id):
-        raise click.ClickException(f"Experiment '{exp_id}' not found")
+    # Validate all experiments exist
+    missing = [eid for eid in exp_ids if not dep_graph.experiment_exists(eid)]
+    if missing:
+        raise click.ClickException(f"Experiment(s) not found: {', '.join(missing)}")
 
-    # Get the appropriate graph based on field
+    target_set = set(exp_ids)
+
+    # Get the appropriate combined graph based on field
     if field == "upstream":
-        # get_upstream returns edges in dependent->dependency direction
-        # Reverse them for display (dependency->dependent, roots at top)
-        raw_graph = dep_graph.get_upstream(exp_id, max_depth=depth)
-        graph = nx.DiGraph()
-        for u, v, data in raw_graph.edges(data=True):
-            graph.add_edge(v, u, **data)
-        # Copy node attributes
-        for node in raw_graph.nodes():
-            if node not in graph:
-                graph.add_node(node)
-            graph.nodes[node].update(raw_graph.nodes[node])
+        graph = dep_graph.get_multi_upstream(exp_ids, max_depth=depth)
     elif field == "downstream":
-        graph = dep_graph.get_downstream(exp_id, max_depth=depth)
+        graph = dep_graph.get_multi_downstream(exp_ids, max_depth=depth)
     else:  # lineage
-        graph = dep_graph.get_lineage(exp_id, max_depth=depth)
+        graph = dep_graph.get_multi_lineage(exp_ids, max_depth=depth)
 
     # Handle --ids-only output
     if ids_only:
@@ -499,7 +492,7 @@ def _handle_lineage_field(
 
     # Handle different output formats
     if fmt == OutputFormat.JSON:
-        output = lineage_to_json(graph, exp_id)
+        output = lineage_to_json(graph, target_set)
         click.echo(json.dumps(output, indent=2))
     elif fmt == OutputFormat.CSV:
         output = lineage_to_csv(graph)
@@ -516,12 +509,16 @@ def _handle_lineage_field(
         ids = get_lineage_ids(graph)
         click.echo(",".join(ids), nl=False)
     else:
-        # Default: render as ASCII DAG
-        output = render_lineage_graph(graph, exp_id)
-        # Use Rich console for proper markup handling
+        # Default: render as ASCII DAG(s)
         console = Console()
-        console.print()  # Add blank line before tree
-        console.print(output)
+        components = render_lineage_components(graph, target_set)
+
+        for i, component_output in enumerate(components):
+            if i > 0:
+                console.print()  # Blank line between components
+            console.print()  # Blank line before each tree
+            # Disable highlight to prevent Rich from auto-colorizing numbers
+            console.print(component_output, highlight=False)
 
 
 @click.command("get")
@@ -675,6 +672,13 @@ def get_field(
       yanex get lineage abc123 -F json     JSON format (nodes + edges)
 
     \b
+    Examples (multi-experiment lineage):
+      yanex get lineage -n "train-*"       Lineage of all train-* experiments
+      yanex get upstream -s completed      Dependencies of completed experiments
+      yanex get downstream -t baseline     What depends on baseline-tagged exps
+      yanex get lineage --ids a1,b2,c3     Lineage of specific experiments
+
+    \b
     Examples (multiple experiments with filters):
       yanex get id -s completed            IDs of completed experiments
       yanex get id -n "train-*" -F sweep   IDs comma-separated for sweeps
@@ -728,12 +732,6 @@ def get_field(
     if ids_only and field not in LINEAGE_FIELDS:
         raise click.ClickException(
             f"--ids-only option only applies to lineage fields (upstream, downstream, lineage), not '{field}'"
-        )
-
-    # Validate lineage fields require single experiment
-    if field in LINEAGE_FIELDS and not experiment_id:
-        raise click.ClickException(
-            f"'{field}' field requires a single experiment ID, not filter options"
         )
 
     # Determine if we have filters or a single experiment
@@ -795,7 +793,7 @@ def get_field(
 
         # Handle lineage fields (upstream, downstream, lineage)
         if field in LINEAGE_FIELDS:
-            _handle_lineage_field(exp.id, field, depth, ids_only, fmt)
+            _handle_lineage_field([exp.id], field, depth, ids_only, fmt)
             return
 
         value, found = resolve_field_value(exp, field, default_value, tail, head)
@@ -838,6 +836,12 @@ def get_field(
 
     if not experiments:
         # No output for empty results (useful for scripting)
+        return
+
+    # Handle lineage fields with multiple targets
+    if field in LINEAGE_FIELDS:
+        target_ids = [exp.id for exp in experiments]
+        _handle_lineage_field(target_ids, field, depth, ids_only, fmt)
         return
 
     # Collect all values
