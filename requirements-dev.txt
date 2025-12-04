@@ -4,17 +4,21 @@ pytest-cov>=4.0.0
 pytest-xdist>=3.0.0
 ruff>=0.1.0
 mypy>=1.0.0
+pandas>=2.0.0
 
 # Core dependencies
 click>=8.0.0
 pyyaml>=6.0
 rich>=12.0.0
 gitpython>=3.1.0
-
-# Web UI dependencies
+dateparser>=1.1.0
+textual>=0.45.0
 fastapi>=0.100.0
 uvicorn>=0.20.0
 httpx>=0.24.0
+detect-secrets>=1.5.0
+py-dagviz>=0.1.0
+networkx>=3.0
 
 # Optional dependencies for testing
 matplotlib>=3.5.0

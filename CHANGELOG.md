@@ -7,31 +7,196 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **Automatic Git Patch Capture**: Yanex now automatically captures and stores uncommitted changes as patch files
-  - Generates `git diff HEAD` patch when uncommitted changes are detected (staged or unstaged)
-  - Saves patches as `artifacts/git_diff.patch` in experiment directory
-  - New metadata fields: `has_uncommitted_changes` (bool) and `patch_file` (string | null)
-  - Only tracks files already in the repository (excludes untracked files)
-  - Ensures full reproducibility even when working with uncommitted code
-  - Graceful error handling - warnings on patch generation failure, experiments continue
+## [0.5.0] - 2025-12-05
 
-### Changed
+This beta release includes significant new features: a comprehensive dependency tracking system for multi-stage workflows, an AI-friendly `yanex get` command with lineage visualization, a completely redesigned artifact API, and parameter access tracking.
+
+### Breaking Changes
+
+- **New Artifact API**: Complete redesign of artifact handling with automatic format detection
+  - Removed: `log_artifact()`, `log_text()`, `log_matplotlib_figure()`
+  - Added: `copy_artifact()`, `save_artifact()`, `load_artifact()`, `artifact_exists()`, `list_artifacts()`
+  - Automatic format detection based on file extension (.txt, .json, .pt, .png, etc.)
+  - Standalone mode support: saves to `./artifacts/` when run without yanex tracking
+
+- **Dependency API Changed**: Dependencies now use named slots instead of list-based IDs
+  - Old: `get_dependencies()` returned `list[Experiment]`
+  - New: `get_dependencies()` returns `dict[str, Experiment]` (slot name → experiment)
+  - New: `get_dependency("slot_name")` for single slot access
+  - Run `yanex migrate` to update existing experiments
+
 - **Removed Clean Git State Enforcement**: Experiments no longer require a clean working directory
-  - Removed git state validation before experiment execution
-  - Uncommitted changes are now captured automatically as patches instead of blocking execution
-  - Improves developer workflow by allowing experimentation without forced commits
   - Removed `allow_dirty` parameter from `ExperimentManager.create_experiment()` and `yanex.create_experiment()`
   - Removed `allow_dirty` parameter from `yanex.run_multiple()` batch execution API
   - Removed `validate_clean_working_directory()` function from `yanex.core.git_utils`
+  - Uncommitted changes are now captured automatically as git patches
+
+- **Results API Change**: `exp.get_metrics()` now defaults to `as_dataframe=True` for consistency with the new metrics visualization API
+
+- **Storage Renamed**: `config.yaml` renamed to `params.yaml` in experiment storage
+
+### Added
+
+- **Dependency Tracking System**: Complete infrastructure for multi-stage ML workflows
+  - CLI: `-D data=abc123` syntax for declaring dependencies with named slots
+  - API: `get_dependency("slot")`, `get_dependencies()`, `assert_dependency()`
+  - Transitive dependency traversal with topological ordering
+  - Artifact search across dependency chains with `load_artifact()`
+  - Circular dependency detection
+  - Dependency sweeps: `-D data=exp1,exp2 -D model=exp3` creates cross-product
+  - Storage: `dependencies.json` file per experiment
+
+- **AI-Friendly CLI (`yanex get` command)**: Extract specific field values for scripting and AI agents
+  - Field extraction: `yanex get params <exp>`, `yanex get metrics <exp>`
+  - Support for nested fields: `git.commit`, `environment.python_version`
+  - Output formats: `--format json`, `--format csv`, `--format markdown`
+  - Multi-experiment mode with filters: `-s`, `-n`, `-t`, `-l`
+  - Real-time log streaming: `--follow/-f` for stdout/stderr (like `tail -f`)
+  - Command reconstruction: `cli-command` and `run-command` fields
+
+- **Experiment Lineage Visualization**: ASCII DAG visualization of experiment dependencies
+  - `yanex get upstream <exp>` - Show what an experiment depends on
+  - `yanex get downstream <exp>` - Show what depends on an experiment
+  - `yanex get lineage <exp>` - Show both directions combined
+  - Multi-experiment support: filter multiple experiments to visualize connected/disconnected graphs
+  - `--depth N` option to limit traversal depth
+  - `--ids-only` flag for scripting with comma-separated IDs
+
+- **Parameter Access Tracking**: Store only parameters actually used by scripts
+  - `TrackedDict` wrapper monitors parameter access patterns
+  - Two-phase save: full config at creation, accessed params at exit
+  - `params.yaml` contains only parameters accessed via `get_param()`
+
+- **Metrics Visualization API**: Multi-experiment time-series analysis with pandas
+  - `yr.get_metrics()` returns long-format DataFrame for matplotlib groupby patterns
+  - Auto-detection of varying parameters across experiments
+  - Filter specific metrics and control parameter inclusion
+  - Supports parameter sweeps, grid searches, and training curve comparisons
+
+- **Multiple Config Files**: Merge multiple configuration files in `yanex run`
+  - `--config base.yaml --config override.yaml` merges left-to-right
+  - Later files take precedence over earlier ones
+  - Enables modular configuration (data, model, infrastructure)
+
+- **Automatic Git Patch Capture**: Captures uncommitted changes for reproducibility
+  - Generates `git diff HEAD` patch when uncommitted changes detected
+  - Saves patches as `artifacts/git_diff.patch`
+  - New metadata fields: `has_uncommitted_changes`, `patch_file`
+  - Secret scanning with detect-secrets integration
+  - Patch size validation with warnings for large patches
+
+- **`yanex open` Command**: Open experiment directory in file explorer
+  - Cross-platform support (Finder, Explorer, xdg-open)
+  - Works with ID, ID prefix, or experiment name
+  - `--archived/-a` flag for archived experiments
+
+- **`yanex migrate` Command**: Migration system for experiment data format upgrades
+  - Migrates dependency_ids (list) to dependencies (dict with slots)
+  - `--dry-run` mode to preview changes
+
+- **Clone Experiments**: `--clone-from` argument to yanex run
+  - Copy parameters from existing experiments
+  - Override specific parameters while keeping others
+
+- **Artifact API Enhancements**:
+  - Custom artifact handlers via registry API
+  - Format-specific options passed through to underlying libraries
+  - `list_artifacts(transitive=True)` for dependency traversal
+  - Security: Path traversal prevention, PyTorch safe loading, file size limits
+
+- **Simplified Sweep Syntax**:
+  - Comma-separated lists: `n_epochs=10,20,30` (preferred over `list(10,20,30)`)
+  - Flexible range(): `range(stop)`, `range(start, stop)`, `range(start, stop, step)`
+
+- **Results API Enhancements**:
+  - `get_artifacts_dir()` and `artifacts_dir` property for easier artifact access
+  - Flattened nested parameters with dot notation in show/compare commands
+  - Dynamic script column width in `yanex list`
+  - Middle truncation for long experiment names
+
+- **Unified CLI Output Formats**: `--format/-F` option across all commands
+  - Replaces individual `--json`, `--csv`, `--markdown` flags
+  - Legacy flags still work but are hidden
+  - Centralized theme constants for consistent styling
+
+- **Parallel Test Execution**: pytest-xdist integration for 4x faster tests
+
+- **Web UI**: Single-page application for browsing experiments
+  - `yanex ui` launches FastAPI server with Next.js frontend
+  - Browse, filter, and compare experiments in the browser
+  - View experiment details, metrics, and artifacts
+
+- **Results API**: Programmatic access to experiment data
+  - `yanex.results.get_experiment(id)` - Load single experiment
+  - `yanex.results.get_experiments(filters)` - Query multiple experiments
+  - `yanex.results.get_best(metric, filters)` - Find best experiment
+  - `yanex.results.compare(filters)` - Compare experiments as DataFrame
+  - `Experiment` class with full access to metadata, metrics, artifacts
+
+- **Programmatic Batch Execution**: `yanex.run_multiple()` API
+  - `ExperimentSpec` for defining experiments programmatically
+  - Parallel execution with `ProcessPoolExecutor`
+  - K-fold cross-validation, grid search, ensemble training patterns
+  - `yanex.get_cli_args()` for orchestrator scripts to access CLI flags
+
+- **Parallel Experiment Execution**: Run multiple experiments simultaneously
+  - `--parallel N` / `-j N` flag for managed execution
+  - `--parallel 0` for auto-detection (CPU count)
+  - Direct sweep execution without staging
+
+- **ID Prefix Matching**: Use short ID prefixes instead of full 8-character IDs
+  - `yanex show abc` matches `abc12345`
+  - Works across all commands
+  - Error on ambiguous matches
+
+- **CLI Argument Shortcuts**: Concise filtering for common operations
+  - `-s/--status`, `-n/--name`, `-t/--tag`, `-l/--limit`
+  - Consistent across list, show, compare, archive, delete, update
+
+- **Script Name Display**: Show script filename in experiment listings
+  - `--script/-S` filter for script name patterns
+
+- **Script Argument Pass-Through**: Pass arguments directly to experiment scripts
+  - `yanex run train.py -- --epochs 10 --lr 0.001`
+
+### Changed
+
+- **Improved Developer Workflow**: Clean git state no longer enforced
+  - Experiments run with uncommitted changes
+  - Changes captured as patches for reproducibility
+  - `--ignore-dirty` flag deprecated (no-op with warning)
+
+- **Ongoing Duration Format**: Changed from "(ongoing)" suffix to "+ " prefix
+  - More compact: "+ 5m 12s" instead of "5m 12s (ongoing)"
+
+- **Sweep Experiment Naming**: Includes dependency IDs and parameter values
+  - Format: `<base_name>-<dep_id>-<val1>-<val2>`
+  - Values sanitized (lowercase, special chars replaced)
+
+- **Documentation Overhaul**: Comprehensive restructuring
+  - New: cli-commands.md, best-practices.md, commands/ui.md, commands/open.md, commands/get.md
+  - Updated all examples to use new APIs
+  - Removed version references from docs (docs reflect current state)
+
+### Deprecated
+
+- **`--ignore-dirty` flag**: No longer needed, displays deprecation warning
+- **`log_artifact()`, `log_text()`, `log_matplotlib_figure()`**: Use `save_artifact()` instead
+- **`log_results()`**: Use `log_metrics()` instead (deprecated in v0.4.0)
 
 ### Fixed
 
-### Deprecated
-- **`--ignore-dirty` flag**: This CLI flag is now deprecated and will be removed in a future version
-  - No longer needed since clean git state is not enforced
-  - Displays deprecation warning when used
-  - Config file support for `ignore_dirty` removed entirely
+- **Empty Name Pattern Filtering**: `yanex <cmd> -n ""` now correctly filters unnamed experiments
+- **Sweep Dependency Cross-Product**: Multiple `-D` flags now correctly create cross-products
+- **Test Isolation**: Fixed global state issues with `per_test_experiments_dir` fixture
+- **CLI Command Reconstruction**: Preserves sweep syntax in `cli-command` field
+
+### Security
+
+- **Artifact Path Traversal Prevention**: Validates filenames to prevent `../` attacks
+- **PyTorch Safe Loading**: Uses `weights_only=True` by default
+- **File Size Limits**: 100MB default limit on artifact loading
+- **Secret Scanning**: Detects API keys and credentials in git patches
 
 ## [0.4.0] - 2025-07-18
 

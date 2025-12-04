@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Yanex** (Yet Another Experiment Tracker) is a lightweight, Git-aware experiment tracking system for Python designed for machine learning and research reproducibility. It's currently in alpha development (v0.4.0) and provides CLI, Python API, and web UI interfaces.
+**Yanex** (Yet Another Experiment Tracker) is a lightweight, Git-aware experiment tracking system for Python designed for machine learning and research reproducibility. It's currently in beta (v0.5.0) and provides CLI, Python API, and web UI interfaces.
 
 ## Essential Commands
 
@@ -211,7 +211,7 @@ The codebase has undergone significant refactoring to:
 - Add test infrastructure utilities to reduce duplication
 - Eliminate date/time parsing duplication using centralized utilities
 - Modernize type annotations for Python 3.10+ (completed Dec 2024)
-- Add web UI with FastAPI backend and Next.js frontend (v0.4.0)
+- Add web UI with FastAPI backend and Next.js frontend
 
 ### Working with Experiments
 - Experiments have unique 8-character hex IDs generated via `secrets.token_hex(4)`
