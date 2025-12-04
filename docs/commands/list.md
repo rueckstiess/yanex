@@ -116,18 +116,47 @@ yanex list -t development --started-after "1 week ago"
 yanex list -n "*resnet*" -s completed
 ```
 
+## Output Format
+
+Control output format with `--format` or `-F`:
+
+```bash
+# Default: human-readable table
+yanex list
+
+# JSON output for scripting
+yanex list -F json
+
+# CSV for spreadsheets
+yanex list -F csv
+
+# Markdown for documentation
+yanex list -F markdown
+```
+
+**Available formats:**
+
+| Format | Description |
+|--------|-------------|
+| `default` | Rich terminal table with colors and formatting |
+| `json` | JSON array of experiment objects |
+| `csv` | Comma-separated values with headers |
+| `markdown` | GitHub-flavored markdown table |
+
 ## Short Aliases
 
-All filtering options have convenient short aliases:
+All options have convenient short aliases:
 
 - `-s` for `--status`
 - `-n` for `--name`
 - `-t` for `--tag`
 - `-a` for `--archived`
 - `-l` for `--limit`
+- `-F` for `--format`
 
 ---
 
 **Related:**
 - [`yanex show`](show.md) - Detailed experiment information
 - [`yanex compare`](compare.md) - Compare experiments
+- [`yanex get`](get.md) - Get specific field values

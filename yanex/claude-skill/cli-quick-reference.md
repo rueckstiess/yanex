@@ -73,6 +73,7 @@ yanex list [OPTIONS]
 | `--ended-before DATE` | | Filter by end time |
 | `--archived` | `-a` | Include archived experiments |
 | `--limit N` | `-l` | Max results |
+| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown |
 
 ### Examples
 
@@ -96,9 +97,7 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `--name PATTERN` | `-n` | Filter by name pattern |
 | `--tag TAG` | `-t` | Filter by tag (repeatable) |
 | `--limit N` | `-l` | Max results |
-| `--csv` | | Comma-separated output (for bash substitution) |
-| `--json` | `-j` | JSON output |
-| `--no-id` | | Omit experiment ID prefix in multi-experiment output |
+| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown, sweep |
 | `--default VALUE` | | Value for missing fields (default: `[not_found]`) |
 | `--head N` | | Return first N lines (stdout/stderr only) |
 | `--tail N` | | Return last N lines (stdout/stderr only) |
@@ -114,6 +113,7 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `tags` | List of tags |
 | `stdout` | Standard output (supports --head/--tail/--follow) |
 | `stderr` | Standard error (supports --head/--tail/--follow) |
+| `artifacts` | List of artifact file paths (one per line) |
 | `cli-command` | Original CLI invocation (with sweep syntax if applicable) |
 | `run-command` | Reproducible command (with resolved parameter values) |
 | `experiment-dir` | Experiment directory path |
@@ -138,7 +138,7 @@ yanex get metrics.accuracy abc12345    # Get last logged accuracy
 yanex get params abc12345              # List available parameter names
 yanex get metrics abc12345             # List available metric names
 yanex get dependencies abc12345        # Get dependencies as slot=id pairs
-yanex get tags abc12345 --json         # Get tags as JSON array
+yanex get tags abc12345 -F json        # Get tags as JSON
 yanex get stdout abc12345              # Get full stdout
 yanex get stdout abc12345 --tail 50    # Get last 50 lines of stdout
 yanex get stdout abc12345 --head 10    # Get first 10 lines of stdout
@@ -146,6 +146,7 @@ yanex get stdout abc12345 --head 5 --tail 5  # First 5 and last 5 lines
 yanex get stdout abc12345 -f           # Follow stdout in real-time
 yanex get stdout abc12345 --tail 20 -f # Show last 20 lines then follow
 yanex get stderr abc12345              # Get stderr output
+yanex get artifacts abc12345           # List all artifact file paths
 yanex get cli-command abc12345         # Get original CLI invocation (with sweep syntax)
 yanex get run-command abc12345         # Get reproducible command (resolved values)
 yanex get experiment-dir abc12345      # Get experiment directory path
@@ -164,27 +165,42 @@ yanex get stdout -s running --tail 5   # Check progress of running experiments
 
 ### Output Formats
 
+Use `--format` or `-F` to control output format:
+
 ```bash
 # Default: human-readable
 yanex get id -s completed
 # abc12345
 # def67890
 
-# CSV: comma-separated (no newline, for bash substitution)
-yanex get id -s completed --csv
+# Sweep: comma-separated (no newline, for bash substitution)
+yanex get id -s completed -F sweep
 # abc12345,def67890
 
 # JSON: machine-readable
-yanex get params.lr -s completed --json
+yanex get params.lr -s completed -F json
 # [{"id": "abc12345", "value": 0.001}, {"id": "def67890", "value": 0.01}]
 
-# Multi-experiment stdout/stderr (header-separated)
+# CSV: with ID column and headers
+yanex get params.lr -s completed -F csv
+# ID,params.lr
+# abc12345,0.001
+# def67890,0.01
+
+# Markdown: table format
+yanex get status -s completed -F markdown
+# | ID | status |
+# | --- | --- |
+# | abc12345 | completed |
+# | def67890 | completed |
+
+# Multi-experiment stdout/stderr (Rich Rule headers)
 yanex get stdout -s running --tail 5
-# [experiment: abc12345]
+# ──────────── Experiment abc12345 ────────────
 # Epoch 10/100, loss=0.234
 # ...
 #
-# [experiment: def67890]
+# ──────────── Experiment def67890 ────────────
 # Processing batch 50/200
 # ...
 ```
@@ -193,10 +209,10 @@ yanex get stdout -s running --tail 5
 
 ```bash
 # Run training on multiple data prep experiments
-yanex run train.py -D data=$(yanex get id -n "*-prep-*" --csv)
+yanex run train.py -D data=$(yanex get id -n "*-prep-*" -F sweep)
 
 # Build parameter sweep from previous experiments
-yanex run train.py -p lr=$(yanex get params.lr -s completed --csv)
+yanex run train.py -p lr=$(yanex get params.lr -s completed -F sweep)
 
 # Chain experiments dynamically
 DATA_ID=$(yanex get id -n "data-prep" -s completed -l 1)
@@ -211,10 +227,11 @@ Show experiment details.
 yanex show EXPERIMENT_ID [OPTIONS]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--show-metric METRICS` | Show specific metrics (comma-separated) |
-| `--archived` | Include archived in search |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--show-metric METRICS` | | Show specific metrics (comma-separated) |
+| `--archived` | `-a` | Include archived in search |
+| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown |
 
 ### Examples
 
@@ -238,6 +255,7 @@ yanex compare [OPTIONS]
 | `--tag TAG` | `-t` | Filter by tag |
 | `--status STATUS` | `-s` | Filter by status |
 | `--name PATTERN` | `-n` | Filter by name |
+| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown |
 
 ## yanex archive / unarchive
 
@@ -248,9 +266,10 @@ yanex archive [OPTIONS]
 yanex unarchive [OPTIONS]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--force` | Skip confirmation prompt |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--force` | | Skip confirmation prompt |
+| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown |
 
 Uses same filters as `yanex list`.
 
@@ -270,9 +289,10 @@ Permanently delete experiments. **This action cannot be undone.**
 yanex delete [OPTIONS]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--force` | Skip confirmation prompt |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--force` | | Skip confirmation prompt |
+| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown |
 
 Uses same filters as `yanex list`.
 
@@ -291,11 +311,13 @@ Update experiment metadata.
 yanex update EXPERIMENT_ID [OPTIONS]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--name NAME` | Update name |
-| `--description DESC` | Update description |
-| `--tag TAG` | Add tag(s) |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--set-name NAME` | | Update name |
+| `--set-description DESC` | | Update description |
+| `--add-tag TAG` | | Add tag(s) |
+| `--remove-tag TAG` | | Remove tag(s) |
+| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown |
 
 ## yanex open
 

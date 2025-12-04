@@ -196,6 +196,17 @@ def resolve_field_value(
             return content, True
         return default_value, False
 
+    # Handle artifacts field (list all artifact paths, one per line)
+    if field == "artifacts":
+        artifacts_dir = exp.artifacts_dir
+        if artifacts_dir.exists():
+            artifact_paths = sorted(artifacts_dir.rglob("*"))
+            # Filter to only files (not directories)
+            artifact_files = [str(p) for p in artifact_paths if p.is_file()]
+            if artifact_files:
+                return "\n".join(artifact_files), True
+        return default_value, False
+
     # Handle cli-command field (original CLI invocation with sweep syntax)
     if field == "cli-command":
         metadata = exp._load_metadata()
@@ -444,6 +455,7 @@ def follow_output(
 )
 @click.option(
     "--follow",
+    "-f",
     is_flag=True,
     help="Follow output in real-time (only for stdout/stderr on single experiment)",
 )
@@ -483,57 +495,66 @@ def get_field(
     EXPERIMENT_ID can be an experiment ID, name, or ID prefix.
     If omitted, use filter options to select experiments.
 
-    FIELD is the field path to retrieve:
+    \b
+    Available fields:
+      id, name, status, description, tags
+          Experiment metadata (single values or list for tags)
+      created_at, started_at, completed_at, failed_at, cancelled_at
+          Timestamps in ISO format
+      script_path, error_message, cancellation_reason
+          Script path and failure/cancellation details
+      params
+          List available parameter names
+      params.<key>
+          Get specific parameter value (e.g., params.lr, params.model.size)
+      metrics
+          List available metric names
+      metrics.<key>
+          Get last logged metric value (e.g., metrics.accuracy)
+      stdout, stderr
+          Output content (supports --head N, --tail N, --follow/-f)
+      artifacts
+          List all artifact file paths (one per line)
+      cli-command
+          Original CLI invocation (preserves sweep syntax)
+      run-command
+          Reproducible command (with resolved parameter values)
+      experiment-dir, artifacts-dir
+          Directory paths for the experiment
+      dependencies
+          Dependency slot=id pairs (e.g., data=abc123 model=def456)
+      git.branch, git.commit_hash, git.dirty, git.remote_url
+          Git state at experiment creation
+      environment.python.version, environment.<path>
+          Environment details (nested paths supported)
 
     \b
-      - Core: id, name, status, description, tags
-      - Timing: created_at, started_at, completed_at
-      - Script: script_path, error_message
-      - Output: stdout, stderr (with --head/--tail N, or --follow)
-      - Commands: cli-command (original), run-command (reproducible)
-      - Paths: experiment-dir, artifacts-dir
-      - Git: git.branch, git.commit_hash
-      - Environment: environment.python.version
-      - Parameters: params (list names), params.<key> (get value)
-      - Metrics: metrics (list names), metrics.<key> (last value)
-      - Dependencies: dependencies - returns slot=id pairs
-
     Output formats (--format / -F):
-
-    \b
-      default    Human-readable output (ID: value for multi-experiment)
-      json       JSON output with {"id": "...", "value": ...} structure
-      csv        CSV with ID column (ID,field header)
+      default    Human-readable (ID: value for multi-experiment)
+      json       JSON with {"id": ..., "value": ...} structure
+      csv        CSV with ID column and headers
       markdown   GitHub-flavored markdown table
       sweep      Comma-separated values only (for bash substitution)
 
     \b
-    Examples:
-      yanex get status abc123              Get status of experiment abc123
-      yanex get params abc123              List available parameter names
-      yanex get params.lr abc123           Get learning rate parameter
-      yanex get metrics abc123             List available metric names
-      yanex get metrics.accuracy abc123    Get last logged accuracy
-      yanex get stdout abc123              Get full stdout of experiment
-      yanex get stdout abc123 --tail 50    Get last 50 lines of stdout
-      yanex get stdout abc123 --head 10    Get first 10 lines of stdout
-      yanex get stdout abc123 --head 5 --tail 5  Show first 5 and last 5 lines
-      yanex get stdout abc123 --follow     Follow stdout in real-time
-      yanex get stdout abc123 --tail 20 --follow  Show last 20 lines then follow
-      yanex get stderr abc123              Get stderr output
-      yanex get stdout -s running --tail 5 Check running experiments progress
-      yanex get cli-command abc123         Get original CLI invocation (with sweep syntax)
-      yanex get run-command abc123         Get reproducible command (resolved values)
-      yanex get experiment-dir abc123      Get experiment directory path
-      yanex get artifacts-dir abc123       Get artifacts directory path
-      yanex get dependencies abc123        Get dependencies as slot=id pairs
-      yanex get id -n "train-*"            Get IDs of matching experiments
-      yanex get id -n "train-*" -F sweep   Get IDs comma-separated (for sweeps)
-      yanex get params.lr -s completed -F csv  Get learning rates as CSV
-      yanex get tags abc123 -F json        Get tags as JSON
+    Examples (single experiment):
+      yanex get status abc123              Experiment status
+      yanex get params.lr abc123           Parameter value
+      yanex get metrics.accuracy abc123    Last logged metric
+      yanex get stdout abc123 --tail 20    Last 20 lines of output
+      yanex get stdout abc123 -f           Follow output in real-time
+      yanex get cli-command abc123         Original CLI invocation
+      yanex get artifacts abc123           List artifact files
 
     \b
-    Bash substitution for sweeps:
+    Examples (multiple experiments with filters):
+      yanex get id -s completed            IDs of completed experiments
+      yanex get id -n "train-*" -F sweep   IDs comma-separated for sweeps
+      yanex get params.lr -t baseline      Learning rates from tagged exps
+      yanex get stdout -s running --tail 5 Check progress of running exps
+
+    \b
+    Bash substitution:
       yanex run train.py -D data=$(yanex get id -n "*-prep-*" -F sweep)
       yanex run train.py -p lr=$(yanex get params.lr -s completed -F sweep)
     """

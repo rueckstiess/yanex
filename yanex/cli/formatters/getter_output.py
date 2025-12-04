@@ -63,6 +63,7 @@ GETTER_TYPES: dict[str, GetterType] = {
     # Multi-line getters
     "stdout": GetterType.MULTILINE,
     "stderr": GetterType.MULTILINE,
+    "artifacts": GetterType.MULTILINE,
 }
 
 

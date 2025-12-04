@@ -179,6 +179,24 @@ When in interactive mode, use these keyboard shortcuts:
 
 ## Output Options
 
+### Output Format
+
+Control output format with `--format` or `-F`:
+
+```bash
+# Default: interactive table
+yanex compare
+
+# JSON for scripting
+yanex compare -F json
+
+# CSV for spreadsheets
+yanex compare -F csv
+
+# Markdown for documentation
+yanex compare -F markdown
+```
+
 ### Limit Results
 
 ```bash
@@ -234,12 +252,13 @@ yanex compare -s failed --started-after "yesterday"
 
 ## Short Aliases
 
-All filtering options have convenient short aliases:
+All options have convenient short aliases:
 
 - `-s` for `--status`
 - `-n` for `--name`
 - `-t` for `--tag`
 - `-a` for `--archived`
+- `-F` for `--format`
 
 These aliases match the `run` and `list` commands for consistency.
 
@@ -272,5 +291,6 @@ Prefixed with 📈, derived from logged results:
 ---
 
 **Related:**
+- [`yanex get`](get.md) - Get specific field values
 - [CLI Commands Overview](../cli-commands.md) - See filtering patterns section
 - [Python API](../python-api.md)

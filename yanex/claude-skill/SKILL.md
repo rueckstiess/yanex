@@ -133,22 +133,25 @@ yanex get run-command abc12345          # Reproducible command (resolved values)
 yanex get experiment-dir abc12345       # Experiment directory path
 yanex get artifacts-dir abc12345        # Artifacts directory path
 
+# List artifact files
+yanex get artifacts abc12345            # List all artifact file paths (one per line)
+
 # Multi-experiment queries (use filters instead of ID)
 yanex get id -s completed               # Get IDs of completed experiments
 yanex get params.lr -n "sweep-*"        # Get learning rates from sweep
 
-# Output formats for scripting
-yanex get id -s completed --csv         # Comma-separated (for bash substitution)
-yanex get params.lr -n "sweep-*" --json # JSON output
+# Output formats for scripting (--format / -F)
+yanex get id -s completed -F sweep      # Comma-separated (for bash substitution)
+yanex get params.lr -n "sweep-*" -F json # JSON output
 ```
 
-**Multi-experiment stdout/stderr output** uses `[experiment: <id>]` headers:
+**Multi-experiment stdout/stderr output** uses Rich Rule headers:
 ```
-[experiment: abc12345]
+──────────── Experiment abc12345 ────────────
 Epoch 10/100, loss=0.234
 ...
 
-[experiment: def67890]
+──────────── Experiment def67890 ────────────
 Processing batch 50/200
 ...
 ```
@@ -156,10 +159,10 @@ Processing batch 50/200
 **Bash substitution for dynamic sweeps:**
 ```bash
 # Run training on multiple data prep experiments
-yanex run train.py -D data=$(yanex get id -n "*-prep-*" --csv)
+yanex run train.py -D data=$(yanex get id -n "*-prep-*" -F sweep)
 
 # Build sweep from previous learning rates
-yanex run train.py -p lr=$(yanex get params.lr -s completed --csv)
+yanex run train.py -p lr=$(yanex get params.lr -s completed -F sweep)
 ```
 
 ### Inspect Experiments

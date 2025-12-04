@@ -36,6 +36,7 @@ The `yanex show` command displays detailed information about a single experiment
 
 - `--show-metric METRICS`: Comma-separated list of specific metrics to display (e.g., "accuracy,loss,f1_score")
 - `--archived`: Include archived experiments in search
+- `--format`, `-F FORMAT`: Output format (default, json, csv, markdown)
 - `--help`: Show help message and exit
 
 ## Usage
@@ -84,9 +85,28 @@ The show command displays information in several organized sections:
 6. **Environment**: Git state, Python version, platform details
 7. **Error Information**: Failure details (for failed experiments only)
 
+## Output Format
+
+Control output format with `--format` or `-F`:
+
+```bash
+# Default: rich terminal output
+yanex show a1b2c3d4
+
+# JSON for scripting
+yanex show a1b2c3d4 -F json
+
+# CSV for data export
+yanex show a1b2c3d4 -F csv
+
+# Markdown for documentation
+yanex show a1b2c3d4 -F markdown
+```
+
 ---
 
 **Related:**
 - [`yanex list`](list.md) - List and filter experiments
 - [`yanex compare`](compare.md) - Compare multiple experiments
+- [`yanex get`](get.md) - Get specific field values
 - [Python API Reference](../python-api.md)
