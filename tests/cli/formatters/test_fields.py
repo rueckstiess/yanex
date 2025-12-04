@@ -19,6 +19,7 @@ from yanex.cli.formatters.fields import (
     format_timestamp_relative,
     format_verbose,
     format_warning_message,
+    truncate_middle,
 )
 from yanex.cli.formatters.theme import (
     ID_STYLE,
@@ -30,6 +31,71 @@ from yanex.cli.formatters.theme import (
     TARGET_STYLE,
     TIMESTAMP_STYLE,
 )
+
+
+class TestTruncateMiddle:
+    """Tests for truncate_middle function."""
+
+    def test_short_text_unchanged(self):
+        """Test that short text is returned unchanged."""
+        assert truncate_middle("short", 10) == "short"
+        assert truncate_middle("hello", 5) == "hello"
+
+    def test_text_at_max_width_unchanged(self):
+        """Test that text exactly at max width is unchanged."""
+        assert truncate_middle("12345", 5) == "12345"
+
+    def test_long_text_truncated(self):
+        """Test that long text is truncated in the middle."""
+        result = truncate_middle("advisor.optimizer.batch_size", 12)
+        assert len(result) == 12
+        assert "..." in result
+        # Should preserve start and end
+        assert result.startswith("advi")  # 60% of 9 = ~5 chars at start
+        assert result.endswith("size")  # 40% of 9 = ~4 chars at end
+
+    def test_preserves_prefix_and_suffix(self):
+        """Test that both prefix and suffix are visible after truncation."""
+        result = truncate_middle("learning_rate", 10)
+        # With 10 chars total, 7 available after "..."
+        # 60/40 split: ~4 at start, ~3 at end
+        assert "..." in result
+        assert result.startswith("lear")
+        assert result.endswith("ate")
+
+    def test_nested_param_name(self):
+        """Test truncation of typical nested parameter names."""
+        # optimizer.learning_rate -> opt...rate (shows both ends)
+        result = truncate_middle("optimizer.learning_rate", 12)
+        assert len(result) == 12
+        assert "..." in result
+        # Should be useful: see "optim" at start, "rate" at end
+        assert "opt" in result[:6]
+        assert "rate" in result[-5:]
+
+    def test_very_short_max_width(self):
+        """Test behavior with very short max_width."""
+        # Too short for meaningful truncation
+        result = truncate_middle("hello", 3)
+        assert result == "hel"  # Just takes first chars
+
+    def test_max_width_of_5(self):
+        """Test minimum width that can do middle truncation."""
+        result = truncate_middle("abcdefghij", 5)
+        assert len(result) == 5
+        # 5 - 3 = 2 available, split 60/40 = 1 start, 1 end
+        assert result == "a...j"
+
+    def test_empty_string(self):
+        """Test with empty string."""
+        assert truncate_middle("", 10) == ""
+
+    def test_real_world_param_names(self):
+        """Test with realistic parameter names."""
+        # These should be readable after truncation
+        assert "..." in truncate_middle("model.encoder.hidden_size", 12)
+        assert "..." in truncate_middle("training.optimizer.lr", 12)
+        assert "..." not in truncate_middle("epochs", 12)  # Short enough
 
 
 class TestFormatExperimentId:

@@ -315,15 +315,16 @@ def _print_static_table(
 ) -> None:
     """Print comparison data as a static table.
 
+    Uses ExperimentTableFormatter for consistent styling across all CLI commands.
+
     Args:
         comparison_data: Comparison data dict with rows, param_columns, metric_columns
         max_params: Maximum number of parameter columns to display
         max_metrics: Maximum number of metric columns to display
     """
     from rich.console import Console
-    from rich.table import Table
 
-    from ..formatters.theme import DATA_TABLE_BOX, TABLE_HEADER_STYLE
+    from ..formatters import ExperimentTableFormatter
 
     console = Console()
     rows = comparison_data.get("rows", [])
@@ -332,61 +333,34 @@ def _print_static_table(
         console.print("No data to display")
         return
 
-    # Get all columns from first row
-    first_row = rows[0]
-    all_column_keys = list(first_row.keys())
-
-    # Separate columns by type
-    fixed_columns = []
-    param_columns = []
-    metric_columns = []
-
-    for key in all_column_keys:
-        if key.startswith("param:"):
-            param_columns.append(key)
-        elif key.startswith("metric:"):
-            metric_columns.append(key)
-        else:
-            fixed_columns.append(key)
+    # Get param and metric columns from comparison_data
+    all_param_columns = comparison_data.get("param_columns", [])
+    all_metric_columns = comparison_data.get("metric_columns", [])
 
     # Limit param and metric columns
-    shown_params = param_columns[:max_params]
-    hidden_params = len(param_columns) - len(shown_params)
+    shown_params = all_param_columns[:max_params]
+    hidden_params = len(all_param_columns) - len(shown_params)
 
-    shown_metrics = metric_columns[:max_metrics]
-    hidden_metrics = len(metric_columns) - len(shown_metrics)
+    shown_metrics = all_metric_columns[:max_metrics]
+    hidden_metrics = len(all_metric_columns) - len(shown_metrics)
 
-    # Build final column list: fixed + limited params + limited metrics
-    display_columns = fixed_columns + shown_params + shown_metrics
-
-    # Create table with theme styling
-    table = Table(show_header=True, header_style=TABLE_HEADER_STYLE, box=DATA_TABLE_BOX)
-
-    # Add columns with formatted headers
-    for key in display_columns:
-        if key.startswith("param:"):
-            header = key[6:]  # Just the param name
-        elif key.startswith("metric:"):
-            header = key[7:]  # Just the metric name
-        elif key == "id":
-            header = "ID"
-        elif key == "name":
-            header = "Name"
-        else:
-            header = key.title()
-        table.add_column(header)
-
-    # Add rows
-    for row_data in rows:
-        row_values = [str(row_data.get(key, "-")) for key in display_columns]
-        table.add_row(*row_values)
+    # Use shared ExperimentTableFormatter for consistent styling
+    # Exclude script, duration, tags, started to save space for params/metrics
+    # (compare typically shows experiments from the same script)
+    formatter = ExperimentTableFormatter(console)
+    table = formatter.format_experiments_table(
+        experiments=rows,
+        param_columns=shown_params,
+        metric_columns=shown_metrics,
+        exclude_columns=["script", "duration", "tags", "started"],
+    )
 
     # Print table
     console.print(table)
 
     # Print summary with hidden column info
-    total_params = len(param_columns)
-    total_metrics = len(metric_columns)
+    total_params = len(all_param_columns)
+    total_metrics = len(all_metric_columns)
 
     summary_parts = [f"Showing {len(rows)} experiments"]
 

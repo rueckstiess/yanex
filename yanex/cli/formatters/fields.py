@@ -22,6 +22,7 @@ from .theme import (
     FAILURE_SYMBOL,
     ID_STYLE,
     NAME_STYLE,
+    SCRIPT_STYLE,
     SLOT_STYLE,
     STATUS_COLORS,
     STATUS_SYMBOLS,
@@ -34,6 +35,40 @@ from .theme import (
     WARNING_STYLE,
     WARNING_SYMBOL,
 )
+
+# =============================================================================
+# Text Utilities
+# =============================================================================
+
+
+def truncate_middle(text: str, max_width: int) -> str:
+    """Truncate text in the middle, preserving start and end.
+
+    Useful for long names where both prefix and suffix are important,
+    like nested parameter names (e.g., "optimizer.learning_rate" -> "optim...rate").
+
+    Args:
+        text: Text to truncate.
+        max_width: Maximum width including ellipsis.
+
+    Returns:
+        Truncated text with "..." in the middle, or original if short enough.
+    """
+    if len(text) <= max_width:
+        return text
+
+    if max_width < 5:
+        # Too short for meaningful truncation
+        return text[:max_width]
+
+    # Reserve 3 chars for "..."
+    available = max_width - 3
+    # Split: ~60% at start, ~40% at end (slightly favor start for readability)
+    start_len = (available * 3) // 5
+    end_len = available - start_len
+
+    return text[:start_len] + "..." + text[-end_len:]
+
 
 # =============================================================================
 # Field Formatters (return Rich Text objects)
@@ -65,6 +100,26 @@ def format_experiment_name(name: str | None, fallback: str = "(unnamed)") -> Tex
     if not name:
         return Text(fallback, style="dim")
     return Text(name, style=NAME_STYLE)
+
+
+def format_script(script_path: str | None) -> Text:
+    """Format script name from full path.
+
+    Extracts just the filename from the full path.
+
+    Args:
+        script_path: Full path to script or None.
+
+    Returns:
+        Styled Text object (dim cyan) or dim "-" if empty.
+    """
+    from pathlib import Path
+
+    if not script_path:
+        return Text("-", style="dim")
+
+    script_name = Path(script_path).name
+    return Text(script_name, style=SCRIPT_STYLE)
 
 
 def format_status(status: str, include_symbol: bool = True) -> Text:
@@ -164,18 +219,84 @@ def format_duration_styled(
     return Text("-", style="dim")
 
 
-def format_tags(tags: list[str] | None) -> Text:
-    """Format tags list.
+def format_experiment_duration(experiment: dict) -> Text:
+    """Format experiment duration from experiment metadata dict.
+
+    Handles the logic of determining end time from various fields
+    (ended_at, completed_at, failed_at, cancelled_at) and colors
+    based on status.
+
+    Args:
+        experiment: Experiment metadata dictionary with started_at, status,
+                   and optional end time fields.
+
+    Returns:
+        Styled Text object with duration.
+    """
+    from datetime import datetime, timezone
+
+    started_at = experiment.get("started_at")
+    status = experiment.get("status", "")
+
+    # Try different possible end time fields
+    ended_at = (
+        experiment.get("ended_at")
+        or experiment.get("completed_at")
+        or experiment.get("failed_at")
+        or experiment.get("cancelled_at")
+    )
+
+    if not started_at:
+        return Text("-", style="dim")
+
+    start_time = parse_iso_timestamp(started_at)
+    if start_time is None:
+        return Text("-", style="dim")
+
+    end_time = None
+    if ended_at:
+        end_time = parse_iso_timestamp(ended_at)
+    elif status == "running":
+        # For running experiments, end_time stays None to show "(ongoing)"
+        pass
+    else:
+        # For non-running experiments without end time, use current time
+        end_time = datetime.now(timezone.utc)
+
+    duration_str = format_duration(start_time, end_time)
+
+    # Color coding based on status
+    style = STATUS_COLORS.get(status, DURATION_STYLE)
+    return Text(duration_str, style=style)
+
+
+def format_tags(tags: list[str] | None, max_tags: int = 3, max_width: int = 23) -> Text:
+    """Format tags list with optional truncation.
 
     Args:
         tags: List of tag strings.
+        max_tags: Maximum number of tags to show before truncating.
+        max_width: Maximum total width before truncating.
 
     Returns:
         Styled Text object (blue) or dim "-" if empty.
     """
     if not tags:
         return Text("-", style="dim")
-    return Text(", ".join(tags), style=TAGS_STYLE)
+
+    # Limit displayed tags
+    display_tags = tags[:max_tags]
+
+    if len(tags) > max_tags:
+        tag_str = ", ".join(display_tags) + f" (+{len(tags) - max_tags})"
+    else:
+        tag_str = ", ".join(display_tags)
+
+    # Truncate if still too long
+    if len(tag_str) > max_width:
+        tag_str = tag_str[: max_width - 3] + "..."
+
+    return Text(tag_str, style=TAGS_STYLE)
 
 
 def format_slot_name(slot: str) -> Text:

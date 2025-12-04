@@ -17,6 +17,7 @@ from yanex.cli.error_handling import CLIErrorHandler
 from yanex.cli.filters import ExperimentFilter
 from yanex.cli.filters.arguments import experiment_filter_options
 from yanex.cli.formatters import (
+    GETTER_TYPES,
     GetterOutput,
     OutputFormat,
     format_options,
@@ -33,6 +34,81 @@ from yanex.core.storage import ExperimentStorage
 from yanex.utils.dict_utils import get_nested_value
 
 from .confirm import find_experiment
+
+# Valid field prefixes that accept dynamic suffixes (e.g., params.lr, metrics.accuracy)
+DYNAMIC_FIELD_PREFIXES = ("params.", "metrics.", "environment.")
+
+
+def validate_field(field: str) -> None:
+    """Validate that a field name is recognized.
+
+    Args:
+        field: Field name to validate.
+
+    Raises:
+        click.ClickException: If field is not a valid getter field.
+    """
+    # Check exact match in known fields
+    if field in GETTER_TYPES:
+        return
+
+    # Check dynamic prefixes (params.*, metrics.*, environment.*)
+    for prefix in DYNAMIC_FIELD_PREFIXES:
+        if field.startswith(prefix):
+            return
+
+    # Field is not recognized - build helpful error message
+    valid_fields = sorted(GETTER_TYPES.keys())
+
+    # Find similar fields for typo suggestions
+    suggestions = _find_similar_fields(field, valid_fields)
+
+    error_msg = f"Unknown field: '{field}'"
+    if suggestions:
+        error_msg += f"\n\nDid you mean: {', '.join(suggestions)}?"
+    error_msg += "\n\nUse 'yanex get --help' to see available fields."
+
+    raise click.ClickException(error_msg)
+
+
+def _find_similar_fields(field: str, valid_fields: list[str]) -> list[str]:
+    """Find fields similar to the given field (for typo suggestions).
+
+    Uses simple substring matching and edit distance heuristics.
+
+    Args:
+        field: The unknown field entered by user.
+        valid_fields: List of valid field names.
+
+    Returns:
+        List of up to 3 similar field names.
+    """
+    suggestions = []
+
+    field_lower = field.lower()
+
+    for valid in valid_fields:
+        valid_lower = valid.lower()
+
+        # Check if field is a substring or vice versa
+        if field_lower in valid_lower or valid_lower in field_lower:
+            suggestions.append(valid)
+            continue
+
+        # Check for common prefix (at least 3 chars)
+        common_prefix_len = 0
+        for i, (c1, c2) in enumerate(zip(field_lower, valid_lower, strict=False)):
+            if c1 == c2:
+                common_prefix_len = i + 1
+            else:
+                break
+
+        if common_prefix_len >= 3:
+            suggestions.append(valid)
+
+    # Return up to 3 unique suggestions
+    return list(dict.fromkeys(suggestions))[:3]
+
 
 # Fields that come directly from metadata
 METADATA_FIELDS = {
@@ -510,8 +586,16 @@ def _handle_lineage_field(
         click.echo(",".join(ids), nl=False)
     else:
         # Default: render as ASCII DAG(s)
+        from yanex.cli.formatters.theme import TARGET_STYLE
+
         console = Console()
         components = render_lineage_components(graph, target_set)
+
+        # Show legend explaining the target marker
+        console.print(
+            f"\n[dim]The[/dim] [{TARGET_STYLE}]<*>[/{TARGET_STYLE}] [dim]marker indicates experiments matching the ID or filter.[/dim]",
+            highlight=False,
+        )
 
         for i, component_output in enumerate(components):
             if i > 0:
@@ -695,6 +779,9 @@ def get_field(
     fmt = resolve_output_format(
         output_format, json_flag, csv_flag, markdown_flag, csv_means_sweep=True
     )
+
+    # Validate field name is recognized (catch typos early)
+    validate_field(field)
 
     # Validate --head/--tail only applies to stdout/stderr
     if tail is not None and field not in HEAD_TAIL_SUPPORTED_FIELDS:

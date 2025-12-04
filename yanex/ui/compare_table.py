@@ -182,8 +182,8 @@ class ComparisonTableApp(App):
         self.title_text = title
         self.export_path = export_path or "comparison.csv"
         self.original_rows = comparison_data.get("rows", [])
-        # Set default sort to "started" descending (latest experiments first)
-        self.current_sort_key = "started"
+        # Set default sort to "started_at" descending (latest experiments first)
+        self.current_sort_key = "started_at"
         self.current_sort_reverse = True
 
     def compose(self) -> ComposeResult:
@@ -197,8 +197,8 @@ class ComparisonTableApp(App):
         """Initialize the table when app mounts."""
         self.title = self.title_text
 
-        # Apply default sort (started descending) - this will also populate the table
-        self._sort_table("started", reverse=True)
+        # Apply default sort (started_at descending) - this will also populate the table
+        self._sort_table("started_at", reverse=True)
 
     def _setup_table_columns(self, table: DataTable) -> None:
         """Set up table columns."""
@@ -236,9 +236,11 @@ class ComparisonTableApp(App):
             header = self._get_column_header(key)
             table.add_column(header, key=key)
 
-        # Add rows
+        # Add rows with formatted values
         for row_data in rows:
-            row_values = [row_data.get(key, "-") for key in column_keys]
+            row_values = [
+                self._format_cell_value(key, row_data.get(key)) for key in column_keys
+            ]
             table.add_row(*row_values)
 
         # Restore cursor position (with bounds checking)
@@ -267,16 +269,22 @@ class ComparisonTableApp(App):
             base_header = f"📊 {key[6:]}"  # Remove 'param:' prefix
         elif key.startswith("metric:"):
             base_header = f"📈 {key[7:]}"  # Remove 'metric:' prefix
-        elif key == "duration":
-            base_header = "Duration"
+        elif key == "script_path":
+            base_header = "Script"
+        elif key == "started_at":
+            base_header = "Started"
+        elif key == "ended_at":
+            base_header = "Ended"
         elif key == "tags":
             base_header = "Tags"
         elif key == "id":
             base_header = "ID"
         elif key == "name":
             base_header = "Name"
+        elif key == "status":
+            base_header = "Status"
         else:
-            base_header = key.title()
+            base_header = key.replace("_", " ").title()
 
         # Add sort indicator if this column is currently sorted
         if self.current_sort_key == key:
@@ -284,6 +292,52 @@ class ComparisonTableApp(App):
             return base_header + sort_indicator
 
         return base_header
+
+    def _format_cell_value(self, key: str, value: Any) -> str:
+        """Format a cell value for display.
+
+        Args:
+            key: Column key (e.g., 'script_path', 'started_at', 'tags').
+            value: Raw value from comparison data.
+
+        Returns:
+            Formatted string for display.
+        """
+        from pathlib import Path
+
+        from yanex.utils.datetime_utils import format_relative_time, parse_iso_timestamp
+
+        if value is None:
+            return "-"
+
+        # Format script_path - extract just the filename
+        if key == "script_path":
+            if not value:
+                return "-"
+            return Path(value).name
+
+        # Format timestamps as relative time ("4 hours ago")
+        if key in ("started_at", "ended_at"):
+            if not value:
+                return "-"
+            dt = parse_iso_timestamp(value)
+            if dt:
+                return format_relative_time(dt)
+            return str(value)
+
+        # Format tags - convert list to comma-separated string
+        if key == "tags":
+            if not value:
+                return "-"
+            if isinstance(value, list):
+                return ", ".join(str(t) for t in value) if value else "-"
+            return str(value)
+
+        # Handle None/empty for other fields
+        if value == "" or value is None:
+            return "-"
+
+        return str(value)
 
     def _update_status_bar(self) -> None:
         """Update the status bar with current information."""
@@ -341,9 +395,9 @@ class ComparisonTableApp(App):
             self._sort_table(column_key, reverse=True, numeric=True)
 
     def action_reset_sort(self) -> None:
-        """Reset to default sort order (started descending)."""
-        # Reset to default sort (started descending)
-        self._sort_table("started", reverse=True)
+        """Reset to default sort order (started_at descending)."""
+        # Reset to default sort (started_at descending)
+        self._sort_table("started_at", reverse=True)
 
     def action_reverse_sort(self) -> None:
         """Reverse current sort order."""
@@ -388,14 +442,20 @@ class ComparisonTableApp(App):
                 column_headers.append(f"📊 {key[6:]}")
             elif key.startswith("metric:"):
                 column_headers.append(f"📈 {key[7:]}")
-            elif key == "duration":
-                column_headers.append("Duration")
+            elif key == "script_path":
+                column_headers.append("Script")
+            elif key == "started_at":
+                column_headers.append("Started")
+            elif key == "ended_at":
+                column_headers.append("Ended")
             elif key == "tags":
                 column_headers.append("Tags")
             elif key == "id":
                 column_headers.append("ID")
             elif key == "name":
                 column_headers.append("Name")
+            elif key == "status":
+                column_headers.append("Status")
             else:
                 column_headers.append(key.title())
 
@@ -476,28 +536,30 @@ def run_comparison_table(
 
 
 if __name__ == "__main__":
-    # Example usage with mock data
+    # Example usage with mock data (matching actual comparison data structure)
     mock_data = {
         "rows": [
             {
-                "run": "exp001",
-                "operation": "train.py",
-                "started": "2025-01-01 10:00:00",
-                "time": "01:30:45",
+                "id": "exp00001",
+                "script_path": "/path/to/train.py",
+                "name": "experiment-1",
+                "started_at": "2025-01-01T10:00:00Z",
+                "ended_at": "2025-01-01T11:30:45Z",
                 "status": "completed",
-                "label": "experiment-1",
+                "tags": ["ml", "training"],
                 "param:learning_rate": "0.01",
                 "param:epochs": "10",
                 "metric:accuracy": "0.95",
                 "metric:loss": "0.05",
             },
             {
-                "run": "exp002",
-                "operation": "train.py",
-                "started": "2025-01-01 12:00:00",
-                "time": "00:45:30",
+                "id": "exp00002",
+                "script_path": "/path/to/train.py",
+                "name": "experiment-2",
+                "started_at": "2025-01-01T12:00:00Z",
+                "ended_at": "2025-01-01T12:45:30Z",
                 "status": "failed",
-                "label": "experiment-2",
+                "tags": ["ml"],
                 "param:learning_rate": "0.02",
                 "param:epochs": "5",
                 "metric:accuracy": "0.87",
@@ -507,12 +569,13 @@ if __name__ == "__main__":
         "param_columns": ["learning_rate", "epochs"],
         "metric_columns": ["accuracy", "loss"],
         "column_types": {
-            "run": "string",
-            "operation": "string",
-            "started": "datetime",
-            "time": "string",
+            "id": "string",
+            "script_path": "string",
+            "name": "string",
+            "started_at": "datetime",
+            "ended_at": "datetime",
             "status": "string",
-            "label": "string",
+            "tags": "string",
             "param:learning_rate": "numeric",
             "param:epochs": "numeric",
             "metric:accuracy": "numeric",

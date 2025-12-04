@@ -452,8 +452,13 @@ class TestCompareCommandIntegration:
         # Verify basic columns
         assert exp1_row["name"] == "baseline-model"
         assert exp1_row["status"] == "completed"
-        assert exp1_row["tags"] == "baseline, training"
-        assert exp1_row["duration"] == "01:30:00"  # Formatted duration
+        assert exp1_row["tags"] == [
+            "baseline",
+            "training",
+        ]  # Kept as list for formatter
+        # Duration is computed by formatter from started_at/ended_at
+        assert "started_at" in exp1_row
+        assert "ended_at" in exp1_row
 
         # Verify parameter columns
         assert exp1_row["param:learning_rate"] == "0.001"
@@ -580,11 +585,10 @@ class TestCompareCommandIntegration:
 
         column_types = comparison_data["column_types"]
 
-        # Check fixed column types
+        # Check fixed column types (using field names matching experiment metadata)
         assert column_types["id"] == "string"
         assert column_types["name"] == "string"
-        assert column_types["started"] == "datetime"
-        assert column_types["duration"] == "string"
+        assert column_types["started_at"] == "datetime"
         assert column_types["status"] == "string"
         assert column_types["tags"] == "string"
 

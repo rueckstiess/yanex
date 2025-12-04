@@ -21,7 +21,7 @@ TIMESTAMP_STYLE = "dim"
 
 # Additional element styles
 SLOT_STYLE = "cyan"  # Dependency slots: <data>, <model>
-TARGET_STYLE = "magenta"  # Target experiment markers: <*>
+TARGET_STYLE = "yellow bold"  # Target experiment markers: <*>
 DESCRIPTION_STYLE = "dim"  # Experiment descriptions
 STEP_STYLE = "cyan"  # Step/index columns in tables
 DURATION_STYLE = "dim"  # Duration display (when not status-colored)

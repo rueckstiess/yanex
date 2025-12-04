@@ -17,8 +17,10 @@ from .fields import (
     format_description,
     format_duration_styled,
     format_error_message,
+    format_experiment_duration,
     format_experiment_id,
     format_experiment_name,
+    format_script,
     format_slot_name,
     format_status,
     format_status_symbol,
@@ -29,6 +31,7 @@ from .fields import (
     format_timestamp_relative,
     format_verbose,
     format_warning_message,
+    truncate_middle,
 )
 from .getter_output import (
     GETTER_TYPES,
@@ -172,11 +175,13 @@ __all__ = [
     # Field formatters
     "format_experiment_id",
     "format_experiment_name",
+    "format_script",
     "format_status",
     "format_status_symbol",
     "format_timestamp_relative",
     "format_timestamp_absolute",
     "format_duration_styled",
+    "format_experiment_duration",
     "format_tags",
     "format_slot_name",
     "format_target_marker",
@@ -187,4 +192,6 @@ __all__ = [
     "format_warning_message",
     "format_verbose",
     "format_cancelled_message",
+    # Text utilities
+    "truncate_middle",
 ]

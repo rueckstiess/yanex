@@ -86,6 +86,36 @@ class TestGetCommandValidation:
         assert result.exit_code != 0
         assert "No experiment found" in result.output
 
+    def test_get_unknown_field_shows_error(self):
+        """Test error for unknown/typo field names."""
+        # Common typo: "linage" instead of "lineage"
+        result = self.runner.invoke(cli, ["get", "linage", "-s", "completed"])
+        assert result.exit_code != 0
+        assert "Unknown field: 'linage'" in result.output
+        assert "Did you mean: lineage" in result.output
+
+    def test_get_unknown_field_no_suggestion_for_unrelated(self):
+        """Test error for completely unknown field."""
+        result = self.runner.invoke(cli, ["get", "foobar", "-s", "completed"])
+        assert result.exit_code != 0
+        assert "Unknown field: 'foobar'" in result.output
+        assert "yanex get --help" in result.output
+
+    def test_get_valid_dynamic_fields_accepted(self):
+        """Test that params.* and metrics.* prefixes are accepted."""
+        # These should pass field validation (fail later for missing experiment)
+        result = self.runner.invoke(cli, ["get", "params.lr", "-s", "completed"])
+        # Should not fail with "Unknown field" - may fail with "no experiments found"
+        assert "Unknown field" not in result.output
+
+        result = self.runner.invoke(cli, ["get", "metrics.accuracy", "-s", "completed"])
+        assert "Unknown field" not in result.output
+
+        result = self.runner.invoke(
+            cli, ["get", "environment.python.version", "-s", "completed"]
+        )
+        assert "Unknown field" not in result.output
+
     def _extract_experiment_id(self, output: str) -> str | None:
         """Extract experiment ID from yanex run output."""
         for line in output.split("\n"):

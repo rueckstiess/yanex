@@ -2,24 +2,28 @@
 Rich console formatting for experiment data.
 """
 
-from datetime import datetime
 from typing import Any
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from ...utils.datetime_utils import (
-    format_duration,
-    format_relative_time,
-    parse_iso_timestamp,
+from yanex.utils.datetime_utils import format_duration, parse_iso_timestamp
+
+from .fields import (
+    format_experiment_duration,
+    format_script,
+    format_status,
+    format_tags,
+    format_timestamp_relative,
+    truncate_middle,
 )
 from .theme import (
     DATA_TABLE_BOX,
     ID_STYLE,
+    METRICS_STYLE,
+    PARAMS_STYLE,
     SCRIPT_STYLE,
-    STATUS_COLORS,
-    STATUS_SYMBOLS,
     TABLE_HEADER_STYLE,
     TAGS_STYLE,
     TIMESTAMP_STYLE,
@@ -34,6 +38,12 @@ class ExperimentTableFormatter:
     Uses centralized theme constants for consistent styling.
     """
 
+    # Standard columns available for experiment tables
+    STANDARD_COLUMNS = ["id", "script", "name", "status", "duration", "tags", "started"]
+
+    # Maximum width for param/metric column headers before middle truncation
+    MAX_COLUMN_HEADER_WIDTH = 12
+
     def __init__(self, console: Console = None):
         """
         Initialize formatter.
@@ -43,16 +53,30 @@ class ExperimentTableFormatter:
         """
         self.console = console or Console()
 
-    def format_experiments_table(self, experiments: list[dict[str, Any]]) -> Table:
+    def format_experiments_table(
+        self,
+        experiments: list[dict[str, Any]],
+        param_columns: list[str] | None = None,
+        metric_columns: list[str] | None = None,
+        exclude_columns: list[str] | None = None,
+    ) -> Table:
         """
         Format experiments as a rich table.
 
         Args:
-            experiments: List of experiment metadata dictionaries
+            experiments: List of experiment metadata dictionaries.
+                For compare mode, each dict may contain 'param:name' and 'metric:name' keys.
+            param_columns: Optional list of parameter column names to include (without 'param:' prefix)
+            metric_columns: Optional list of metric column names to include (without 'metric:' prefix)
+            exclude_columns: Optional list of standard columns to exclude.
+                Valid values: "id", "script", "name", "status", "duration", "tags", "started"
 
         Returns:
             Rich Table object ready for console output
         """
+        # Determine which standard columns to show
+        exclude_set = set(exclude_columns) if exclude_columns else set()
+
         # Calculate optimal column widths based on content
         script_width = self._calculate_column_width(
             experiments, "script_path", min_width=15, max_width=60
@@ -71,28 +95,77 @@ class ExperimentTableFormatter:
             box=DATA_TABLE_BOX,
         )
 
-        # Add columns with theme-consistent styles
-        table.add_column("ID", style=ID_STYLE, width=8)
-        table.add_column("Script", style=SCRIPT_STYLE, width=script_width)
-        table.add_column("Name", min_width=12, max_width=name_width)
-        table.add_column("Status", width=12)
-        table.add_column("Duration", width=10, justify="right")
-        table.add_column("Tags", style=TAGS_STYLE, min_width=8, max_width=20)
-        table.add_column("Started", style=TIMESTAMP_STYLE, width=15, justify="right")
-
-        # Add rows
-        for exp in experiments:
-            table.add_row(
-                self._format_id(exp.get("id", "")),
-                self._format_script(exp.get("script_path")),
-                self._format_name(exp.get("name")),
-                self._format_status(exp.get("status", "unknown")),
-                self._format_duration(exp),
-                self._format_tags(exp.get("tags", [])),
-                self._format_started_time(exp.get("started_at")),
+        # Add standard columns with theme-consistent styles (unless excluded)
+        if "id" not in exclude_set:
+            table.add_column("ID", style=ID_STYLE, width=8)
+        if "script" not in exclude_set:
+            table.add_column("Script", style=SCRIPT_STYLE, width=script_width)
+        if "name" not in exclude_set:
+            table.add_column("Name", min_width=12, max_width=name_width)
+        if "status" not in exclude_set:
+            table.add_column("Status", width=12)
+        if "duration" not in exclude_set:
+            table.add_column("Duration", width=10, justify="right")
+        if "tags" not in exclude_set:
+            table.add_column("Tags", style=TAGS_STYLE, min_width=8, max_width=20)
+        if "started" not in exclude_set:
+            table.add_column(
+                "Started", style=TIMESTAMP_STYLE, width=15, justify="right"
             )
 
+        # Add optional param columns (truncate long names in middle)
+        if param_columns:
+            for param_name in param_columns:
+                header = truncate_middle(param_name, self.MAX_COLUMN_HEADER_WIDTH)
+                table.add_column(header, style=PARAMS_STYLE)
+
+        # Add optional metric columns (truncate long names in middle)
+        if metric_columns:
+            for metric_name in metric_columns:
+                header = truncate_middle(metric_name, self.MAX_COLUMN_HEADER_WIDTH)
+                table.add_column(header, style=METRICS_STYLE, justify="right")
+
+        # Add rows using shared formatters
+        for exp in experiments:
+            row_values = []
+
+            # Add standard column values (unless excluded)
+            if "id" not in exclude_set:
+                row_values.append(self._format_id(exp.get("id", "")))
+            if "script" not in exclude_set:
+                row_values.append(format_script(exp.get("script_path")))
+            if "name" not in exclude_set:
+                row_values.append(self._format_name(exp.get("name")))
+            if "status" not in exclude_set:
+                row_values.append(format_status(exp.get("status", "unknown")))
+            if "duration" not in exclude_set:
+                row_values.append(format_experiment_duration(exp))
+            if "tags" not in exclude_set:
+                row_values.append(format_tags(exp.get("tags", [])))
+            if "started" not in exclude_set:
+                row_values.append(format_timestamp_relative(exp.get("started_at")))
+
+            # Add param values
+            if param_columns:
+                for param_name in param_columns:
+                    value = exp.get(f"param:{param_name}")
+                    row_values.append(self._format_value(value))
+
+            # Add metric values
+            if metric_columns:
+                for metric_name in metric_columns:
+                    value = exp.get(f"metric:{metric_name}")
+                    row_values.append(self._format_value(value))
+
+            table.add_row(*row_values)
+
         return table
+
+    def _format_value(self, value: Any) -> Text:
+        """Format a generic value for display."""
+        if value is None or value == "":
+            return Text("-", style="dim")
+        return Text(str(value))
 
     def print_experiments_table(
         self, experiments: list[dict[str, Any]], title: str = None
@@ -156,13 +229,7 @@ class ExperimentTableFormatter:
         max_width = getattr(self, "_current_name_width", 50)
 
         # Truncate in the middle if name exceeds max width
-        if len(name) > max_width:
-            # Reserve 3 chars for "..." in the middle
-            available = max_width - 3
-            # Split available space: more chars at start to show the prefix
-            start_len = (available * 2) // 3  # ~67% at start
-            end_len = available - start_len  # ~33% at end
-            name = name[:start_len] + "..." + name[-end_len:]
+        name = truncate_middle(name, max_width)
 
         return Text(name)
 
@@ -200,107 +267,6 @@ class ExperimentTableFormatter:
                 max_length = max(max_length, len(value))
 
         return min(max_length, max_width)
-
-    def _format_script(self, script_path: str | None) -> Text:
-        """
-        Format script name from full path.
-
-        Extracts filename with extension.
-        """
-        from pathlib import Path
-
-        if not script_path:
-            return Text("-", style="dim")
-
-        script_name = Path(script_path).name  # Full filename: "train.py"
-
-        return Text(script_name, style=SCRIPT_STYLE)
-
-    def _format_status(self, status: str) -> Text:
-        """Format status with color and symbol."""
-        color = STATUS_COLORS.get(status, "white")
-        symbol = STATUS_SYMBOLS.get(status, "?")
-
-        return Text(f"{symbol} {status}", style=color)
-
-    def _format_duration(self, experiment: dict[str, Any]) -> Text:
-        """Format experiment duration."""
-        started_at = experiment.get("started_at")
-        status = experiment.get("status", "")
-
-        # Try different possible end time fields
-        ended_at = (
-            experiment.get("ended_at")
-            or experiment.get("completed_at")
-            or experiment.get("failed_at")
-            or experiment.get("cancelled_at")
-        )
-
-        if not started_at:
-            return Text("-", style="dim")
-
-        try:
-            start_time = parse_iso_timestamp(started_at)
-            if start_time is None:
-                return Text("-", style="dim")
-
-            end_time = None
-            if ended_at:
-                end_time = parse_iso_timestamp(ended_at)
-            elif status == "running":
-                # For running experiments, end_time stays None to show "(ongoing)"
-                pass
-            else:
-                # For non-running experiments without end time, use current time as fallback
-                from datetime import timezone
-
-                end_time = datetime.now(timezone.utc)
-
-            duration_str = format_duration(start_time, end_time)
-
-            # Color coding based on status
-            if status == "running":
-                return Text(duration_str, style="yellow")
-            elif status == "completed":
-                return Text(duration_str, style="green")
-            elif status in ("failed", "cancelled"):
-                return Text(duration_str, style="red")
-            else:
-                return Text(duration_str, style="dim")
-
-        except Exception:
-            return Text("unknown", style="dim")
-
-    def _format_tags(self, tags: list[str]) -> Text:
-        """Format tags list."""
-        if not tags:
-            return Text("-", style="dim")
-
-        # Limit displayed tags and truncate if necessary
-        display_tags = tags[:3]  # Show max 3 tags
-
-        if len(tags) > 3:
-            tag_str = ", ".join(display_tags) + f" (+{len(tags) - 3})"
-        else:
-            tag_str = ", ".join(display_tags)
-
-        # Truncate if still too long
-        if len(tag_str) > 23:
-            tag_str = tag_str[:20] + "..."
-
-        return Text(tag_str, style=TAGS_STYLE)
-
-    def _format_started_time(self, started_at: str) -> Text:
-        """Format started time as relative time."""
-        if not started_at:
-            return Text("-", style="dim")
-
-        start_time = parse_iso_timestamp(started_at)
-        if start_time is None:
-            return Text("unknown", style="dim")
-
-        relative_str = format_relative_time(start_time)
-        return Text(relative_str, style=TIMESTAMP_STYLE)
 
     def _format_time(self, time_str: str) -> str:
         """Format timestamp for detailed display."""
