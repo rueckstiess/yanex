@@ -8,6 +8,19 @@ import click
 
 from yanex.cli.filters import ExperimentFilter
 from yanex.cli.formatters import (
+    ERROR_STYLE,
+    ID_STYLE,
+    LABEL_STYLE,
+    METRICS_STYLE,
+    NAME_STYLE,
+    PARAMS_STYLE,
+    SCRIPT_STYLE,
+    STATUS_COLORS,
+    STATUS_SYMBOLS,
+    STEP_STYLE,
+    TIMESTAMP_STYLE,
+    WARNING_STYLE,
+    WARNING_SYMBOL,
     OutputFormat,
     experiment_to_dict,
     format_options,
@@ -15,7 +28,6 @@ from yanex.cli.formatters import (
     resolve_output_format,
 )
 from yanex.cli.formatters.console import ExperimentTableFormatter
-from yanex.cli.formatters.theme import STATUS_COLORS, STATUS_SYMBOLS
 from yanex.core.manager import ExperimentManager
 
 from .confirm import find_experiment
@@ -126,7 +138,7 @@ def _print_section_header(console, title: str) -> None:
     """Print a simple section header without panel borders."""
     from rich.rule import Rule
 
-    console.print(Rule(title, style="dim", align="center"))
+    console.print(Rule(title, style=TIMESTAMP_STYLE, align="center"))
 
 
 def display_experiment_details(
@@ -155,16 +167,18 @@ def display_experiment_details(
 
     # First line: Experiment name and ID
     header_text = Text()
-    header_text.append("Experiment: ", style="bold")
-    header_text.append(f"{experiment.get('name', '[unnamed]')} ", style="bold cyan")
-    header_text.append(f"({experiment_id})", style="dim")
+    header_text.append("Experiment: ", style=LABEL_STYLE)
+    header_text.append(
+        f"{experiment.get('name', '[unnamed]')} ", style=f"bold {NAME_STYLE}"
+    )
+    header_text.append(f"({experiment_id})", style=ID_STYLE)
     console.print(header_text)
 
     # Build metadata lines with aligned labels (right-padded to 11 chars)
     def print_field(label: str, value: str, style: str = "") -> None:
         padded_label = f"{label:>11}: "
         line = Text()
-        line.append(padded_label, style="bold")
+        line.append(padded_label, style=LABEL_STYLE)
         line.append(value, style=style)
         console.print(line)
 
@@ -174,7 +188,7 @@ def display_experiment_details(
     # Directory path
     try:
         exp_dir = manager.storage.get_experiment_dir(experiment_id, include_archived)
-        print_field("Directory", str(exp_dir), "dim cyan")
+        print_field("Directory", str(exp_dir), SCRIPT_STYLE)
     except Exception:
         pass  # Skip directory path if not available
 
@@ -234,9 +248,11 @@ def display_experiment_details(
 
             _print_section_header(console, "Parameters")
 
-            config_table = Table(show_header=True, header_style="bold", box=box.SIMPLE)
-            config_table.add_column("Parameter", style="cyan")
-            config_table.add_column("Value", style="green")
+            config_table = Table(
+                show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
+            )
+            config_table.add_column("Parameter", style=PARAMS_STYLE)
+            config_table.add_column("Value", style=METRICS_STYLE)
 
             for key, value in sorted(flat_config.items()):
                 # Format value for display
@@ -280,10 +296,12 @@ def display_experiment_details(
 
                 # Warn about missing metrics
                 if missing_metrics:
-                    warning_text = Text("Warning: ", style="bold yellow")
+                    warning_text = Text(
+                        f"{WARNING_SYMBOL} Warning: ", style=f"bold {WARNING_STYLE}"
+                    )
                     warning_text.append(
                         f"Requested metrics not found: {', '.join(missing_metrics)}",
-                        style="yellow",
+                        style=WARNING_STYLE,
                     )
                     console.print(warning_text)
 
@@ -291,7 +309,7 @@ def display_experiment_details(
                     console.print(
                         Text(
                             "No requested metrics found in experiment results.",
-                            style="red",
+                            style=ERROR_STYLE,
                         )
                     )
                     return
@@ -303,13 +321,15 @@ def display_experiment_details(
                 _print_section_header(console, title)
 
                 results_table = Table(
-                    show_header=True, header_style="bold", box=box.SIMPLE
+                    show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
                 )
-                results_table.add_column("Step", justify="right", style="cyan")
-                results_table.add_column("Timestamp", style="dim")
+                results_table.add_column("Step", justify="right", style=STEP_STYLE)
+                results_table.add_column("Timestamp", style=TIMESTAMP_STYLE)
 
                 for metric in shown_metrics:
-                    results_table.add_column(metric, justify="right", style="green")
+                    results_table.add_column(
+                        metric, justify="right", style=METRICS_STYLE
+                    )
 
                 # Add rows
                 for result in results[-10:]:  # Show last 10 results
@@ -369,19 +389,23 @@ def display_experiment_details(
                 _print_section_header(console, title)
 
                 results_table = Table(
-                    show_header=True, header_style="bold", box=box.SIMPLE
+                    show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
                 )
-                results_table.add_column("Step", justify="right", style="cyan")
-                results_table.add_column("Timestamp", style="dim")
+                results_table.add_column("Step", justify="right", style=STEP_STYLE)
+                results_table.add_column("Timestamp", style=TIMESTAMP_STYLE)
 
                 # Add columns for shown metrics
                 for metric in shown_metrics:
-                    results_table.add_column(metric, justify="right", style="green")
+                    results_table.add_column(
+                        metric, justify="right", style=METRICS_STYLE
+                    )
 
                 # Add other metrics column to show count
                 if other_count > 0:
                     results_table.add_column(
-                        f"(+{other_count} more)", justify="center", style="dim"
+                        f"(+{other_count} more)",
+                        justify="center",
+                        style=TIMESTAMP_STYLE,
                     )
 
                 # Add rows
@@ -409,8 +433,8 @@ def display_experiment_details(
                 console.print(results_table)
 
                 # Show all metrics list below table for reference
-                metrics_text = Text("All metrics: ", style="bold")
-                metrics_text.append(", ".join(all_metrics), style="dim")
+                metrics_text = Text("All metrics: ", style=LABEL_STYLE)
+                metrics_text.append(", ".join(all_metrics), style=TIMESTAMP_STYLE)
                 console.print(metrics_text)
                 console.print()
 
@@ -422,14 +446,16 @@ def display_experiment_details(
                 _print_section_header(console, title)
 
                 results_table = Table(
-                    show_header=True, header_style="bold", box=box.SIMPLE
+                    show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
                 )
-                results_table.add_column("Step", justify="right", style="cyan")
-                results_table.add_column("Timestamp", style="dim")
+                results_table.add_column("Step", justify="right", style=STEP_STYLE)
+                results_table.add_column("Timestamp", style=TIMESTAMP_STYLE)
 
                 # Add columns for each metric
                 for metric in all_metrics:
-                    results_table.add_column(metric, justify="right", style="green")
+                    results_table.add_column(
+                        metric, justify="right", style=METRICS_STYLE
+                    )
 
                 # Add rows
                 for result in results[-10:]:  # Show last 10 results
@@ -469,11 +495,11 @@ def display_experiment_details(
                 _print_section_header(console, "Artifacts")
 
                 artifacts_table = Table(
-                    show_header=True, header_style="bold", box=box.SIMPLE
+                    show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
                 )
-                artifacts_table.add_column("Artifact", style="cyan")
-                artifacts_table.add_column("Size", justify="right", style="green")
-                artifacts_table.add_column("Modified", style="dim")
+                artifacts_table.add_column("Artifact", style=PARAMS_STYLE)
+                artifacts_table.add_column("Size", justify="right", style=METRICS_STYLE)
+                artifacts_table.add_column("Modified", style=TIMESTAMP_STYLE)
 
                 for artifact_path in sorted(artifacts):
                     if artifact_path.is_file():
@@ -513,7 +539,9 @@ def display_experiment_details(
                 # Check for uncommitted changes from environment git info
                 env_git_info = env_info.get("git", {})
                 if env_git_info.get("has_uncommitted_changes"):
-                    console.print("             [yellow]⚠ Uncommitted changes[/yellow]")
+                    console.print(
+                        f"             [{WARNING_STYLE}]{WARNING_SYMBOL} Uncommitted changes[/{WARNING_STYLE}]"
+                    )
 
             # Python version information
             python_info = env_info.get("python", {})
@@ -562,7 +590,7 @@ def display_experiment_details(
             error_text = error_msg or cancel_reason
             label = "Error" if error_msg else "Cancellation Reason"
             _print_section_header(console, label)
-            console.print(Text(error_text, style="red"))
+            console.print(Text(error_text, style=ERROR_STYLE))
             console.print()
 
 

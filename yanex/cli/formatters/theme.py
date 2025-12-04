@@ -19,6 +19,20 @@ PARAMS_STYLE = "cyan"
 METRICS_STYLE = "green"
 TIMESTAMP_STYLE = "dim"
 
+# Additional element styles
+SLOT_STYLE = "cyan"  # Dependency slots: <data>, <model>
+TARGET_STYLE = "magenta"  # Target experiment markers: <*>
+DESCRIPTION_STYLE = "dim"  # Experiment descriptions
+STEP_STYLE = "cyan"  # Step/index columns in tables
+DURATION_STYLE = "dim"  # Duration display (when not status-colored)
+LABEL_STYLE = "bold"  # Field labels (e.g., "Status:", "Created:")
+
+# Message styles (for CLI feedback)
+WARNING_STYLE = "yellow"
+ERROR_STYLE = "red"
+SUCCESS_STYLE = "green"
+VERBOSE_STYLE = "dim"  # Verbose/debug output
+
 # =============================================================================
 # Status Colors and Symbols
 # =============================================================================

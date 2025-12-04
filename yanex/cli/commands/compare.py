@@ -15,6 +15,7 @@ from ..formatters import (
     format_json,
     format_markdown_table,
     format_options,
+    format_verbose,
     resolve_output_format,
 )
 from .confirm import find_experiments_by_filters, find_experiments_by_identifiers
@@ -413,8 +414,10 @@ def _print_static_table(
     else:
         summary_parts.append(f"with {total_params} params, {total_metrics} metrics")
 
-    console.print(f"\n[dim]{' '.join(summary_parts)}[/dim]")
+    console.print("\n" + format_verbose(" ".join(summary_parts)))
     if hidden_params > 0 or hidden_metrics > 0:
         console.print(
-            "[dim]Use --params/--metrics to select specific columns, or --csv/--json for full data[/dim]"
+            format_verbose(
+                "Use --params/--metrics to select specific columns, or --csv/--json for full data"
+            )
         )

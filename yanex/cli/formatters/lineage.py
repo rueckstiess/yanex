@@ -9,7 +9,15 @@ import re
 import networkx as nx
 from dagviz import visualize_dag
 
-from .theme import STATUS_COLORS, STATUS_SYMBOLS
+from .theme import (
+    ID_STYLE,
+    NAME_STYLE,
+    SCRIPT_STYLE,
+    SLOT_STYLE,
+    STATUS_COLORS,
+    STATUS_SYMBOLS,
+    TARGET_STYLE,
+)
 
 
 def format_node_label(
@@ -217,13 +225,13 @@ def render_lineage_components(
 def _apply_colors(text: str) -> str:
     """Apply Rich-compatible colors to lineage output.
 
-    Applies consistent styling:
-    - Target marker <*> → yellow
-    - Slot names <data> → cyan
-    - Script names (script.py) → dim cyan
-    - Experiment IDs → dim (gray)
-    - Experiment names → white
-    - Status symbols → colored by status
+    Applies consistent styling using theme constants:
+    - Target marker <*> → TARGET_STYLE (magenta)
+    - Slot names <data> → SLOT_STYLE (cyan)
+    - Script names (script.py) → SCRIPT_STYLE (dim cyan)
+    - Experiment IDs → ID_STYLE (dim)
+    - Experiment names → NAME_STYLE (white)
+    - Status symbols → colored by STATUS_COLORS
 
     Args:
         text: Plain text output from dagviz.
@@ -254,39 +262,39 @@ def _color_line(line: str) -> str:
     if not line.strip() or not re.search(r"[0-9a-f]{8}", line):
         return line
 
-    # Apply slot colors: <word> → [bright_blue]<word>[/bright_blue]
-    # Special case: <*> gets yellow (target marker)
+    # Apply slot colors using theme constants
+    # Special case: <*> gets TARGET_STYLE (magenta)
     line = re.sub(
         r"(<\*>)",
-        r"[yellow]\1[/yellow]",
+        rf"[{TARGET_STYLE}]\1[/{TARGET_STYLE}]",
         line,
     )
-    # Apply cyan to other slots (exclude <*> which is already yellow)
+    # Apply SLOT_STYLE (cyan) to other slots (exclude <*> which is already styled)
     line = re.sub(
         r"(<(?!\*)([a-zA-Z_][a-zA-Z0-9_]*)>)",
-        r"[cyan]\1[/cyan]",
+        rf"[{SLOT_STYLE}]\1[/{SLOT_STYLE}]",
         line,
     )
 
-    # Apply dim cyan to script names in parentheses: (script.py) → [dim cyan](script.py)[/dim cyan]
+    # Apply SCRIPT_STYLE to script names in parentheses: (script.py)
     line = re.sub(
         r"\(([a-zA-Z0-9_.-]+\.py)\)",
-        r"[dim cyan](\1)[/dim cyan]",
+        rf"[{SCRIPT_STYLE}](\1)[/{SCRIPT_STYLE}]",
         line,
     )
 
-    # Apply ID colors: 8-char hex → [dim]id[/dim]
+    # Apply ID_STYLE to experiment IDs: 8-char hex
     line = re.sub(
         r"\b([0-9a-f]{8})\b",
-        r"[dim]\1[/dim]",
+        rf"[{ID_STYLE}]\1[/{ID_STYLE}]",
         line,
     )
 
-    # Apply name styling to all experiments
+    # Apply name styling to all experiments using NAME_STYLE
     # Names appear after the ID and before the status symbol
     # NOTE: Must apply before status symbol colors so the regex can match plain symbols
-    # Target experiments are distinguished by their [*] marker (yellow), not their name color
-    line = _style_experiment_name(line, "white not bold")
+    # Target experiments are distinguished by their <*> marker, not their name color
+    line = _style_experiment_name(line, NAME_STYLE)
 
     # Apply status symbol colors (last, after name styling)
     for status, symbol in STATUS_SYMBOLS.items():
@@ -300,32 +308,31 @@ def _color_line(line: str) -> str:
 def _style_experiment_name(line: str, style: str) -> str:
     """Apply style to the experiment name in a line.
 
-    The name appears after the ID (and [/dim]) and before the status symbol.
+    The name appears after the ID closing tag and before the status symbol.
 
     Args:
-        line: Line with ID already styled as [dim]id[/dim].
+        line: Line with ID already styled using ID_STYLE.
         style: Rich style to apply to the name.
 
     Returns:
         Line with name styled.
     """
-    # Pattern to find: [/dim] name status_symbol
+    # Pattern to find: [/ID_STYLE] name status_symbol
     # Name can contain letters, numbers, hyphens, underscores
-    # We need to match the text between [/dim] and the status symbol
+    # We need to match the text between the ID close tag and the status symbol
 
     # Build pattern for status symbols
     status_symbols_escaped = "|".join(re.escape(s) for s in STATUS_SYMBOLS.values())
 
-    # Match: [/dim] followed by space, then name (non-greedy), then status symbol
-    pattern = (
-        rf"(\[/dim\]) ([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*) ({status_symbols_escaped})"
-    )
+    # Match: [/ID_STYLE] followed by space, then name (non-greedy), then status symbol
+    # Use the actual ID_STYLE value in the pattern
+    pattern = rf"(\[/{ID_STYLE}\]) ([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*) ({status_symbols_escaped})"
 
     def replace_name(match: re.Match) -> str:
-        dim_close = match.group(1)
+        id_close = match.group(1)
         name = match.group(2)
         symbol = match.group(3)
-        return f"{dim_close} [{style}]{name}[/] {symbol}"
+        return f"{id_close} [{style}]{name}[/] {symbol}"
 
     return re.sub(pattern, replace_name, line)
 

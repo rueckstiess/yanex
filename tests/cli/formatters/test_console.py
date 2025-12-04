@@ -6,6 +6,7 @@ import pytest
 from rich.text import Text
 
 from yanex.cli.formatters.console import ExperimentTableFormatter
+from yanex.cli.formatters.theme import SCRIPT_STYLE
 
 
 class TestExperimentTableFormatter:
@@ -23,7 +24,7 @@ class TestExperimentTableFormatter:
 
         assert isinstance(result, Text)
         assert str(result.plain) == "train.py"
-        assert result.style == "cyan"
+        assert result.style == SCRIPT_STYLE
 
     def test_format_script_without_path(self, formatter):
         """Test formatting script when path is None or empty."""
@@ -111,7 +112,7 @@ class TestExperimentTableFormatter:
             len(table.columns) == 7
         )  # ID, Script, Name, Status, Duration, Tags, Started
         assert table.columns[1].header == "Script"
-        assert table.columns[1].style == "cyan"
+        assert table.columns[1].style == SCRIPT_STYLE
         # Note: width is set internally but not exposed as a public attribute
 
     def test_format_experiments_table_with_missing_script(self, formatter):
