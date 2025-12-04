@@ -1,6 +1,5 @@
 # Yanex - Yet Another Experiment Tracker
 
-[![Release](https://github.com/rueckstiess/yanex/actions/workflows/release.yml/badge.svg)](https://github.com/rueckstiess/yanex/actions/workflows/release.yml)
 [![PyPI version](https://img.shields.io/pypi/v/yanex)](https://pypi.org/project/yanex/)
 [![Python versions](https://img.shields.io/pypi/pyversions/yanex)](https://pypi.org/project/yanex/)
 [![License](https://img.shields.io/pypi/l/yanex)](https://github.com/rueckstiess/yanex/blob/main/LICENSE)
