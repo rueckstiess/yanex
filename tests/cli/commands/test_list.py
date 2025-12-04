@@ -46,11 +46,8 @@ class TestListCommandBasicBehavior:
         """Test basic list invocation works without errors."""
         result = self.runner.invoke(cli, ["list"])
         assert result.exit_code == 0
-        # Should show either experiments or "No experiments found"
-        assert (
-            "Yanex Experiments" in result.output
-            or "No experiments found" in result.output
-        )
+        # Should show either experiments table or "No experiments found"
+        assert "ID" in result.output or "No experiments found" in result.output
 
     def test_list_shows_default_limit_message(self):
         """Test that list shows default 10 experiments message."""
@@ -265,7 +262,9 @@ class TestListCommandIntegration:
         """Set up test fixtures."""
         self.runner = create_cli_runner()
 
-    def test_list_single_experiment(self, clean_git_repo, sample_experiment_script):
+    def test_list_single_experiment(
+        self, per_test_experiments_dir, clean_git_repo, sample_experiment_script
+    ):
         """Test listing a single experiment."""
         # Create an experiment
         result = self.runner.invoke(
@@ -277,9 +276,10 @@ class TestListCommandIntegration:
         result = self.runner.invoke(cli, ["list"])
         assert result.exit_code == 0
         assert "test-exp" in result.output
-        assert "Yanex Experiments" in result.output
 
-    def test_list_multiple_experiments(self, clean_git_repo, sample_experiment_script):
+    def test_list_multiple_experiments(
+        self, per_test_experiments_dir, clean_git_repo, sample_experiment_script
+    ):
         """Test listing multiple experiments."""
         # Create multiple experiments
         for i in range(3):
@@ -313,7 +313,7 @@ class TestListCommandIntegration:
         assert "of" in result.output or "Showing" in result.output.lower()
 
     def test_list_all_shows_all_experiments(
-        self, clean_git_repo, sample_experiment_script
+        self, per_test_experiments_dir, clean_git_repo, sample_experiment_script
     ):
         """Test that --all shows all experiments."""
         # Create 12 experiments
@@ -330,7 +330,9 @@ class TestListCommandIntegration:
         count = result.output.count("exp-")
         assert count >= 10  # At least 10 should be visible
 
-    def test_list_custom_limit(self, clean_git_repo, sample_experiment_script):
+    def test_list_custom_limit(
+        self, per_test_experiments_dir, clean_git_repo, sample_experiment_script
+    ):
         """Test list with custom limit."""
         # Create 5 experiments
         for i in range(5):
@@ -429,7 +431,9 @@ class TestListCommandIntegration:
         assert "ml-exp" in result.output
         assert "other-exp" not in result.output  # Missing "training" tag
 
-    def test_list_unnamed_experiments(self, clean_git_repo, sample_experiment_script):
+    def test_list_unnamed_experiments(
+        self, per_test_experiments_dir, clean_git_repo, sample_experiment_script
+    ):
         """Test listing unnamed experiments with empty name pattern."""
         # Create named and unnamed experiments
         result = self.runner.invoke(

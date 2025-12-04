@@ -230,7 +230,7 @@ class ExperimentComparisonData:
             metric_columns: Metric column names
 
         Returns:
-            Row dictionary with all columns
+            Row dictionary with all columns matching experiment metadata format
         """
         config = exp_data.get("config", {})
         results = exp_data.get("results", {})
@@ -238,21 +238,16 @@ class ExperimentComparisonData:
         # Flatten config for parameter extraction
         flat_config = flatten_dict(config)
 
-        # Fixed columns
-        from pathlib import Path
-
+        # Fixed columns - use same field names as experiment metadata
+        # to enable shared formatting in ExperimentTableFormatter
         row = {
             "id": exp_data["id"],
-            "script": Path(exp_data.get("script_path", "")).name or "-",
-            "name": exp_data.get("name") or "[unnamed]",
-            "started": self._format_datetime(exp_data.get("started_at")),
-            "duration": self._calculate_duration(
-                exp_data.get("started_at"),
-                exp_data.get("ended_at"),
-                exp_data.get("metadata", {}),
-            ),
+            "script_path": exp_data.get("script_path", ""),
+            "name": exp_data.get("name"),  # None for unnamed, let formatter handle
+            "started_at": exp_data.get("started_at"),
+            "ended_at": exp_data.get("ended_at"),
             "status": exp_data["status"],
-            "tags": self._format_tags(exp_data.get("tags", [])),
+            "tags": exp_data.get("tags", []),  # Keep as list for formatter
         }
 
         # Parameter columns (using flattened config with dot notation)
@@ -425,12 +420,14 @@ class ExperimentComparisonData:
         column_types = {}
 
         # Fixed columns - we know their types
+        # Using same field names as experiment metadata
         column_types.update(
             {
                 "id": "string",
                 "name": "string",
-                "started": "datetime",
-                "duration": "string",  # Duration format
+                "script_path": "string",
+                "started_at": "datetime",
+                "ended_at": "datetime",
                 "status": "string",
                 "tags": "string",
             }

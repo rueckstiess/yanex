@@ -8,6 +8,15 @@ from typing import Any
 import click
 from rich.console import Console
 
+from ...cli.formatters import (
+    LABEL_STYLE,
+    STATUS_COLORS,
+    format_cancelled_message,
+    format_error_message,
+    format_success_message,
+    format_verbose,
+    format_warning_message,
+)
 from ...core.config import expand_parameter_sweeps, has_sweep_parameters
 from ...core.manager import ExperimentManager
 from ...core.script_executor import ScriptExecutor
@@ -167,8 +176,10 @@ def run(
     # Show deprecation warning for --ignore-dirty flag
     if ignore_dirty:
         console.print(
-            "[yellow]Warning: --ignore-dirty flag is deprecated and no longer necessary. "
-            "Git patches are now captured automatically.[/yellow]"
+            format_warning_message(
+                "--ignore-dirty flag is deprecated and no longer necessary. "
+                "Git patches are now captured automatically."
+            )
         )
 
     # Capture script-specific arguments (unknown to yanex)
@@ -178,8 +189,7 @@ def run(
     dependency_slots = _parse_dependencies(depends_on)
 
     # Build parsed CLI arguments dictionary for yanex.get_cli_args()
-    # Flatten dependency slots for cli_args (stores what was passed on CLI)
-    flat_dependency_ids = [dep for _, ids in dependency_slots for dep in ids]
+    # Store raw dependency arguments to preserve sweep syntax (e.g., "-D data=abc,def")
     cli_args = {
         "script": str(script) if script else None,
         "config": [str(c) for c in config] if config else [],
@@ -188,7 +198,7 @@ def run(
         "name": name,
         "tag": list(tag),
         "description": description,
-        "depends_on": flat_dependency_ids,
+        "depends_on": list(depends_on),  # Preserve original CLI format
         "dry_run": dry_run,
         "stage": stage,
         "staged": staged,
@@ -226,16 +236,16 @@ def run(
         raise click.Abort()
 
     if verbose:
-        console.print(f"[dim]Running script: {script}[/]")
+        console.print(format_verbose(f"Running script: {script}"))
         if config:
             for cfg in config:
-                console.print(f"[dim]Using config: {cfg}[/]")
+                console.print(format_verbose(f"Using config: {cfg}"))
         if clone_from:
-            console.print(f"[dim]Cloning from experiment: {clone_from}[/]")
+            console.print(format_verbose(f"Cloning from experiment: {clone_from}"))
         if param:
-            console.print(f"[dim]Parameter overrides: {param}[/]")
+            console.print(format_verbose(f"Parameter overrides: {param}"))
         if script_args:
-            console.print(f"[dim]Script arguments: {script_args}[/]")
+            console.print(format_verbose(f"Script arguments: {script_args}"))
 
     try:
         # Load and merge configuration
@@ -258,11 +268,17 @@ def run(
         resolved_stage = stage or cli_defaults.get("stage", False)
 
         if verbose:
-            console.print(f"[dim]Experiment configuration: {experiment_config}[/]")
-            if cli_defaults:
-                console.print(f"[dim]CLI defaults from config: {cli_defaults}[/]")
             console.print(
-                f"[dim]Resolved CLI parameters: name={resolved_name}, tags={resolved_tags}, description={resolved_description}, dry_run={resolved_dry_run}, stage={resolved_stage}[/]"
+                format_verbose(f"Experiment configuration: {experiment_config}")
+            )
+            if cli_defaults:
+                console.print(
+                    format_verbose(f"CLI defaults from config: {cli_defaults}")
+                )
+            console.print(
+                format_verbose(
+                    f"Resolved CLI parameters: name={resolved_name}, tags={resolved_tags}, description={resolved_description}, dry_run={resolved_dry_run}, stage={resolved_stage}"
+                )
             )
 
         # Validate configuration
@@ -378,7 +394,7 @@ def _execute_experiment(
     )
 
     if verbose:
-        console.print(f"[dim]Created experiment: {experiment_id}[/]")
+        console.print(format_verbose(f"Created experiment: {experiment_id}"))
 
     # Start experiment
     manager.start_experiment(experiment_id)
@@ -858,7 +874,7 @@ def _execute_staged_experiments(
     staged_experiments = manager.get_staged_experiments()
 
     if not staged_experiments:
-        console.print("[dim]No staged experiments found[/]")
+        console.print(format_verbose("No staged experiments found"))
         return
 
     # Determine execution mode
@@ -883,12 +899,16 @@ def _execute_staged_sequential(
 ) -> None:
     """Execute staged experiments sequentially (original behavior)."""
     if verbose:
-        console.print(f"[dim]Found {len(staged_experiments)} staged experiments[/]")
+        console.print(
+            format_verbose(f"Found {len(staged_experiments)} staged experiments")
+        )
 
     for experiment_id in staged_experiments:
         try:
             if verbose:
-                console.print(f"[dim]Executing staged experiment: {experiment_id}[/]")
+                console.print(
+                    format_verbose(f"Executing staged experiment: {experiment_id}")
+                )
 
             # Load experiment metadata
             metadata = manager.storage.load_metadata(experiment_id)
@@ -909,7 +929,9 @@ def _execute_staged_sequential(
 
         except Exception as e:
             console.print(
-                f"[red]✗ Failed to execute staged experiment {experiment_id}: {e}[/]"
+                format_error_message(
+                    f"Failed to execute staged experiment {experiment_id}: {e}"
+                )
             )
             try:
                 manager.fail_experiment(
@@ -929,8 +951,8 @@ def _execute_staged_parallel(
     """Execute staged experiments in parallel using multiprocessing."""
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
-    console.print(f"[dim]Found {len(staged_experiments)} staged experiments[/]")
-    console.print(f"[dim]Executing with {max_workers} parallel workers[/]")
+    console.print(format_verbose(f"Found {len(staged_experiments)} staged experiments"))
+    console.print(format_verbose(f"Executing with {max_workers} parallel workers"))
 
     # Pre-load all experiment data before forking
     experiment_data = []
@@ -946,11 +968,16 @@ def _execute_staged_parallel(
                 }
             )
         except Exception as e:
-            console.print(f"[red]✗ Failed to load experiment {experiment_id}: {e}[/]")
+            console.print(
+                format_error_message(f"Failed to load experiment {experiment_id}: {e}")
+            )
 
     # Track results
     completed = 0
     failed = 0
+    cancelled = 0
+    interrupted = False
+    processed_ids: set[str] = set()
 
     # Execute in parallel
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -966,26 +993,99 @@ def _execute_staged_parallel(
             for exp_data in experiment_data
         }
 
-        # Process results as they complete
-        for future in as_completed(future_to_exp):
-            experiment_id = future_to_exp[future]
-            try:
-                success = future.result()
-                if success:
-                    completed += 1
-                    console.print(f"[green]✓ Experiment completed: {experiment_id}[/]")
-                else:
+        try:
+            # Process results as they complete
+            for future in as_completed(future_to_exp):
+                experiment_id = future_to_exp[future]
+                processed_ids.add(experiment_id)
+                try:
+                    status = future.result()
+                    if status == "completed":
+                        completed += 1
+                        console.print(
+                            format_success_message(
+                                f"Experiment completed: {experiment_id}"
+                            )
+                        )
+                    elif status == "cancelled":
+                        cancelled += 1
+                        console.print(
+                            format_cancelled_message(
+                                f"Experiment cancelled: {experiment_id}"
+                            )
+                        )
+                    else:
+                        failed += 1
+                        console.print(
+                            format_error_message(f"Experiment failed: {experiment_id}")
+                        )
+                except Exception as e:
                     failed += 1
-                    console.print(f"[red]✗ Experiment failed: {experiment_id}[/]")
-            except Exception as e:
-                failed += 1
-                console.print(f"[red]✗ Experiment error: {experiment_id}: {e}[/]")
+                    console.print(
+                        format_error_message(f"Experiment error: {experiment_id}: {e}")
+                    )
+
+        except KeyboardInterrupt:
+            interrupted = True
+            console.print(
+                "\n"
+                + format_warning_message(
+                    "Interrupted! Cancelling pending experiments..."
+                )
+            )
+
+            # Cancel pending futures
+            for future in future_to_exp:
+                future.cancel()
+
+            # Collect results from completed futures
+            for future, experiment_id in future_to_exp.items():
+                if experiment_id not in processed_ids and future.done():
+                    try:
+                        status = future.result()
+                        processed_ids.add(experiment_id)
+                        if status == "completed":
+                            completed += 1
+                        elif status == "cancelled":
+                            cancelled += 1
+                        else:
+                            failed += 1
+                    except Exception:
+                        pass
+
+    # After executor shutdown, cancel any still-running experiments
+    if interrupted:
+        for exp_data in experiment_data:
+            experiment_id = exp_data["experiment_id"]
+            if experiment_id not in processed_ids:
+                try:
+                    manager.cancel_experiment(
+                        experiment_id, "Interrupted by user (Ctrl+C)"
+                    )
+                    console.print(
+                        format_cancelled_message(f"Cancelled: {experiment_id}")
+                    )
+                    cancelled += 1
+                except Exception:
+                    pass
 
     # Summary
-    console.print("\n[bold]Execution Summary:[/]")
+    console.print(f"\n[{LABEL_STYLE}]Execution Summary:[/{LABEL_STYLE}]")
     console.print(f"  Total: {len(experiment_data)}")
-    console.print(f"  [green]Completed: {completed}[/]")
-    console.print(f"  [red]Failed: {failed}[/]")
+    console.print(
+        f"  [{STATUS_COLORS['completed']}]Completed: {completed}[/{STATUS_COLORS['completed']}]"
+    )
+    if failed:
+        console.print(
+            f"  [{STATUS_COLORS['failed']}]Failed: {failed}[/{STATUS_COLORS['failed']}]"
+        )
+    if cancelled:
+        console.print(
+            f"  [{STATUS_COLORS['cancelled']}]Cancelled: {cancelled}[/{STATUS_COLORS['cancelled']}]"
+        )
+
+    if interrupted:
+        raise KeyboardInterrupt
 
 
 def _execute_single_experiment_worker(
@@ -993,13 +1093,13 @@ def _execute_single_experiment_worker(
     script_path: Path,
     config: dict[str, Any],
     verbose: bool,
-) -> bool:
+) -> str:
     """Worker function for parallel experiment execution.
 
     This runs in a separate process, so it needs to create its own manager.
 
     Returns:
-        True if experiment succeeded, False otherwise
+        Status string: "completed", "failed", or "cancelled"
     """
     # Create fresh manager in this process
     manager = ExperimentManager()
@@ -1017,7 +1117,16 @@ def _execute_single_experiment_worker(
             verbose=verbose,
         )
 
-        return True
+        return "completed"
+
+    except KeyboardInterrupt:
+        # User interrupted - mark as cancelled
+        try:
+            manager.cancel_experiment(experiment_id, "Interrupted by user (Ctrl+C)")
+        except Exception:
+            pass  # Best effort
+
+        return "cancelled"
 
     except Exception as e:
         # Record failure
@@ -1028,7 +1137,7 @@ def _execute_single_experiment_worker(
         except Exception:
             pass  # Best effort
 
-        return False
+        return "failed"
 
 
 def _execute_staged_script(

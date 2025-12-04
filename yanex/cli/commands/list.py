@@ -7,7 +7,30 @@ import click
 from ..error_handling import CLIErrorHandler
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
-from ..formatters import ExperimentTableFormatter
+from ..formatters import (
+    ExperimentTableFormatter,
+    OutputFormat,
+    experiments_to_list,
+    format_options,
+    output_csv,
+    output_json,
+    output_markdown_table,
+    resolve_output_format,
+)
+
+# Standard columns for list output
+LIST_COLUMNS = ["id", "name", "status", "script_path", "tags", "created_at", "duration"]
+
+# Human-readable headers for CSV/markdown output
+LIST_HEADERS = {
+    "id": "ID",
+    "name": "Name",
+    "status": "Status",
+    "script_path": "Script",
+    "tags": "Tags",
+    "created_at": "Created",
+    "duration": "Duration",
+}
 
 
 @click.command()
@@ -17,12 +40,17 @@ from ..formatters import ExperimentTableFormatter
     is_flag=True,
     help="Show all experiments (overrides default limit of 10)",
 )
+@format_options()
 @experiment_filter_options(include_ids=False, include_archived=True, include_limit=True)
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
 def list_experiments(
     ctx: click.Context,
     show_all: bool,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     limit: int | None,
     status: str | None,
     name_pattern: str | None,
@@ -40,38 +68,50 @@ def list_experiments(
     Shows the last 10 experiments by default. Use --all to show all experiments
     or -l to specify a custom limit.
 
+    Supports multiple output formats:
+
+    \b
+      --format json      Output as JSON (for scripting/AI processing)
+      --format csv       Output as CSV (for spreadsheets/data analysis)
+      --format markdown  Output as GitHub-flavored markdown
+
     Examples:
 
+    \b
       # Show last 10 experiments
       yanex list
 
+    \b
       # Show all experiments
       yanex list --all
 
-      # Show last 5 experiments
-      yanex list -l 5
+    \b
+      # Export as JSON for processing
+      yanex list --format json > experiments.json
 
+    \b
+      # Export as CSV for spreadsheets
+      yanex list --format csv > experiments.csv
+
+    \b
       # Filter by status
       yanex list -s completed
 
+    \b
       # Filter by name pattern
       yanex list -n "*tuning*"
 
-      # Filter unnamed experiments
-      yanex list -n ""
-
+    \b
       # Filter by multiple tags (AND logic)
       yanex list -t hyperopt -t production
 
-      # Filter by time (started after last week)
-      yanex list --started-after "last week"
-
-      # Filter by time range
-      yanex list --started-after "last month" --started-before "last week"
-
-      # Complex filtering
-      yanex list -s completed -t production --started-after "last month" -l 20
+    \b
+      # Complex filtering with JSON output
+      yanex list -s completed -t production --format json
     """
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
+
     verbose = ctx.obj.get("verbose", False)
 
     try:
@@ -138,32 +178,62 @@ def list_experiments(
         if verbose:
             click.echo(f"Found {len(experiments)} matching experiments")
 
-        # Format and display results
-        formatter = ExperimentTableFormatter()
-
+        # Handle empty results
         if not experiments:
-            click.echo("No experiments found.")
-            _show_filter_suggestions(
-                status,
-                name_pattern,
-                tags,
-                script_pattern,
-                started_after,
-                started_before,
-                ended_after,
-                ended_before,
+            if fmt == OutputFormat.JSON:
+                output_json([])
+            elif fmt == OutputFormat.CSV:
+                # Output empty CSV with just headers
+                output_csv([], columns=LIST_COLUMNS)
+            elif fmt == OutputFormat.MARKDOWN:
+                click.echo("_No experiments found_")
+            else:
+                click.echo("No experiments found.")
+                _show_filter_suggestions(
+                    status,
+                    name_pattern,
+                    tags,
+                    script_pattern,
+                    started_after,
+                    started_before,
+                    ended_after,
+                    ended_before,
+                )
+            return
+
+        # Output based on format
+        if fmt == OutputFormat.JSON:
+            output_json(experiments_to_list(experiments))
+            return
+
+        if fmt == OutputFormat.CSV:
+            output_csv(
+                experiments_to_list(experiments),
+                columns=LIST_COLUMNS,
+                headers=LIST_HEADERS,
             )
             return
 
-        # Display table
-        table_title = "Yanex Archived Experiments" if archived else "Yanex Experiments"
-        formatter.print_experiments_table(experiments, title=table_title)
+        if fmt == OutputFormat.MARKDOWN:
+            table_title = "Archived Experiments" if archived else "Experiments"
+            output_markdown_table(
+                experiments_to_list(experiments),
+                columns=LIST_COLUMNS,
+                headers=LIST_HEADERS,
+                title=table_title,
+            )
+            return
+
+        # Default: Rich console output
+        formatter = ExperimentTableFormatter()
+        formatter.print_experiments_table(experiments)
 
         # Show summary if filtering was applied or not showing all
+        # Note: name_pattern="" is a valid filter for unnamed experiments
         if any(
             [
                 status,
-                name_pattern,
+                name_pattern is not None,
                 tags,
                 script_pattern,
                 started_after,
@@ -214,10 +284,11 @@ def _show_filter_suggestions(
     """Show helpful suggestions when no experiments are found."""
 
     # Check if any filters were applied
+    # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
             status,
-            name_pattern,
+            name_pattern is not None,
             tags,
             script_pattern,
             started_after,

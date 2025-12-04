@@ -8,6 +8,24 @@ import click
 
 from ..cli.filters.time_utils import parse_time_spec
 from ..utils.exceptions import ValidationError
+from .formatters import (
+    FAILURE_SYMBOL as _FAILURE_SYMBOL,
+)
+from .formatters import (
+    SUCCESS_SYMBOL as _SUCCESS_SYMBOL,
+)
+from .formatters import (
+    WARNING_SYMBOL as _WARNING_SYMBOL,
+)
+from .formatters import (
+    OutputFormat,
+    OutputMode,
+    format_action_result,
+    format_action_result_markdown,
+    is_machine_format,
+    output_action_result_csv,
+    output_json,
+)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -17,9 +35,10 @@ class CLIErrorHandler:
 
     # Standard error message prefixes
     ERROR_PREFIX = "Error:"
-    WARNING_PREFIX = "⚠️"
-    SUCCESS_SYMBOL = "✓"
-    FAILURE_SYMBOL = "✗"
+    # Use imported symbols from theme for consistency
+    WARNING_PREFIX = _WARNING_SYMBOL
+    SUCCESS_SYMBOL = _SUCCESS_SYMBOL
+    FAILURE_SYMBOL = _FAILURE_SYMBOL
 
     @staticmethod
     def handle_cli_errors(func: F) -> F:
@@ -125,25 +144,71 @@ class CLIErrorHandler:
 
 
 class BulkOperationReporter:
-    """Handles consistent progress reporting for bulk operations."""
+    """Handles consistent progress reporting for bulk operations.
 
-    def __init__(self, operation_name: str, show_progress: bool = True):
+    Supports multiple output modes: console (default), JSON, CSV, and markdown.
+    For machine-readable modes (JSON/CSV), progress messages are suppressed
+    and only the final summary is output to stdout.
+    """
+
+    def __init__(
+        self,
+        operation_name: str,
+        output_mode: OutputMode | None = None,
+        show_progress: bool = True,
+        output_format: OutputFormat | None = None,
+    ):
         """
         Initialize bulk operation reporter.
 
         Args:
             operation_name: Name of the operation (e.g., "archive", "delete")
+            output_mode: Legacy output mode (deprecated, use output_format)
             show_progress: Whether to show individual operation progress
+            output_format: Output format (preferred over output_mode)
         """
         self.operation_name = operation_name
-        self.show_progress = show_progress
+
+        # Support both OutputFormat (new) and OutputMode (legacy)
+        if output_format is not None:
+            self.output_format = output_format
+            # Map OutputFormat to OutputMode for backward compatibility
+            mode_map = {
+                OutputFormat.DEFAULT: OutputMode.CONSOLE,
+                OutputFormat.JSON: OutputMode.JSON,
+                OutputFormat.CSV: OutputMode.CSV,
+                OutputFormat.MARKDOWN: OutputMode.MARKDOWN,
+                OutputFormat.SWEEP: OutputMode.CSV,  # SWEEP is similar to CSV
+            }
+            self.output_mode = mode_map.get(output_format, OutputMode.CONSOLE)
+        elif output_mode is not None:
+            self.output_mode = output_mode
+            # Map OutputMode to OutputFormat
+            format_map = {
+                OutputMode.CONSOLE: OutputFormat.DEFAULT,
+                OutputMode.JSON: OutputFormat.JSON,
+                OutputMode.CSV: OutputFormat.CSV,
+                OutputMode.MARKDOWN: OutputFormat.MARKDOWN,
+            }
+            self.output_format = format_map.get(output_mode, OutputFormat.DEFAULT)
+        else:
+            self.output_mode = OutputMode.CONSOLE
+            self.output_format = OutputFormat.DEFAULT
+
+        # Suppress progress for machine-readable output formats
+        self.show_progress = show_progress and not is_machine_format(self.output_format)
         self.success_count = 0
         self.failure_count = 0
-        self.errors = []
+        self.successful_ids: list[str] = []
+        self.errors: list[dict[str, str]] = []
 
-    def report_success(self, experiment_id: str, experiment_name: str = None) -> None:
+    def report_success(
+        self, experiment_id: str, experiment_name: str | None = None
+    ) -> None:
         """Report successful operation on an experiment."""
         self.success_count += 1
+        self.successful_ids.append(experiment_id)
+
         if self.show_progress:
             name_part = f" ({experiment_name})" if experiment_name else ""
             click.echo(
@@ -151,28 +216,65 @@ class BulkOperationReporter:
             )
 
     def report_failure(
-        self, experiment_id: str, error: Exception, experiment_name: str = None
+        self, experiment_id: str, error: Exception, experiment_name: str | None = None
     ) -> None:
         """Report failed operation on an experiment."""
         self.failure_count += 1
-        name_part = f" ({experiment_name})" if experiment_name else ""
-        error_msg = f"  {CLIErrorHandler.FAILURE_SYMBOL} Failed to {self.operation_name} {experiment_id}{name_part}: {error}"
 
-        if self.show_progress:
-            click.echo(error_msg, err=True)
-
+        # Include both 'id' and 'experiment_id' for backward compatibility
         self.errors.append(
-            {
-                "experiment_id": experiment_id,
-                "experiment_name": experiment_name,
-                "error": str(error),
-            }
+            {"id": experiment_id, "experiment_id": experiment_id, "error": str(error)}
         )
 
+        if self.show_progress:
+            name_part = f" ({experiment_name})" if experiment_name else ""
+            error_msg = f"  {CLIErrorHandler.FAILURE_SYMBOL} Failed to {self.operation_name} {experiment_id}{name_part}: {error}"
+            click.echo(error_msg, err=True)
+
     def report_summary(self) -> None:
-        """Report final summary of the bulk operation."""
+        """Report final summary of the bulk operation based on output mode."""
         total = self.success_count + self.failure_count
 
+        if self.output_mode == OutputMode.JSON:
+            self._report_summary_json()
+        elif self.output_mode == OutputMode.CSV:
+            self._report_summary_csv()
+        elif self.output_mode == OutputMode.MARKDOWN:
+            self._report_summary_markdown()
+        else:
+            self._report_summary_console(total)
+
+    def _report_summary_json(self) -> None:
+        """Output summary as JSON."""
+        result = format_action_result(
+            operation=self.operation_name,
+            success=self.failure_count == 0,
+            experiments=self.successful_ids,
+            failed=self.errors,
+        )
+        output_json(result)
+
+    def _report_summary_csv(self) -> None:
+        """Output summary as CSV."""
+        output_action_result_csv(
+            operation=self.operation_name,
+            experiments=self.successful_ids,
+            failed=self.errors,
+        )
+
+    def _report_summary_markdown(self) -> None:
+        """Output summary as markdown."""
+        markdown = format_action_result_markdown(
+            operation=self.operation_name,
+            success_count=self.success_count,
+            failed_count=self.failure_count,
+            experiments=self.successful_ids,
+            failed=self.errors,
+        )
+        click.echo(markdown)
+
+    def _report_summary_console(self, total: int) -> None:
+        """Output summary in console format."""
         if total == 0:
             click.echo(f"No experiments found to {self.operation_name}.")
             return
@@ -243,7 +345,7 @@ def format_validation_error(error: ValidationError, context: str = "") -> str:
 
 def show_warning(message: str) -> None:
     """Display a standardized warning message."""
-    click.echo(f"{CLIErrorHandler.WARNING_PREFIX} {message}", err=True)
+    click.echo(f"{_WARNING_SYMBOL} {message}", err=True)
 
 
 def confirm_destructive_operation(

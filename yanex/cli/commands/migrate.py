@@ -17,6 +17,13 @@ from ..error_handling import (
 )
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
+from ..formatters import (
+    OutputFormat,
+    echo_format_info,
+    format_options,
+    is_machine_format,
+    resolve_output_format,
+)
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -26,6 +33,7 @@ from .confirm import (
 
 @click.command("migrate")
 @click.argument("experiment_identifiers", nargs=-1)
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=True, include_limit=False
 )
@@ -46,6 +54,10 @@ from .confirm import (
 def migrate_experiments(
     ctx,
     experiment_identifiers: tuple,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -68,7 +80,15 @@ def migrate_experiments(
     EXPERIMENT_IDENTIFIERS can be experiment IDs or names.
     Use --all to migrate all experiments (regular and archived).
 
+    Supports multiple output formats:
+
+    \\b
+      --format json      Output result as JSON (for scripting/AI processing)
+      --format csv       Output result as CSV (for data analysis)
+      --format markdown  Output result as markdown
+
     Examples:
+
     \\b
         # Preview all migrations (dry run)
         yanex migrate --all --dry-run
@@ -84,14 +104,20 @@ def migrate_experiments(
 
         # Force (skip confirmation)
         yanex migrate --all --force
+
+        # Output result as JSON
+        yanex migrate --all --format json
     """
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     filter_obj = ExperimentFilter()
 
     # Validate targeting options
+    # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
             status,
-            name_pattern,
+            name_pattern is not None,
             tags,
             script_pattern,
             started_after,
@@ -190,7 +216,7 @@ def migrate_experiments(
             experiments = [exp for exp in experiments if not exp.get("archived", False)]
 
     if not experiments:
-        click.echo("No experiments found.")
+        echo_format_info("No experiments found.", fmt)
         return
 
     # Check which experiments need migration
@@ -203,45 +229,55 @@ def migrate_experiments(
         else:
             up_to_date.append(exp)
 
-    # Report status
-    click.echo(f"Checking {len(experiments)} experiment(s) for pending migrations...")
-    click.echo()
+    # Report status (only in console mode)
+    if not is_machine_format(fmt):
+        click.echo(
+            f"Checking {len(experiments)} experiment(s) for pending migrations..."
+        )
+        click.echo()
 
     if dry_run:
         # Detailed dry-run output
-        _show_dry_run_details(filter_obj, needs_update, up_to_date)
+        _show_dry_run_details(filter_obj, needs_update, up_to_date, fmt)
         return
 
     if not needs_update:
-        click.echo(
-            f"All {len(experiments)} experiment(s) are up to date (v{CURRENT_VERSION})."
+        echo_format_info(
+            f"All {len(experiments)} experiment(s) are up to date (v{CURRENT_VERSION}).",
+            fmt,
         )
         return
 
-    # Show confirmation for migrations
-    click.echo(f"{len(needs_update)} experiment(s) need migration:")
-    for exp in needs_update:
-        version = get_storage_version(exp)
-        version_str = f"v{version}" if version is not None else "legacy"
-        exp_name = exp.get("name") or "[unnamed]"
-        click.echo(f"  {exp['id']} ({exp_name}) - {version_str} -> v{CURRENT_VERSION}")
-    click.echo()
-
-    if len(up_to_date) > 0:
-        click.echo(f"{len(up_to_date)} experiment(s) already up to date.")
+    # Show confirmation for migrations (only in console mode)
+    if not is_machine_format(fmt):
+        click.echo(f"{len(needs_update)} experiment(s) need migration:")
+        for exp in needs_update:
+            version = get_storage_version(exp)
+            version_str = f"v{version}" if version is not None else "legacy"
+            exp_name = exp.get("name") or "[unnamed]"
+            click.echo(
+                f"  {exp['id']} ({exp_name}) - {version_str} -> v{CURRENT_VERSION}"
+            )
         click.echo()
 
+        if len(up_to_date) > 0:
+            click.echo(f"{len(up_to_date)} experiment(s) already up to date.")
+            click.echo()
+
+    # For machine-readable output, skip confirmation
+    effective_force = force or is_machine_format(fmt)
+
     # Get confirmation
-    if not force:
+    if not effective_force:
         if not confirm_experiment_operation(
-            needs_update, "migrate", force, "migrated", default_yes=True
+            needs_update, "migrate", effective_force, "migrated", default_yes=True
         ):
-            click.echo("Migration cancelled.")
+            echo_format_info("Migration cancelled.", fmt)
             return
 
     # Migrate experiments
-    click.echo(f"Migrating {len(needs_update)} experiment(s)...")
-    reporter = BulkOperationReporter("migrate")
+    echo_format_info(f"Migrating {len(needs_update)} experiment(s)...", fmt)
+    reporter = BulkOperationReporter("migrate", output_format=fmt)
 
     for exp in needs_update:
         experiment_id = exp["id"]
@@ -275,8 +311,111 @@ def _show_dry_run_details(
     filter_obj: ExperimentFilter,
     needs_update: list[dict],
     up_to_date: list[dict],
+    fmt: OutputFormat,
 ) -> None:
     """Show detailed dry-run output for migrations."""
+    from ..formatters import format_json, format_markdown_table
+
+    # For machine-readable output, format as JSON/CSV/markdown
+    if fmt == OutputFormat.JSON:
+        data = {
+            "dry_run": True,
+            "needs_migration": [
+                {
+                    "id": exp["id"],
+                    "name": exp.get("name") or "[unnamed]",
+                    "current_version": get_storage_version(exp),
+                    "target_version": CURRENT_VERSION,
+                }
+                for exp in needs_update
+            ],
+            "up_to_date": [
+                {"id": exp["id"], "name": exp.get("name") or "[unnamed]"}
+                for exp in up_to_date
+            ],
+            "summary": {
+                "needs_migration_count": len(needs_update),
+                "up_to_date_count": len(up_to_date),
+            },
+        }
+        click.echo(format_json(data))
+        return
+
+    if fmt == OutputFormat.CSV:
+        from ..formatters import format_csv
+
+        rows = []
+        for exp in needs_update:
+            rows.append(
+                {
+                    "id": exp["id"],
+                    "name": exp.get("name") or "[unnamed]",
+                    "status": "needs_migration",
+                    "current_version": get_storage_version(exp),
+                    "target_version": CURRENT_VERSION,
+                }
+            )
+        for exp in up_to_date:
+            rows.append(
+                {
+                    "id": exp["id"],
+                    "name": exp.get("name") or "[unnamed]",
+                    "status": "up_to_date",
+                    "current_version": CURRENT_VERSION,
+                    "target_version": CURRENT_VERSION,
+                }
+            )
+        if rows:
+            click.echo(
+                format_csv(
+                    rows,
+                    columns=[
+                        "id",
+                        "name",
+                        "status",
+                        "current_version",
+                        "target_version",
+                    ],
+                ),
+                nl=False,
+            )
+        return
+
+    if fmt == OutputFormat.MARKDOWN:
+        rows = []
+        for exp in needs_update:
+            rows.append(
+                {
+                    "ID": exp["id"],
+                    "Name": exp.get("name") or "[unnamed]",
+                    "Status": "needs_migration",
+                    "Current": str(get_storage_version(exp)),
+                    "Target": str(CURRENT_VERSION),
+                }
+            )
+        for exp in up_to_date:
+            rows.append(
+                {
+                    "ID": exp["id"],
+                    "Name": exp.get("name") or "[unnamed]",
+                    "Status": "up_to_date",
+                    "Current": str(CURRENT_VERSION),
+                    "Target": str(CURRENT_VERSION),
+                }
+            )
+        if rows:
+            click.echo(
+                format_markdown_table(
+                    rows, columns=["ID", "Name", "Status", "Current", "Target"]
+                )
+            )
+        click.echo()
+        click.echo(
+            f"**Summary:** {len(needs_update)} need migration, {len(up_to_date)} up to date"
+        )
+        return
+
+    # Console output (default)
     # Show experiments that need migration with details
     for exp in needs_update:
         exp_name = exp.get("name") or "[unnamed]"

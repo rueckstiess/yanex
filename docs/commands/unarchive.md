@@ -45,6 +45,7 @@ Unarchived experiments retain all their original data including:
 ### Control Options
 
 - `--force`: Skip confirmation prompt
+- `--format`, `-F FORMAT`: Output format (default, json, csv, markdown)
 - `--help`: Show help message and exit
 
 ## Usage
@@ -71,6 +72,21 @@ The date/time options accept flexible formats:
 - **Relative**: "1 week ago", "yesterday", "2 months ago"
 - **Absolute**: "2024-01-01", "2024-01-15 14:30"
 - **ISO format**: "2024-01-01T14:30:00"
+
+## Output Format
+
+Control output format with `--format` or `-F`:
+
+```bash
+# Default: human-readable progress
+yanex unarchive -s completed
+
+# JSON for scripting
+yanex unarchive -s completed -F json
+
+# CSV for reporting
+yanex unarchive -s completed -F csv
+```
 
 ---
 

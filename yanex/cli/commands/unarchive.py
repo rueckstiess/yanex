@@ -10,6 +10,12 @@ from ..error_handling import (
 )
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
+from ..formatters import (
+    echo_format_info,
+    format_options,
+    is_machine_format,
+    resolve_output_format,
+)
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -19,6 +25,7 @@ from .confirm import (
 
 @click.command("unarchive")
 @click.argument("experiment_identifiers", nargs=-1)
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=False, include_limit=False
 )
@@ -28,6 +35,10 @@ from .confirm import (
 def unarchive_experiments(
     ctx,
     experiment_identifiers: tuple,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -44,20 +55,32 @@ def unarchive_experiments(
     EXPERIMENT_IDENTIFIERS can be experiment IDs or names.
     If no identifiers provided, experiments are filtered by options.
 
+    Supports multiple output formats:
+
+    \b
+      --format json      Output result as JSON (for scripting/AI processing)
+      --format csv       Output result as CSV (for data analysis)
+      --format markdown  Output result as markdown
+
     Examples:
-    \\b
+
+    \b
         yanex unarchive exp1 exp2            # Unarchive specific experiments
         yanex unarchive -s completed         # Unarchive all completed experiments
         yanex unarchive -n "*training*"      # Unarchive experiments with "training" in name
         yanex unarchive -t experiment-v1     # Unarchive experiments with specific tag
+        yanex unarchive -s completed --format json  # Unarchive and output result as JSON
     """
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     filter_obj = ExperimentFilter()
 
     # Validate mutually exclusive targeting
+    # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
             status,
-            name_pattern,
+            name_pattern is not None,
             tags,
             script_pattern,
             started_after,
@@ -105,19 +128,22 @@ def unarchive_experiments(
     experiments = [exp for exp in experiments if exp.get("archived", False)]
 
     if not experiments:
-        click.echo("No archived experiments found to unarchive.")
+        echo_format_info("No archived experiments found to unarchive.", fmt)
         return
+
+    # For machine-readable output, skip confirmation
+    effective_force = force or is_machine_format(fmt)
 
     # Show experiments and get confirmation
     if not confirm_experiment_operation(
-        experiments, "unarchive", force, "unarchived", default_yes=True
+        experiments, "unarchive", effective_force, "unarchived", default_yes=True
     ):
-        click.echo("Unarchive operation cancelled.")
+        echo_format_info("Unarchive operation cancelled.", fmt)
         return
 
-    # Unarchive experiments using centralized reporter
-    click.echo(f"Unarchiving {len(experiments)} experiment(s)...")
-    reporter = BulkOperationReporter("unarchive")
+    # Unarchive experiments using centralized reporter with output format
+    echo_format_info(f"Unarchiving {len(experiments)} experiment(s)...", fmt)
+    reporter = BulkOperationReporter("unarchive", output_format=fmt)
 
     for exp in experiments:
         experiment_id = exp["id"]

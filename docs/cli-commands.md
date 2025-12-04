@@ -9,6 +9,7 @@ This guide provides an overview of all Yanex CLI commands with common usage patt
 | [`run`](commands/run.md) | Execute tracked experiments | `yanex run script.py --param lr=0.01` |
 | [`list`](commands/list.md) | List and filter experiments | `yanex list -s completed -t production` |
 | [`show`](commands/show.md) | Display experiment details | `yanex show abc123` |
+| [`get`](commands/get.md) | Get specific field values | `yanex get status abc123` |
 | [`compare`](commands/compare.md) | Interactive comparison table | `yanex compare exp1 exp2 exp3` |
 | [`archive`](commands/archive.md) | Archive old experiments | `yanex archive --started-before "1 month ago"` |
 | [`unarchive`](commands/unarchive.md) | Restore archived experiments | `yanex unarchive abc123` |
@@ -81,6 +82,29 @@ yanex show --latest -t baseline
 ```
 
 See [show command documentation](commands/show.md) for more options.
+
+### get - Extract Field Values
+
+Retrieve specific values for scripting and automation:
+
+```bash
+# Get experiment status
+yanex get status abc123
+
+# Get parameter value
+yanex get params.lr abc123
+
+# Get last logged metric
+yanex get metrics.accuracy abc123
+
+# Get IDs of completed experiments (for bash substitution)
+yanex get id -s completed -F sweep
+
+# Build dynamic dependencies
+yanex run train.py -D data=$(yanex get id -n "*-prep-*" -F sweep)
+```
+
+See [get command documentation](commands/get.md) for all available fields and formats.
 
 ### compare - Analyze Results
 

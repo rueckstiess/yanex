@@ -11,6 +11,12 @@ from ..error_handling import (
 )
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
+from ..formatters import (
+    echo_format_info,
+    format_options,
+    is_machine_format,
+    resolve_output_format,
+)
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -20,6 +26,7 @@ from .confirm import (
 
 @click.command("update")
 @click.argument("experiment_identifiers", nargs=-1)
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=True, include_limit=False
 )
@@ -57,6 +64,10 @@ from .confirm import (
 def update_experiments(
     ctx,
     experiment_identifiers: tuple,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -80,8 +91,16 @@ def update_experiments(
     EXPERIMENT_IDENTIFIERS can be experiment IDs or names.
     For bulk updates, use filter options instead of identifiers.
 
+    Supports multiple output formats:
+
+    \b
+      --format json      Output result as JSON (for scripting/AI processing)
+      --format csv       Output result as CSV (for data analysis)
+      --format markdown  Output result as markdown
+
     Examples:
-    \\b
+
+    \b
         # Update single experiment
         yanex update exp1 --set-name "New Name" --set-description "New description"
         yanex update "my experiment" --add-tag production --remove-tag testing
@@ -94,7 +113,12 @@ def update_experiments(
 
         # Preview changes without applying
         yanex update exp1 --set-name "New Name" --dry-run
+
+        # Output result as JSON
+        yanex update exp1 --add-tag test --format json
     """
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     filter_obj = ExperimentFilter()
 
     # Validate that we have something to update
@@ -112,10 +136,11 @@ def update_experiments(
         )
 
     # Validate mutually exclusive targeting
+    # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
             status,
-            name_pattern,
+            name_pattern is not None,
             tags,
             script_pattern,
             started_after,
@@ -172,7 +197,7 @@ def update_experiments(
             raise click.ClickException(message)
         else:
             # When using filters, not finding experiments is just informational
-            click.echo(message)
+            echo_format_info(message, fmt)
             return
 
     # Prepare update dictionary
@@ -189,34 +214,38 @@ def update_experiments(
     if remove_tags:
         updates["remove_tags"] = list(remove_tags)
 
-    # Show what will be updated
-    click.echo("Updates to apply:")
-    for key, value in updates.items():
-        if key == "add_tags":
-            click.echo(f"  Add tags: {', '.join(value)}")
-        elif key == "remove_tags":
-            click.echo(f"  Remove tags: {', '.join(value)}")
-        elif key in ["name", "description"] and value == "":
-            click.echo(f"  Clear {key}")
-        else:
-            click.echo(f"  Set {key}: {value}")
-    click.echo()
+    # Show what will be updated (only for console output)
+    if not is_machine_format(fmt):
+        click.echo("Updates to apply:")
+        for key, value in updates.items():
+            if key == "add_tags":
+                click.echo(f"  Add tags: {', '.join(value)}")
+            elif key == "remove_tags":
+                click.echo(f"  Remove tags: {', '.join(value)}")
+            elif key in ["name", "description"] and value == "":
+                click.echo(f"  Clear {key}")
+            else:
+                click.echo(f"  Set {key}: {value}")
+        click.echo()
+
+    # For machine-readable output, skip confirmation
+    effective_force = force or is_machine_format(fmt)
 
     # Show experiments and get confirmation for bulk operations or dry run
     if len(experiments) > 1 or dry_run:
         if not confirm_experiment_operation(
-            experiments, "update", force or dry_run, "updated"
+            experiments, "update", effective_force or dry_run, "updated"
         ):
-            click.echo("Update operation cancelled.")
+            echo_format_info("Update operation cancelled.", fmt)
             return
 
     if dry_run:
-        click.echo("Dry run completed. No changes were made.")
+        echo_format_info("Dry run completed. No changes were made.", fmt)
         return
 
-    # Update experiments using centralized reporter
-    click.echo(f"Updating {len(experiments)} experiment(s)...")
-    reporter = BulkOperationReporter("update")
+    # Update experiments using centralized reporter with output format
+    echo_format_info(f"Updating {len(experiments)} experiment(s)...", fmt)
+    reporter = BulkOperationReporter("update", output_format=fmt)
 
     for exp in experiments:
         experiment_id = exp["id"]

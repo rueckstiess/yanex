@@ -99,11 +99,12 @@ class TestCompareCommand:
             # Should show both experiments in the output (might be truncated)
             assert "exp0" in result.output  # exp001 might be truncated to exp0…
             # Should show parameters and metrics (headers might be truncated)
-            assert "lear" in result.output  # learning_rate might be truncated to lear…
-            assert "accu" in result.output  # accuracy might be truncated to accu…
+            # Headers are now prefixed: param_learning_rate -> "para…", metric_accuracy -> "metr…"
+            assert "para" in result.output  # param_learning_rate truncated
+            assert "metr" in result.output  # metric_accuracy truncated
 
-    def test_compare_csv_export(self, tmp_path):
-        """Test compare command CSV export functionality."""
+    def test_compare_csv_output(self):
+        """Test compare command CSV output functionality."""
         mock_experiments = [{"id": "exp001", "name": "test-exp"}]
 
         mock_comparison_data = TestDataFactory.create_comparison_data(
@@ -130,23 +131,97 @@ class TestCompareCommand:
             mock_find.return_value = mock_experiments
             mock_data.return_value = mock_comparison_data
 
-            # Test CSV export
-            export_path = tmp_path / "test_export.csv"
-            result = self.runner.invoke(
-                compare_experiments, ["exp001", "--export", str(export_path)]
-            )
+            # Test CSV output to stdout
+            result = self.runner.invoke(compare_experiments, ["exp001", "--csv"])
 
             assert result.exit_code == 0
-            assert f"Comparison data exported to {export_path}" in result.output
+            # Check CSV content in stdout
+            assert "exp001" in result.output
+            assert "param_learning_rate" in result.output
+            assert "metric_accuracy" in result.output
+            # CSV should have header row
+            assert "id" in result.output
 
-            # Check that CSV file was created
-            assert export_path.exists()
+    def test_compare_json_output(self):
+        """Test compare command JSON output functionality."""
+        mock_experiments = [{"id": "exp001", "name": "test-exp"}]
 
-            # Check CSV content
-            csv_content = export_path.read_text()
-            assert "exp001" in csv_content
-            assert "learning_rate" in csv_content
-            assert "accuracy" in csv_content
+        mock_comparison_data = TestDataFactory.create_comparison_data(
+            [
+                {
+                    "id": "exp001",
+                    "name": "test-exp",
+                    "started": "2025-01-01 10:00:00",
+                    "duration": "01:00:00",
+                    "status": "completed",
+                    "tags": "-",
+                    "param:learning_rate": "0.01",
+                    "metric:accuracy": "0.95",
+                }
+            ]
+        )
+
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_identifiers"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
+            mock_find.return_value = mock_experiments
+            mock_data.return_value = mock_comparison_data
+
+            # Test JSON output to stdout
+            result = self.runner.invoke(compare_experiments, ["exp001", "--json"])
+
+            assert result.exit_code == 0
+            # Check JSON structure
+            import json
+
+            output_data = json.loads(result.output)
+            assert "experiments" in output_data
+            assert len(output_data["experiments"]) == 1
+            assert output_data["experiments"][0]["id"] == "exp001"
+            assert "param_learning_rate" in output_data["experiments"][0]
+            assert "metric_accuracy" in output_data["experiments"][0]
+
+    def test_compare_markdown_output(self):
+        """Test compare command markdown output functionality."""
+        mock_experiments = [{"id": "exp001", "name": "test-exp"}]
+
+        mock_comparison_data = TestDataFactory.create_comparison_data(
+            [
+                {
+                    "id": "exp001",
+                    "name": "test-exp",
+                    "started": "2025-01-01 10:00:00",
+                    "duration": "01:00:00",
+                    "status": "completed",
+                    "tags": "-",
+                    "param:learning_rate": "0.01",
+                    "metric:accuracy": "0.95",
+                }
+            ]
+        )
+
+        with (
+            patch(
+                "yanex.cli.commands.compare.find_experiments_by_identifiers"
+            ) as mock_find,
+            patch.object(ExperimentComparisonData, "get_comparison_data") as mock_data,
+        ):
+            mock_find.return_value = mock_experiments
+            mock_data.return_value = mock_comparison_data
+
+            # Test markdown output to stdout
+            result = self.runner.invoke(compare_experiments, ["exp001", "--markdown"])
+
+            assert result.exit_code == 0
+            # Check markdown table format
+            assert "|" in result.output  # Table delimiters
+            assert "---" in result.output  # Header separator
+            assert "exp001" in result.output
+            assert "param_learning_rate" in result.output
+            assert "metric_accuracy" in result.output
 
     def test_compare_mutually_exclusive_options(self):
         """Test that identifiers and filters are mutually exclusive."""
@@ -377,8 +452,13 @@ class TestCompareCommandIntegration:
         # Verify basic columns
         assert exp1_row["name"] == "baseline-model"
         assert exp1_row["status"] == "completed"
-        assert exp1_row["tags"] == "baseline, training"
-        assert exp1_row["duration"] == "01:30:00"  # Formatted duration
+        assert exp1_row["tags"] == [
+            "baseline",
+            "training",
+        ]  # Kept as list for formatter
+        # Duration is computed by formatter from started_at/ended_at
+        assert "started_at" in exp1_row
+        assert "ended_at" in exp1_row
 
         # Verify parameter columns
         assert exp1_row["param:learning_rate"] == "0.001"
@@ -505,11 +585,10 @@ class TestCompareCommandIntegration:
 
         column_types = comparison_data["column_types"]
 
-        # Check fixed column types
+        # Check fixed column types (using field names matching experiment metadata)
         assert column_types["id"] == "string"
         assert column_types["name"] == "string"
-        assert column_types["started"] == "datetime"
-        assert column_types["duration"] == "string"
+        assert column_types["started_at"] == "datetime"
         assert column_types["status"] == "string"
         assert column_types["tags"] == "string"
 

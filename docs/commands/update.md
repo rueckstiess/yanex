@@ -55,6 +55,7 @@ Updates can be applied to single experiments or in bulk using filter criteria.
 - `--archived`, `-a`: Update archived experiments
 - `--force`: Skip confirmation prompt for bulk operations
 - `--dry-run`: Show what would be updated without making changes
+- `--format`, `-F FORMAT`: Output format (default, json, csv, markdown)
 - `--help`: Show help message and exit
 
 ## Usage
@@ -97,6 +98,21 @@ The date/time filter options accept flexible formats:
 - **Relative**: "1 week ago", "yesterday", "2 months ago"
 - **Absolute**: "2024-01-01", "2024-01-15 14:30"
 - **ISO format**: "2024-01-01T14:30:00"
+
+## Output Format
+
+Control output format with `--format` or `-F`:
+
+```bash
+# Default: human-readable progress
+yanex update a1b2c3d4 --set-name "New Name"
+
+# JSON for scripting
+yanex update -s completed --add-tag reviewed -F json --force
+
+# CSV for reporting
+yanex update -s completed --add-tag reviewed -F csv --force
+```
 
 ---
 

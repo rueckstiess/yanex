@@ -10,6 +10,12 @@ from ..error_handling import (
 )
 from ..filters import ExperimentFilter
 from ..filters.arguments import experiment_filter_options
+from ..formatters import (
+    echo_format_info,
+    format_options,
+    is_machine_format,
+    resolve_output_format,
+)
 from .confirm import (
     confirm_experiment_operation,
     find_experiments_by_filters,
@@ -19,6 +25,7 @@ from .confirm import (
 
 @click.command("archive")
 @click.argument("experiment_identifiers", nargs=-1)
+@format_options()
 @experiment_filter_options(
     include_ids=False, include_archived=False, include_limit=False
 )
@@ -28,6 +35,10 @@ from .confirm import (
 def archive_experiments(
     ctx,
     experiment_identifiers: tuple,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -44,21 +55,32 @@ def archive_experiments(
     EXPERIMENT_IDENTIFIERS can be experiment IDs or names.
     If no identifiers provided, experiments are filtered by options.
 
+    Supports multiple output formats:
+
+    \b
+      --format json      Output result as JSON (for scripting/AI processing)
+      --format csv       Output result as CSV (for data analysis)
+      --format markdown  Output result as markdown
+
     Examples:
-    \\b
+
+    \b
         yanex archive exp1 exp2              # Archive specific experiments
         yanex archive -s failed              # Archive all failed experiments
         yanex archive -s completed --ended-before "1 month ago"
-        yanex archive -n "*training*"        # Archive experiments with "training" in name
-        yanex archive -t experiment-v1       # Archive experiments with specific tag
+        yanex archive -s failed --format json # Archive and output result as JSON
     """
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
+
     filter_obj = ExperimentFilter()
 
     # Validate mutually exclusive targeting
+    # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
             status,
-            name_pattern,
+            name_pattern is not None,
             tags,
             script_pattern,
             started_after,
@@ -106,19 +128,22 @@ def archive_experiments(
     experiments = [exp for exp in experiments if not exp.get("archived", False)]
 
     if not experiments:
-        click.echo("No experiments found to archive.")
+        echo_format_info("No experiments found to archive.", fmt)
         return
+
+    # For machine-readable output, skip confirmation
+    effective_force = force or is_machine_format(fmt)
 
     # Show experiments and get confirmation
     if not confirm_experiment_operation(
-        experiments, "archive", force, default_yes=True
+        experiments, "archive", effective_force, default_yes=True
     ):
-        click.echo("Archive operation cancelled.")
+        echo_format_info("Archive operation cancelled.", fmt)
         return
 
-    # Archive experiments using centralized reporter
-    click.echo(f"Archiving {len(experiments)} experiment(s)...")
-    reporter = BulkOperationReporter("archive")
+    # Archive experiments using centralized reporter with output format
+    echo_format_info(f"Archiving {len(experiments)} experiment(s)...", fmt)
+    reporter = BulkOperationReporter("archive", output_format=fmt)
 
     for exp in experiments:
         experiment_id = exp["id"]

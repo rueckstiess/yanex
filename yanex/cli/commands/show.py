@@ -7,6 +7,26 @@ from typing import Any
 import click
 
 from yanex.cli.filters import ExperimentFilter
+from yanex.cli.formatters import (
+    ERROR_STYLE,
+    ID_STYLE,
+    LABEL_STYLE,
+    METRICS_STYLE,
+    NAME_STYLE,
+    PARAMS_STYLE,
+    SCRIPT_STYLE,
+    STATUS_COLORS,
+    STATUS_SYMBOLS,
+    STEP_STYLE,
+    TIMESTAMP_STYLE,
+    WARNING_STYLE,
+    WARNING_SYMBOL,
+    OutputFormat,
+    experiment_to_dict,
+    format_options,
+    output_json,
+    resolve_output_format,
+)
 from yanex.cli.formatters.console import ExperimentTableFormatter
 from yanex.core.manager import ExperimentManager
 
@@ -15,6 +35,7 @@ from .confirm import find_experiment
 
 @click.command("show")
 @click.argument("experiment_identifier", required=True)
+@format_options()
 @click.option(
     "--show-metric",
     "show_metrics",
@@ -23,7 +44,14 @@ from .confirm import find_experiment
 @click.option("--archived", is_flag=True, help="Include archived experiments in search")
 @click.pass_context
 def show_experiment(
-    ctx, experiment_identifier: str, show_metrics: str | None, archived: bool
+    ctx,
+    experiment_identifier: str,
+    output_format: str | None,
+    json_flag: bool,
+    csv_flag: bool,
+    markdown_flag: bool,
+    show_metrics: str | None,
+    archived: bool,
 ):
     """
     Show detailed information about an experiment.
@@ -33,9 +61,19 @@ def show_experiment(
     - A prefix of an experiment ID
     - An experiment name
 
+    Supports multiple output formats:
+
+    \b
+      --format json      Output as JSON (for scripting/AI processing)
+      --format csv       Output as CSV (for data analysis)
+      --format markdown  Output as GitHub-flavored markdown
+
     If multiple experiments have the same name, a list will be shown
     and you'll need to use the unique experiment ID instead.
     """
+    # Resolve output format from --format option or legacy flags
+    fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
+
     try:
         # Create filter and formatter (filter creates default manager)
         filter_obj = ExperimentFilter()
@@ -73,7 +111,20 @@ def show_experiment(
                 metric.strip() for metric in show_metrics.split(",") if metric.strip()
             ]
 
-        # Display detailed experiment information
+        # Handle different output formats
+        if fmt == OutputFormat.JSON:
+            output_experiment_json(filter_obj.manager, experiment, archived)
+            return
+        elif fmt == OutputFormat.CSV:
+            output_experiment_csv(filter_obj.manager, experiment, archived)
+            return
+        elif fmt == OutputFormat.MARKDOWN:
+            output_experiment_markdown(
+                filter_obj.manager, experiment, requested_metrics, archived
+            )
+            return
+
+        # Default: Rich console output
         display_experiment_details(
             filter_obj.manager, experiment, formatter, requested_metrics, archived
         )
@@ -81,6 +132,13 @@ def show_experiment(
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         ctx.exit(1)
+
+
+def _print_section_header(console, title: str) -> None:
+    """Print a simple section header without panel borders."""
+    from rich.rule import Rule
+
+    console.print(Rule(title, style=TIMESTAMP_STYLE, align="center"))
 
 
 def display_experiment_details(
@@ -93,33 +151,48 @@ def display_experiment_details(
     """Display comprehensive experiment details."""
     from rich import box
     from rich.console import Console
-    from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
 
     console = Console()
     experiment_id = experiment["id"]
 
-    # Header with experiment overview
+    # Add newline at the beginning for visual separation
+    console.print()
+
+    # Header with experiment overview (no panel, just styled text)
     status = experiment.get("status", "unknown")
-    status_color = formatter.STATUS_COLORS.get(status, "white")
-    status_emoji = formatter.STATUS_SYMBOLS.get(status, "○")
+    status_color = STATUS_COLORS.get(status, "white")
+    status_emoji = STATUS_SYMBOLS.get(status, "○")
 
+    # First line: Experiment name and ID
     header_text = Text()
-    header_text.append("Experiment: ", style="bold")
-    header_text.append(f"{experiment.get('name', '[unnamed]')} ", style="bold cyan")
-    header_text.append(f"({experiment_id})", style="dim")
-    header_text.append(f"\nStatus: {status_emoji} ", style="")
-    header_text.append(f"{status}", style=f"bold {status_color}")
+    header_text.append("Experiment: ", style=LABEL_STYLE)
+    header_text.append(
+        f"{experiment.get('name', '[unnamed]')} ", style=f"bold {NAME_STYLE}"
+    )
+    header_text.append(f"({experiment_id})", style=ID_STYLE)
+    console.print(header_text)
 
-    # Add directory path
+    # Build metadata lines with aligned labels (right-padded to 11 chars)
+    def print_field(label: str, value: str, style: str = "") -> None:
+        padded_label = f"{label:>11}: "
+        line = Text()
+        line.append(padded_label, style=LABEL_STYLE)
+        line.append(value, style=style)
+        console.print(line)
+
+    # Status
+    print_field("Status", f"{status_emoji} {status}", f"bold {status_color}")
+
+    # Directory path
     try:
         exp_dir = manager.storage.get_experiment_dir(experiment_id, include_archived)
-        header_text.append(f"\nDirectory: {exp_dir}", style="dim cyan")
+        print_field("Directory", str(exp_dir), SCRIPT_STYLE)
     except Exception:
         pass  # Skip directory path if not available
 
-    # Add timing information
+    # Timing information
     created_at = experiment.get("created_at")
     started_at = experiment.get("started_at")
     completed_at = experiment.get("completed_at")
@@ -127,9 +200,9 @@ def display_experiment_details(
     cancelled_at = experiment.get("cancelled_at")
 
     if created_at:
-        header_text.append(f"\nCreated: {formatter._format_time(created_at)}")
+        print_field("Created", formatter._format_time(created_at))
     if started_at:
-        header_text.append(f"\nStarted: {formatter._format_time(started_at)}")
+        print_field("Started", formatter._format_time(started_at))
 
     # Show end time based on status
     end_time = completed_at or failed_at or cancelled_at
@@ -137,39 +210,31 @@ def display_experiment_details(
         end_label = (
             "Completed" if completed_at else ("Failed" if failed_at else "Cancelled")
         )
-        header_text.append(f"\n{end_label}: {formatter._format_time(end_time)}")
+        print_field(end_label, formatter._format_time(end_time))
 
         # Calculate and show duration
         if started_at:
             duration = formatter._calculate_duration(started_at, end_time)
-            header_text.append(f"\nDuration: {duration}")
+            print_field("Duration", duration)
     elif started_at:
         # Still running
         duration = formatter._calculate_duration(started_at, None)
-        header_text.append(f"\nDuration: {duration}")
+        print_field("Duration", duration)
 
-    console.print(Panel(header_text, box=box.ROUNDED, border_style=status_color))
     console.print()
 
-    # Tags and Description
+    # Tags and Description (inline, with aligned labels)
     tags = experiment.get("tags", [])
     description = experiment.get("description")
 
+    if tags:
+        tags_text = ", ".join(tags)
+        print_field("Tags", tags_text)
+
+    if description:
+        print_field("Description", description)
+
     if tags or description:
-        info_table = Table.grid(padding=(0, 2))
-        info_table.add_column("Field", style="bold")
-        info_table.add_column("Value")
-
-        if tags:
-            tags_text = ", ".join(tags) if tags else "-"
-            info_table.add_row("Tags:", tags_text)
-
-        if description:
-            info_table.add_row("Description:", description)
-
-        console.print(
-            Panel(info_table, title="[bold]Experiment Info[/bold]", box=box.ROUNDED)
-        )
         console.print()
 
     # Configuration
@@ -181,11 +246,13 @@ def display_experiment_details(
             # Flatten nested configuration for better readability
             flat_config = flatten_dict(config)
 
+            _print_section_header(console, "Parameters")
+
             config_table = Table(
-                show_header=True, header_style="bold magenta", box=box.SIMPLE
+                show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
             )
-            config_table.add_column("Parameter", style="cyan")
-            config_table.add_column("Value", style="green")
+            config_table.add_column("Parameter", style=PARAMS_STYLE)
+            config_table.add_column("Value", style=METRICS_STYLE)
 
             for key, value in sorted(flat_config.items()):
                 # Format value for display
@@ -198,9 +265,7 @@ def display_experiment_details(
 
                 config_table.add_row(key, value_str)
 
-            console.print(
-                Panel(config_table, title="[bold]Configuration[/bold]", box=box.ROUNDED)
-            )
+            console.print(config_table)
             console.print()
     except Exception:
         pass  # Skip config if not available
@@ -231,10 +296,12 @@ def display_experiment_details(
 
                 # Warn about missing metrics
                 if missing_metrics:
-                    warning_text = Text("Warning: ", style="bold yellow")
+                    warning_text = Text(
+                        f"{WARNING_SYMBOL} Warning: ", style=f"bold {WARNING_STYLE}"
+                    )
                     warning_text.append(
                         f"Requested metrics not found: {', '.join(missing_metrics)}",
-                        style="yellow",
+                        style=WARNING_STYLE,
                     )
                     console.print(warning_text)
 
@@ -242,19 +309,27 @@ def display_experiment_details(
                     console.print(
                         Text(
                             "No requested metrics found in experiment results.",
-                            style="red",
+                            style=ERROR_STYLE,
                         )
                     )
                     return
 
+                # Build section header with info
+                title = f"Metrics ({len(shown_metrics)} of {len(all_metrics)} total)"
+                if len(results) > 10:
+                    title += f" - last 10 of {len(results)} steps"
+                _print_section_header(console, title)
+
                 results_table = Table(
-                    show_header=True, header_style="bold magenta", box=box.SIMPLE
+                    show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
                 )
-                results_table.add_column("Step", justify="right", style="cyan")
-                results_table.add_column("Timestamp", style="dim")
+                results_table.add_column("Step", justify="right", style=STEP_STYLE)
+                results_table.add_column("Timestamp", style=TIMESTAMP_STYLE)
 
                 for metric in shown_metrics:
-                    results_table.add_column(metric, justify="right", style="green")
+                    results_table.add_column(
+                        metric, justify="right", style=METRICS_STYLE
+                    )
 
                 # Add rows
                 for result in results[-10:]:  # Show last 10 results
@@ -275,21 +350,11 @@ def display_experiment_details(
 
                     results_table.add_row(*row)
 
-                title = f"[bold]Results[/bold] (showing {len(shown_metrics)} of {len(all_metrics)} metrics)"
-                if len(results) > 10:
-                    title += f" (last 10 of {len(results)} steps)"
-
-                console.print(Panel(results_table, title=title, box=box.ROUNDED))
+                console.print(results_table)
                 console.print()
 
             elif len(all_metrics) > 8:
                 # Too many metrics - show summary table with key metrics and count
-                results_table = Table(
-                    show_header=True, header_style="bold magenta", box=box.SIMPLE
-                )
-                results_table.add_column("Step", justify="right", style="cyan")
-                results_table.add_column("Timestamp", style="dim")
-
                 # Show key metrics first, then fill up to 8 total metrics
                 key_metrics = [
                     "accuracy",
@@ -315,15 +380,32 @@ def display_experiment_details(
                     else:
                         break
 
+                other_count = len(all_metrics) - len(shown_metrics)
+
+                # Build section header with info
+                title = f"Metrics ({len(all_metrics)} total)"
+                if len(results) > 10:
+                    title += f" - last 10 of {len(results)} steps"
+                _print_section_header(console, title)
+
+                results_table = Table(
+                    show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
+                )
+                results_table.add_column("Step", justify="right", style=STEP_STYLE)
+                results_table.add_column("Timestamp", style=TIMESTAMP_STYLE)
+
                 # Add columns for shown metrics
                 for metric in shown_metrics:
-                    results_table.add_column(metric, justify="right", style="green")
+                    results_table.add_column(
+                        metric, justify="right", style=METRICS_STYLE
+                    )
 
                 # Add other metrics column to show count
-                other_count = len(all_metrics) - len(shown_metrics)
                 if other_count > 0:
                     results_table.add_column(
-                        f"(+{other_count} more)", justify="center", style="dim"
+                        f"(+{other_count} more)",
+                        justify="center",
+                        style=TIMESTAMP_STYLE,
                     )
 
                 # Add rows
@@ -348,29 +430,32 @@ def display_experiment_details(
 
                     results_table.add_row(*row)
 
-                title = f"[bold]Results[/bold] ({len(all_metrics)} metrics total)"
-                if len(results) > 10:
-                    title += f" (showing last 10 of {len(results)} steps)"
-
-                console.print(Panel(results_table, title=title, box=box.ROUNDED))
+                console.print(results_table)
 
                 # Show all metrics list below table for reference
-                metrics_text = Text("All metrics: ", style="bold")
-                metrics_text.append(", ".join(all_metrics), style="dim")
+                metrics_text = Text("All metrics: ", style=LABEL_STYLE)
+                metrics_text.append(", ".join(all_metrics), style=TIMESTAMP_STYLE)
                 console.print(metrics_text)
                 console.print()
 
             else:
                 # Few metrics - show normal table
+                title = f"Metrics ({len(all_metrics)} total)"
+                if len(results) > 10:
+                    title += f" - last 10 of {len(results)} steps"
+                _print_section_header(console, title)
+
                 results_table = Table(
-                    show_header=True, header_style="bold magenta", box=box.SIMPLE
+                    show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
                 )
-                results_table.add_column("Step", justify="right", style="cyan")
-                results_table.add_column("Timestamp", style="dim")
+                results_table.add_column("Step", justify="right", style=STEP_STYLE)
+                results_table.add_column("Timestamp", style=TIMESTAMP_STYLE)
 
                 # Add columns for each metric
                 for metric in all_metrics:
-                    results_table.add_column(metric, justify="right", style="green")
+                    results_table.add_column(
+                        metric, justify="right", style=METRICS_STYLE
+                    )
 
                 # Add rows
                 for result in results[-10:]:  # Show last 10 results
@@ -392,11 +477,7 @@ def display_experiment_details(
 
                     results_table.add_row(*row)
 
-                title = "[bold]Results[/bold]"
-                if len(results) > 10:
-                    title += f" (showing last 10 of {len(results)})"
-
-                console.print(Panel(results_table, title=title, box=box.ROUNDED))
+                console.print(results_table)
                 console.print()
     except Exception:
         pass  # Skip results if not available
@@ -411,12 +492,14 @@ def display_experiment_details(
         if artifacts_dir.exists():
             artifacts = list(artifacts_dir.iterdir())
             if artifacts:
+                _print_section_header(console, "Artifacts")
+
                 artifacts_table = Table(
-                    show_header=True, header_style="bold magenta", box=box.SIMPLE
+                    show_header=True, header_style=LABEL_STYLE, box=box.SIMPLE
                 )
-                artifacts_table.add_column("Artifact", style="cyan")
-                artifacts_table.add_column("Size", justify="right", style="green")
-                artifacts_table.add_column("Modified", style="dim")
+                artifacts_table.add_column("Artifact", style=PARAMS_STYLE)
+                artifacts_table.add_column("Size", justify="right", style=METRICS_STYLE)
+                artifacts_table.add_column("Modified", style=TIMESTAMP_STYLE)
 
                 for artifact_path in sorted(artifacts):
                     if artifact_path.is_file():
@@ -427,11 +510,7 @@ def display_experiment_details(
 
                         artifacts_table.add_row(artifact_path.name, size_str, mtime_str)
 
-                console.print(
-                    Panel(
-                        artifacts_table, title="[bold]Artifacts[/bold]", box=box.ROUNDED
-                    )
-                )
+                console.print(artifacts_table)
                 console.print()
     except Exception:
         pass  # Skip artifacts if not available
@@ -443,9 +522,7 @@ def display_experiment_details(
         git_info = metadata.get("git", {})
 
         if env_info or git_info:
-            env_table = Table.grid(padding=(0, 2))
-            env_table.add_column("Field", style="bold")
-            env_table.add_column("Value")
+            _print_section_header(console, "Environment")
 
             # Git information
             if git_info:
@@ -456,13 +533,15 @@ def display_experiment_details(
                 if commit_hash != "unknown" and len(commit_hash) > 12:
                     commit_hash = commit_hash[:12]
 
-                env_table.add_row("Git Branch:", branch)
-                env_table.add_row("Git Commit:", commit_hash)
+                print_field("Git Branch", branch)
+                print_field("Git Commit", commit_hash)
 
                 # Check for uncommitted changes from environment git info
                 env_git_info = env_info.get("git", {})
                 if env_git_info.get("has_uncommitted_changes"):
-                    env_table.add_row("", "[yellow]⚠ Uncommitted changes[/yellow]")
+                    console.print(
+                        f"             [{WARNING_STYLE}]{WARNING_SYMBOL} Uncommitted changes[/{WARNING_STYLE}]"
+                    )
 
             # Python version information
             python_info = env_info.get("python", {})
@@ -473,12 +552,12 @@ def display_experiment_details(
                     python_version = python_version.split(" (")[
                         0
                     ]  # e.g., "3.11.9" from "3.11.9 (main, ...)"
-                env_table.add_row("Python:", python_version)
+                print_field("Python", python_version)
 
                 # Platform from python info (more readable than system platform)
                 python_platform = python_info.get("platform", "unknown")
                 if python_platform != "unknown":
-                    env_table.add_row("Platform:", python_platform)
+                    print_field("Platform", python_platform)
 
             # System information (fallback if python platform not available)
             if python_info.get("platform") == "unknown" or not python_info:
@@ -491,16 +570,13 @@ def display_experiment_details(
                         platform_display = system_name
                         if machine:
                             platform_display += f" ({machine})"
-                        env_table.add_row("Platform:", platform_display)
+                        print_field("Platform", platform_display)
 
             # Script information
             script_path = metadata.get("script_path")
             if script_path:
-                env_table.add_row("Script:", script_path)
+                print_field("Script", script_path)
 
-            console.print(
-                Panel(env_table, title="[bold]Environment[/bold]", box=box.ROUNDED)
-            )
             console.print()
     except Exception:
         pass  # Skip environment if not available
@@ -512,11 +588,277 @@ def display_experiment_details(
 
         if error_msg or cancel_reason:
             error_text = error_msg or cancel_reason
-            console.print(
-                Panel(
-                    Text(error_text, style="red"),
-                    title=f"[bold red]{'Error' if error_msg else 'Cancellation Reason'}[/bold red]",
-                    box=box.ROUNDED,
-                    border_style="red",
-                )
-            )
+            label = "Error" if error_msg else "Cancellation Reason"
+            _print_section_header(console, label)
+            console.print(Text(error_text, style=ERROR_STYLE))
+            console.print()
+
+
+def output_experiment_json(
+    manager: ExperimentManager,
+    experiment: dict[str, Any],
+    include_archived: bool = False,
+) -> None:
+    """Output experiment details as JSON."""
+    experiment_id = experiment["id"]
+
+    # Build comprehensive experiment data
+    data = experiment_to_dict(experiment, flatten=True)
+
+    # Add config
+    try:
+        config = manager.storage.load_config(experiment_id, include_archived)
+        if config:
+            data["config"] = config
+    except Exception:
+        pass
+
+    # Add results/metrics
+    try:
+        results = manager.storage.load_results(experiment_id, include_archived)
+        if results:
+            data["results"] = results
+    except Exception:
+        pass
+
+    # Add metadata (environment, git info)
+    try:
+        metadata = manager.storage.load_metadata(experiment_id, include_archived)
+        if metadata:
+            data["environment"] = metadata.get("environment", {})
+            data["git"] = metadata.get("git", {})
+    except Exception:
+        pass
+
+    # Add artifacts list
+    try:
+        exp_dir = manager.storage.get_experiment_dir(experiment_id, include_archived)
+        artifacts_dir = exp_dir / "artifacts"
+        if artifacts_dir.exists():
+            artifacts = []
+            for artifact_path in sorted(artifacts_dir.iterdir()):
+                if artifact_path.is_file():
+                    artifacts.append(
+                        {
+                            "name": artifact_path.name,
+                            "size": artifact_path.stat().st_size,
+                            "path": str(artifact_path),
+                        }
+                    )
+            if artifacts:
+                data["artifacts"] = artifacts
+    except Exception:
+        pass
+
+    # Add experiment directory path
+    try:
+        exp_dir = manager.storage.get_experiment_dir(experiment_id, include_archived)
+        data["experiment_dir"] = str(exp_dir)
+    except Exception:
+        pass
+
+    output_json(data)
+
+
+def output_experiment_csv(
+    manager: ExperimentManager,
+    experiment: dict[str, Any],
+    include_archived: bool = False,
+) -> None:
+    """Output experiment details as CSV (single row with key fields)."""
+    from yanex.cli.formatters import output_csv
+
+    experiment_id = experiment["id"]
+
+    # Create a single row with key experiment fields
+    row = experiment_to_dict(experiment, flatten=True)
+
+    # Add config as flattened params
+    try:
+        from yanex.utils.dict_utils import flatten_dict
+
+        config = manager.storage.load_config(experiment_id, include_archived)
+        if config:
+            flat_config = flatten_dict(config)
+            for key, value in flat_config.items():
+                row[f"param:{key}"] = value
+    except Exception:
+        pass
+
+    # Add latest metrics
+    try:
+        results = manager.storage.load_results(experiment_id, include_archived)
+        if results:
+            latest = results[-1]
+            for key, value in latest.items():
+                if key not in ["step", "timestamp"]:
+                    row[f"metric:{key}"] = value
+    except Exception:
+        pass
+
+    output_csv([row])
+
+
+def output_experiment_markdown(
+    manager: ExperimentManager,
+    experiment: dict[str, Any],
+    requested_metrics: list[str] | None = None,
+    include_archived: bool = False,
+) -> None:
+    """Output experiment details as markdown."""
+    from yanex.cli.formatters import format_markdown_table
+
+    experiment_id = experiment["id"]
+    status = experiment.get("status", "unknown")
+    status_emoji = STATUS_SYMBOLS.get(status, "○")
+
+    lines = []
+
+    # Header
+    name = experiment.get("name", "[unnamed]")
+    lines.append(f"# Experiment: {name}")
+    lines.append("")
+    lines.append(f"**ID:** `{experiment_id}`")
+    lines.append(f"**Status:** {status_emoji} {status}")
+
+    # Timing
+    if experiment.get("created_at"):
+        lines.append(f"**Created:** {experiment.get('created_at')}")
+    if experiment.get("started_at"):
+        lines.append(f"**Started:** {experiment.get('started_at')}")
+
+    end_time = (
+        experiment.get("completed_at")
+        or experiment.get("failed_at")
+        or experiment.get("cancelled_at")
+    )
+    if end_time:
+        end_label = (
+            "Completed"
+            if experiment.get("completed_at")
+            else ("Failed" if experiment.get("failed_at") else "Cancelled")
+        )
+        lines.append(f"**{end_label}:** {end_time}")
+
+    # Tags and description
+    tags = experiment.get("tags", [])
+    if tags:
+        lines.append(f"**Tags:** {', '.join(tags)}")
+
+    description = experiment.get("description")
+    if description:
+        lines.append(f"**Description:** {description}")
+
+    lines.append("")
+
+    # Configuration
+    try:
+        from yanex.utils.dict_utils import flatten_dict
+
+        config = manager.storage.load_config(experiment_id, include_archived)
+        if config:
+            flat_config = flatten_dict(config)
+            lines.append("## Configuration")
+            lines.append("")
+            config_rows = [
+                {"Parameter": k, "Value": str(v)}
+                for k, v in sorted(flat_config.items())
+            ]
+            lines.append(format_markdown_table(config_rows, ["Parameter", "Value"]))
+            lines.append("")
+    except Exception:
+        pass
+
+    # Results
+    try:
+        results = manager.storage.load_results(experiment_id, include_archived)
+        if results:
+            lines.append("## Results")
+            lines.append("")
+
+            # Get all metric names
+            all_metrics = set()
+            for result in results:
+                for key in result.keys():
+                    if key not in ["step", "timestamp"]:
+                        all_metrics.add(key)
+            all_metrics = sorted(all_metrics)
+
+            # Filter by requested metrics if specified
+            if requested_metrics:
+                shown_metrics = [m for m in requested_metrics if m in all_metrics]
+            else:
+                shown_metrics = all_metrics[:8]  # Limit to 8 metrics
+
+            columns = ["step", "timestamp"] + shown_metrics
+            headers = {"step": "Step", "timestamp": "Timestamp"}
+            for m in shown_metrics:
+                headers[m] = m
+
+            # Format results for table
+            result_rows = []
+            for result in results[-10:]:  # Last 10 results
+                row = {
+                    "step": str(result.get("step", "-")),
+                    "timestamp": result.get("timestamp", "-"),
+                }
+                for m in shown_metrics:
+                    value = result.get(m)
+                    if value is not None:
+                        if isinstance(value, float):
+                            row[m] = f"{value:.4f}"
+                        else:
+                            row[m] = str(value)
+                    else:
+                        row[m] = "-"
+                result_rows.append(row)
+
+            lines.append(format_markdown_table(result_rows, columns, headers))
+            lines.append("")
+    except Exception:
+        pass
+
+    # Artifacts
+    try:
+        exp_dir = manager.storage.get_experiment_dir(experiment_id, include_archived)
+        artifacts_dir = exp_dir / "artifacts"
+        if artifacts_dir.exists():
+            artifacts = list(artifacts_dir.iterdir())
+            if artifacts:
+                lines.append("## Artifacts")
+                lines.append("")
+                artifact_rows = []
+                for artifact_path in sorted(artifacts):
+                    if artifact_path.is_file():
+                        size = artifact_path.stat().st_size
+                        artifact_rows.append(
+                            {"Name": artifact_path.name, "Size": _format_size(size)}
+                        )
+                lines.append(format_markdown_table(artifact_rows, ["Name", "Size"]))
+                lines.append("")
+    except Exception:
+        pass
+
+    # Error information
+    if status in ["failed", "cancelled"]:
+        error_msg = experiment.get("error_message")
+        cancel_reason = experiment.get("cancellation_reason")
+        if error_msg or cancel_reason:
+            lines.append("## Error")
+            lines.append("")
+            lines.append(f"```\n{error_msg or cancel_reason}\n```")
+            lines.append("")
+
+    click.echo("\n".join(lines))
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format file size in human-readable form."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"

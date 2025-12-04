@@ -106,6 +106,43 @@ make clean-web      # Clean web UI build artifacts
 - Use `TestAssertions` for domain-specific validation
 - Tests run with pytest-cov for coverage reporting
 
+### Test Isolation and Global State
+
+**Problem**: Some modules cache global state (like `yanex.results._default_manager`) that persists across tests, causing test isolation failures when tests run in parallel or sequentially.
+
+**Symptoms**: Tests pass individually but fail when run together, often with errors about experiments not being found in unexpected directories.
+
+**Available Fixtures for Isolation**:
+- `per_test_experiments_dir` - Creates isolated experiments directory AND resets `yanex.results._default_manager`. Use this when tests need complete isolation from other tests.
+- `clean_git_repo` - Ensures git repo is in clean state (depends on `git_repo` and `temp_dir`)
+- `isolated_experiments_dir` - Creates experiments dir inside `temp_dir`
+- `clean_api_state` - Cleans up `yanex.api` global state (for tests using `yanex.get_params()`)
+
+**Best Practices**:
+1. Use `per_test_experiments_dir` for tests that create experiments and invoke CLI commands
+2. Use `clean_git_repo` for tests that need a clean git repository for experiment scripts
+3. Don't manually set `YANEX_EXPERIMENTS_DIR` in test env overrides - use fixtures instead
+4. If a test fails with "experiment not found" in the wrong directory, check for cached global state
+
+**Example Pattern** (for CLI integration tests):
+```python
+def test_something(self, per_test_experiments_dir, git_repo):
+    from pathlib import Path
+    from yanex.core.manager import ExperimentManager
+
+    # per_test_experiments_dir handles env and _default_manager reset
+    manager = ExperimentManager(per_test_experiments_dir)
+    script_path = Path(git_repo.working_dir) / "test.py"
+    script_path.write_text("print('test')")
+
+    # Create experiments...
+    exp_id = manager.create_experiment(script_path, config={})
+
+    # CLI will use the correct directory automatically
+    result = self.runner.invoke(cli, ["get", "status", exp_id])
+    assert result.exit_code == 0
+```
+
 ## Configuration and Dependencies
 
 ### Key Files
@@ -193,6 +230,24 @@ The codebase has undergone significant refactoring to:
 - Use `yanex.create_experiment()` context manager in code
 - Intended for Jupyter notebooks or programmatic control
 - Cannot mix with CLI-first pattern (raises `ExperimentContextError`)
+
+### Experiment Lineage Visualization
+The `yanex get` command supports lineage visualization for experiment dependencies:
+- `yanex get upstream <exp>` - Show what an experiment depends on
+- `yanex get downstream <exp>` - Show what depends on an experiment
+- `yanex get lineage <exp>` - Show both upstream and downstream
+
+**Multi-experiment lineage** supports filtering to visualize multiple experiments:
+```bash
+yanex get lineage -n "train-*"       # All experiments matching pattern
+yanex get upstream -s completed      # Dependencies of all completed experiments
+yanex get lineage --ids a1,b2,c3     # Specific experiments by ID
+```
+
+Output behavior:
+- Connected targets render as a single DAG with all targets highlighted in yellow
+- Disconnected targets render as separate DAGs with blank line separation
+- Single experiment is a special case (list with one element)
 
 ### Web UI Development
 - Frontend: Next.js in `yanex/web/` with static export

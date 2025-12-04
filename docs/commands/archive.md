@@ -45,6 +45,7 @@ This is useful for managing completed experiments that you want to keep for refe
 ### Control Options
 
 - `--force`: Skip confirmation prompt
+- `--format`, `-F FORMAT`: Output format (default, json, csv, markdown)
 - `--help`: Show help message and exit
 
 ## Usage
@@ -79,6 +80,21 @@ The date/time options accept flexible formats:
 - **Relative**: "1 week ago", "yesterday", "2 months ago"
 - **Absolute**: "2024-01-01", "2024-01-15 14:30"
 - **ISO format**: "2024-01-01T14:30:00"
+
+## Output Format
+
+Control output format with `--format` or `-F`:
+
+```bash
+# Default: human-readable progress
+yanex archive -s completed
+
+# JSON for scripting
+yanex archive -s completed -F json
+
+# CSV for reporting
+yanex archive -s completed -F csv
+```
 
 ---
 
