@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yanex"
-version = "0.4.0"
+version = "0.5.0"
 description = "Yet Another Experiment Tracker - A lightweight experiment tracking harness"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["experiment", "tracking", "machine-learning", "research", "reproducibility"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
@@ -37,6 +37,7 @@ dependencies = [
     "httpx>=0.24.0",
     "detect-secrets>=1.5.0",
     "py-dagviz>=0.1.0",
+    "networkx>=3.0",
 ]
 
 [project.optional-dependencies]
