@@ -113,13 +113,21 @@ def _atexit_handler_wrapper(experiment_id: str, tracked_dict: TrackedDict) -> No
 
 
 def get_params() -> dict[str, Any]:
-    """Get experiment parameters with access tracking.
+    """Get experiment parameters with access tracking and conflict detection.
 
     Returns TrackedDict in experiment mode to monitor which parameters are
     actually used. At script end, only accessed parameters are saved.
 
+    When dependencies exist, accessing a leaf parameter will check for conflicts
+    between the local config and all transitive dependencies. If conflicting
+    values are found, ParameterConflictError is raised.
+
     Returns:
         TrackedDict of experiment parameters (empty dict in standalone mode)
+
+    Raises:
+        ParameterConflictError: When accessing a parameter that has different
+            values in local config vs dependencies
     """
     global _tracked_params, _atexit_registered
 
@@ -132,9 +140,9 @@ def get_params() -> dict[str, Any]:
         return _tracked_params
 
     # Load raw params based on mode
+    manager = _get_experiment_manager()
     if hasattr(_local, "experiment_id"):
         # Direct API usage - read from storage
-        manager = _get_experiment_manager()
         raw_params = manager.storage.load_config(experiment_id)
     else:
         # CLI subprocess mode - read from environment variables
@@ -150,8 +158,11 @@ def get_params() -> dict[str, Any]:
                 except (json.JSONDecodeError, ValueError):
                     raw_params[param_key] = value
 
-    # Wrap in TrackedDict for access tracking
-    _tracked_params = TrackedDict(raw_params)
+    # Load transitive dependencies for conflict checking
+    dependencies = _load_dependencies_for_conflict_check(manager, experiment_id)
+
+    # Wrap in TrackedDict for access tracking and conflict detection
+    _tracked_params = TrackedDict(raw_params, dependencies=dependencies)
 
     # Register atexit handler to save accessed params (once per process)
     if not _atexit_registered:
@@ -161,18 +172,111 @@ def get_params() -> dict[str, Any]:
     return _tracked_params
 
 
-def get_param(key: str, default: Any = None) -> Any:
+def _load_dependencies_for_conflict_check(
+    manager: ExperimentManager, experiment_id: str
+) -> dict[str, Experiment]:
+    """Load transitive dependencies as Experiment objects for conflict checking.
+
+    Args:
+        manager: ExperimentManager instance
+        experiment_id: Current experiment ID
+
+    Returns:
+        Dict mapping slot names to Experiment objects. For transitive deps
+        that aren't direct dependencies, uses 'transitive_{exp_id}' as slot name.
+    """
+    from .core.dependencies import DependencyResolver
+
+    try:
+        resolver = DependencyResolver(manager)
+
+        # Get direct dependencies with slot names
+        dep_data = manager.storage.dependency_storage.load_dependencies(
+            experiment_id, include_archived=True
+        )
+        direct_deps = dep_data.get("dependencies", {})
+
+        result: dict[str, Experiment] = {}
+
+        # Add direct dependencies
+        for slot, dep_id in direct_deps.items():
+            try:
+                result[slot] = Experiment(dep_id, manager)
+            except Exception:
+                continue
+
+        # Get transitive dependencies (those not directly referenced)
+        all_transitive = resolver.get_transitive_dependencies(
+            experiment_id, include_self=False, include_archived=True
+        )
+
+        # Add transitive deps that aren't direct deps
+        direct_ids = set(direct_deps.values())
+        for dep_id in all_transitive:
+            if dep_id not in direct_ids:
+                try:
+                    result[f"transitive_{dep_id}"] = Experiment(dep_id, manager)
+                except Exception:
+                    continue
+
+        return result
+    except Exception:
+        # If dependency loading fails, return empty dict (no conflict checking)
+        return {}
+
+
+def get_param(
+    key: str,
+    default: Any = None,
+    *,
+    from_dependency: str | None = None,
+    ignore_dependencies: bool = False,
+) -> Any:
     """Get a specific experiment parameter with support for dot notation.
 
     Access is tracked for later extraction of only used parameters.
 
+    When dependencies exist, accessing a parameter will check for conflicts
+    between the local config and all transitive dependencies. Use escape
+    hatches to bypass conflict detection when needed.
+
     Args:
         key: Parameter key to retrieve. Supports dot notation (e.g., "model.learning_rate")
         default: Default value if key not found
+        from_dependency: If specified, get value from this dependency slot only,
+            bypassing conflict detection. Useful when you explicitly want a
+            specific dependency's value.
+        ignore_dependencies: If True, skip conflict checking and use only the
+            local config value. Useful for deliberate parameter mismatches.
 
     Returns:
         Parameter value or default (default is returned in standalone mode)
+
+    Raises:
+        ParameterConflictError: If conflicting values exist and no escape hatch used
+        ValueError: If both from_dependency and ignore_dependencies are specified
+
+    Examples:
+        # Normal usage - raises ParameterConflictError if conflict exists
+        lr = yanex.get_param("learning_rate")
+
+        # Use value from specific dependency
+        lr = yanex.get_param("learning_rate", from_dependency="model")
+
+        # Use local config only (deliberate mismatch)
+        lr = yanex.get_param("learning_rate", ignore_dependencies=True)
     """
+    if from_dependency is not None and ignore_dependencies:
+        raise ValueError("Cannot specify both from_dependency and ignore_dependencies")
+
+    # Handle escape hatches
+    if from_dependency is not None:
+        return _get_param_from_dependency(key, from_dependency, default)
+
+    if ignore_dependencies:
+        return _get_local_param(key, default)
+
+    # Normal path - uses TrackedDict which performs conflict detection
     params = get_params()
 
     # Use a sentinel to distinguish "not found" from "found but None"
@@ -187,6 +291,60 @@ def get_param(key: str, default: Any = None) -> Any:
         return default
 
     return value
+
+
+def _get_local_param(key: str, default: Any = None) -> Any:
+    """Get parameter from local config only, bypassing conflict detection.
+
+    Args:
+        key: Parameter key (supports dot notation)
+        default: Default value if not found
+
+    Returns:
+        Local parameter value or default
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        return default
+
+    # Load raw params without TrackedDict wrapper to avoid conflict check
+    if hasattr(_local, "experiment_id"):
+        manager = _get_experiment_manager()
+        raw_params = manager.storage.load_config(experiment_id)
+    else:
+        raw_params = {}
+        for env_key, value in os.environ.items():
+            if env_key.startswith("YANEX_PARAM_"):
+                param_key = env_key[12:]
+                try:
+                    import json
+
+                    raw_params[param_key] = json.loads(value)
+                except (json.JSONDecodeError, ValueError):
+                    raw_params[param_key] = value
+
+    return get_nested_value(raw_params, key, default=default)
+
+
+def _get_param_from_dependency(key: str, slot: str, default: Any = None) -> Any:
+    """Get parameter from a specific dependency, bypassing conflict detection.
+
+    Args:
+        key: Parameter key (supports dot notation)
+        slot: Dependency slot name
+        default: Default value if not found
+
+    Returns:
+        Parameter value from the specified dependency, or default
+    """
+    dep = get_dependency(slot)
+    if dep is None:
+        print(
+            f"Warning: Dependency slot '{slot}' not found. Using default value: {default}"
+        )
+        return default
+
+    return dep.get_param(key, default=default)
 
 
 def get_cli_args() -> dict[str, Any]:

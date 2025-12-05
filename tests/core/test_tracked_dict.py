@@ -1,8 +1,12 @@
 """Tests for TrackedDict class."""
 
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock
 
-from yanex.core.tracked_dict import TrackedDict
+import pytest
+
+from yanex.core.tracked_dict import _MISSING, TrackedDict
+from yanex.utils.exceptions import ParameterConflictError
 
 
 class TestTrackedDictBasics:
@@ -336,3 +340,239 @@ class TestTrackedDictEdgeCases:
         assert "dict" in accessed
         assert "dict.nested" in accessed
         assert nested == "value"
+
+
+class TestTrackedDictConflictDetection:
+    """Test dependency conflict detection."""
+
+    def _create_mock_experiment(self, exp_id: str, params: dict) -> MagicMock:
+        """Create a mock Experiment with get_param() support."""
+        mock_exp = MagicMock()
+        mock_exp.id = exp_id
+
+        def mock_get_param(key, default=None):
+            """Navigate nested keys and return value or default."""
+            keys = key.split(".")
+            value = params
+            for k in keys:
+                if isinstance(value, dict) and k in value:
+                    value = value[k]
+                else:
+                    return default
+            return value
+
+        mock_exp.get_param = mock_get_param
+        return mock_exp
+
+    def test_no_conflict_without_dependencies(self):
+        """Test no conflict check when no dependencies."""
+        tracked = TrackedDict({"lr": 0.01})
+        # Should not raise
+        assert tracked["lr"] == 0.01
+
+    def test_no_conflict_same_value(self):
+        """Test no conflict when dependency has same value."""
+        mock_dep = self._create_mock_experiment("abc12345", {"lr": 0.01})
+        tracked = TrackedDict({"lr": 0.01}, dependencies={"model": mock_dep})
+
+        # Should not raise - values match
+        assert tracked["lr"] == 0.01
+
+    def test_no_conflict_dep_missing_param(self):
+        """Test no conflict when dependency doesn't have the param."""
+        mock_dep = self._create_mock_experiment("abc12345", {"other": "value"})
+        tracked = TrackedDict({"lr": 0.01}, dependencies={"model": mock_dep})
+
+        # Should not raise - only local has the param
+        assert tracked["lr"] == 0.01
+
+    def test_conflict_different_values(self):
+        """Test conflict raises error when values differ."""
+        mock_dep = self._create_mock_experiment("abc12345", {"lr": 0.001})
+        tracked = TrackedDict({"lr": 0.01}, dependencies={"model": mock_dep})
+
+        with pytest.raises(ParameterConflictError) as exc_info:
+            _ = tracked["lr"]
+
+        assert "lr" in str(exc_info.value)
+        assert "0.01" in str(exc_info.value)
+        assert "0.001" in str(exc_info.value)
+        assert "model" in str(exc_info.value)
+        assert "abc12345" in str(exc_info.value)
+
+    def test_conflict_multiple_deps_disagree(self):
+        """Test conflict when multiple deps have different values."""
+        mock_dep1 = self._create_mock_experiment("abc12345", {"lr": 0.001})
+        mock_dep2 = self._create_mock_experiment("def67890", {"lr": 0.0001})
+        tracked = TrackedDict(
+            {"lr": 0.01}, dependencies={"model1": mock_dep1, "model2": mock_dep2}
+        )
+
+        with pytest.raises(ParameterConflictError) as exc_info:
+            _ = tracked["lr"]
+
+        # Should mention all conflicting sources
+        error_str = str(exc_info.value)
+        assert "lr" in error_str
+        assert "config" in error_str
+
+    def test_conflict_deps_agree_but_differ_from_config(self):
+        """Test conflict when deps agree but differ from config."""
+        mock_dep1 = self._create_mock_experiment("abc12345", {"lr": 0.001})
+        mock_dep2 = self._create_mock_experiment("def67890", {"lr": 0.001})
+        tracked = TrackedDict(
+            {"lr": 0.01},  # Config differs
+            dependencies={"model1": mock_dep1, "model2": mock_dep2},
+        )
+
+        with pytest.raises(ParameterConflictError):
+            _ = tracked["lr"]
+
+    def test_no_conflict_all_sources_agree(self):
+        """Test no conflict when all sources have same value."""
+        mock_dep1 = self._create_mock_experiment("abc12345", {"lr": 0.01})
+        mock_dep2 = self._create_mock_experiment("def67890", {"lr": 0.01})
+        tracked = TrackedDict(
+            {"lr": 0.01}, dependencies={"model1": mock_dep1, "model2": mock_dep2}
+        )
+
+        # Should not raise - all agree
+        assert tracked["lr"] == 0.01
+
+    def test_nested_param_conflict(self):
+        """Test conflict detection for nested parameters."""
+        mock_dep = self._create_mock_experiment(
+            "abc12345", {"model": {"lr": 0.001, "layers": 3}}
+        )
+        tracked = TrackedDict(
+            {"model": {"lr": 0.01, "layers": 3}}, dependencies={"dep": mock_dep}
+        )
+
+        # layers matches, should not raise
+        assert tracked["model"]["layers"] == 3
+
+        # lr differs, should raise
+        with pytest.raises(ParameterConflictError) as exc_info:
+            _ = tracked["model"]["lr"]
+
+        assert "model.lr" in str(exc_info.value)
+
+    def test_nested_no_conflict_different_keys(self):
+        """Test no conflict when nested keys are different."""
+        mock_dep = self._create_mock_experiment(
+            "abc12345", {"model": {"batch_size": 32}}
+        )
+        tracked = TrackedDict({"model": {"lr": 0.01}}, dependencies={"dep": mock_dep})
+
+        # Different keys - no conflict
+        assert tracked["model"]["lr"] == 0.01
+
+    def test_complex_value_comparison_list(self):
+        """Test conflict detection with list values."""
+        mock_dep = self._create_mock_experiment("abc12345", {"layers": [64, 128, 256]})
+        tracked = TrackedDict(
+            {"layers": [64, 128, 256]}, dependencies={"dep": mock_dep}
+        )
+
+        # Same list - no conflict
+        assert tracked["layers"] == [64, 128, 256]
+
+    def test_complex_value_conflict_list(self):
+        """Test conflict with different list values."""
+        mock_dep = self._create_mock_experiment("abc12345", {"layers": [32, 64]})
+        tracked = TrackedDict({"layers": [64, 128]}, dependencies={"dep": mock_dep})
+
+        with pytest.raises(ParameterConflictError):
+            _ = tracked["layers"]
+
+    def test_complex_value_comparison_dict(self):
+        """Test conflict detection with dict values."""
+        mock_dep = self._create_mock_experiment(
+            "abc12345", {"optimizer": {"type": "adam", "lr": 0.01}}
+        )
+        tracked = TrackedDict(
+            {"optimizer": {"type": "adam", "lr": 0.01}}, dependencies={"dep": mock_dep}
+        )
+
+        # Same dict - no conflict
+        assert tracked["optimizer"] == {"type": "adam", "lr": 0.01}
+
+    def test_dependency_loading_error_ignored(self):
+        """Test that errors loading dependency params are gracefully handled."""
+        mock_dep = MagicMock()
+        mock_dep.id = "abc12345"
+        mock_dep.get_param.side_effect = Exception("Storage error")
+
+        tracked = TrackedDict({"lr": 0.01}, dependencies={"dep": mock_dep})
+
+        # Should not raise - dependency error is silently ignored
+        assert tracked["lr"] == 0.01
+
+    def test_root_shared_across_nested(self):
+        """Test that _root is correctly shared across nested TrackedDicts."""
+        mock_dep = self._create_mock_experiment("abc12345", {"model": {"lr": 0.001}})
+        tracked = TrackedDict({"model": {"lr": 0.01}}, dependencies={"dep": mock_dep})
+
+        # Access nested dict
+        model_dict = tracked["model"]
+
+        # Verify root is shared
+        assert model_dict._root is tracked
+        assert model_dict._dependencies is tracked._dependencies
+
+        # Conflict should still be detected via shared root
+        with pytest.raises(ParameterConflictError):
+            _ = model_dict["lr"]
+
+
+class TestMakeHashable:
+    """Test _make_hashable utility method."""
+
+    def test_simple_values(self):
+        """Test hashable conversion for simple types."""
+        assert TrackedDict._make_hashable(42) == 42
+        assert TrackedDict._make_hashable(3.14) == 3.14
+        assert TrackedDict._make_hashable("hello") == "hello"
+        assert TrackedDict._make_hashable(True) is True
+        assert TrackedDict._make_hashable(None) is None
+
+    def test_list_to_tuple(self):
+        """Test list converted to tuple."""
+        result = TrackedDict._make_hashable([1, 2, 3])
+        assert result == (1, 2, 3)
+        assert isinstance(result, tuple)
+
+    def test_nested_list(self):
+        """Test nested list conversion."""
+        result = TrackedDict._make_hashable([[1, 2], [3, 4]])
+        assert result == ((1, 2), (3, 4))
+
+    def test_dict_to_sorted_tuple(self):
+        """Test dict converted to sorted tuple of tuples."""
+        result = TrackedDict._make_hashable({"b": 2, "a": 1})
+        assert result == (("a", 1), ("b", 2))
+
+    def test_nested_dict(self):
+        """Test nested dict conversion."""
+        result = TrackedDict._make_hashable({"outer": {"inner": 1}})
+        assert result == (("outer", (("inner", 1),)),)
+
+    def test_set_to_frozenset(self):
+        """Test set converted to frozenset."""
+        result = TrackedDict._make_hashable({1, 2, 3})
+        assert result == frozenset({1, 2, 3})
+
+
+class TestMissingSentinel:
+    """Test _MISSING sentinel behavior."""
+
+    def test_missing_is_singleton(self):
+        """Test _MISSING is a consistent sentinel."""
+        from yanex.core.tracked_dict import _MISSING, _MissingSentinel
+
+        assert isinstance(_MISSING, _MissingSentinel)
+
+    def test_missing_not_equal_to_none(self):
+        """Test _MISSING is distinguishable from None."""
+        assert _MISSING is not None
+        assert _MISSING != None  # noqa: E711
