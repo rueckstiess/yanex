@@ -112,7 +112,7 @@ yanex get downstream abc12345
 yanex get lineage abc12345
 
 # Get just the IDs for scripting
-yanex get upstream abc12345 --ids-only
+yanex get upstream abc12345 -F sweep
 # → abc12345,parent1,parent2
 ```
 

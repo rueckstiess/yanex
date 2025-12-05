@@ -61,11 +61,18 @@ Exports comparison data directly to CSV without showing the interactive table.
 ### By Experiment IDs
 
 ```bash
-# Compare specific experiments
+# Compare specific experiments (positional arguments)
 yanex compare abc1234 def5678 ghi9012
 
 # Mix IDs and names (if unique)
 yanex compare baseline-model experiment-v2 abc1234
+
+# Using --ids filter (comma-separated)
+yanex compare --ids abc1234,def5678,ghi9012
+yanex compare -i a1,b2,c3
+
+# Useful for piping from other commands
+yanex compare --ids $(yanex get upstream d7742130 -F sweep)
 ```
 
 ### By Status
@@ -254,6 +261,7 @@ yanex compare -s failed --started-after "yesterday"
 
 All options have convenient short aliases:
 
+- `-i` for `--ids`
 - `-s` for `--status`
 - `-n` for `--name`
 - `-t` for `--tag`

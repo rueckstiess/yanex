@@ -1638,12 +1638,6 @@ class TestGetLineageValidation:
         assert result.exit_code != 0
         assert "--depth option only applies to lineage fields" in result.output
 
-    def test_ids_only_for_lineage_fields(self):
-        """Test that --ids-only only applies to lineage fields."""
-        result = self.runner.invoke(cli, ["get", "status", "nonexistent", "--ids-only"])
-        assert result.exit_code != 0
-        assert "--ids-only option only applies to lineage fields" in result.output
-
     def test_help_shows_lineage_fields(self):
         """Test that help shows lineage field documentation."""
         result = self.runner.invoke(cli, ["get", "--help"])
@@ -1658,7 +1652,7 @@ class TestGetLineageValidation:
         assert result.exit_code == 0
         assert "lineage visualization" in result.output.lower()
         assert "--depth" in result.output
-        assert "--ids-only" in result.output
+        assert "-F sweep" in result.output
 
 
 class TestGetLineageIntegration:
@@ -1698,8 +1692,8 @@ class TestGetLineageIntegration:
         # Should show parent experiment
         assert parent_id in result.output
 
-    def test_upstream_ids_only(self, per_test_experiments_dir, git_repo):
-        """Test upstream with --ids-only outputs comma-separated IDs."""
+    def test_upstream_sweep_format(self, per_test_experiments_dir, git_repo):
+        """Test upstream with --format sweep outputs comma-separated IDs."""
         from pathlib import Path
 
         from yanex.core.manager import ExperimentManager
@@ -1720,7 +1714,7 @@ class TestGetLineageIntegration:
 
         result = self.runner.invoke(
             cli,
-            ["get", "upstream", child_id, "--ids-only"],
+            ["get", "upstream", child_id, "--format", "sweep"],
         )
 
         assert result.exit_code == 0
@@ -1855,7 +1849,7 @@ class TestGetLineageIntegration:
         # Get lineage with depth=1 from D (last experiment)
         result = self.runner.invoke(
             cli,
-            ["get", "upstream", ids[3], "--depth", "1", "--ids-only"],
+            ["get", "upstream", ids[3], "--depth", "1", "--format", "sweep"],
         )
 
         assert result.exit_code == 0

@@ -234,6 +234,7 @@ def find_experiments_by_identifiers(
 
 def find_experiments_by_filters(
     filter_obj: ExperimentFilter,
+    ids: list[str] = None,
     status: str = None,
     name: str = None,
     tags: list[str] = None,
@@ -249,6 +250,7 @@ def find_experiments_by_filters(
 
     Args:
         filter_obj: ExperimentFilter instance
+        ids: Filter by specific experiment IDs
         status: Filter by status
         name: Filter by name pattern
         tags: Filter by tags
@@ -263,6 +265,7 @@ def find_experiments_by_filters(
         List of found experiments
     """
     return filter_obj.filter_experiments(
+        ids=ids,
         status=status,
         name=name,
         tags=tags,

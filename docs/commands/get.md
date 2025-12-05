@@ -292,18 +292,17 @@ Connected experiments render as a single DAG; disconnected experiments render as
 | Option | Description |
 |--------|-------------|
 | `--depth N` | Limit traversal depth (default: 10) |
-| `--ids-only` | Output comma-separated IDs only (for scripting) |
 
 ```bash
 # Limit to 3 levels of dependencies
 yanex get upstream abc123 --depth 3
 
-# Get just the IDs for scripting
-yanex get upstream abc123 --ids-only
+# Get just the IDs for scripting (sweep format)
+yanex get upstream abc123 -F sweep
 # Output: def67890,ghi11111
 
 # Use with bash substitution
-yanex delete $(yanex get upstream abc123 --ids-only)
+yanex delete $(yanex get upstream abc123 -F sweep)
 ```
 
 ### JSON Output for Lineage
@@ -426,7 +425,7 @@ Same as [`yanex list`](list.md):
 ### Lineage Options
 
 - `--depth N`: Limit dependency traversal depth (default: 10)
-- `--ids-only`: Output comma-separated experiment IDs only (for scripting)
+- `-F sweep`: Output comma-separated experiment IDs only (for scripting)
 
 ---
 

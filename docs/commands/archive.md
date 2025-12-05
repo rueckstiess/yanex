@@ -34,6 +34,7 @@ This is useful for managing completed experiments that you want to keep for refe
 
 ### Filter Options
 
+- `--ids`, `-i IDS`: Archive experiments by ID(s), comma-separated (e.g., `--ids a1,b2,c3`)
 - `--status`, `-s STATUS`: Archive experiments with specific status (completed, failed, cancelled, running, staged)
 - `--name`, `-n PATTERN`: Archive experiments matching name pattern (supports glob syntax like `*training*`)
 - `--tag`, `-t TAG`: Archive experiments with ALL specified tags (repeatable)

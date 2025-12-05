@@ -27,9 +27,7 @@ from .confirm import (
 @click.command("update")
 @click.argument("experiment_identifiers", nargs=-1)
 @format_options()
-@experiment_filter_options(
-    include_ids=False, include_archived=True, include_limit=False
-)
+@experiment_filter_options(include_ids=True, include_archived=True, include_limit=False)
 @click.option(
     "--set-name", "new_name", help="Set experiment name (use empty string to clear)"
 )
@@ -68,6 +66,7 @@ def update_experiments(
     json_flag: bool,
     csv_flag: bool,
     markdown_flag: bool,
+    ids: str | None,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -121,6 +120,11 @@ def update_experiments(
     fmt = resolve_output_format(output_format, json_flag, csv_flag, markdown_flag)
     filter_obj = ExperimentFilter()
 
+    # Parse comma-separated IDs into a list
+    ids_list = None
+    if ids:
+        ids_list = [id_str.strip() for id_str in ids.split(",") if id_str.strip()]
+
     # Validate that we have something to update
     if not any(
         [
@@ -139,6 +143,7 @@ def update_experiments(
     # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
+            ids_list,
             status,
             name_pattern is not None,
             tags,
@@ -171,6 +176,7 @@ def update_experiments(
         # Update experiments by filter criteria
         experiments = find_experiments_by_filters(
             filter_obj,
+            ids=ids_list,
             status=status,
             name=name_pattern,
             tags=list(tags) if tags else None,
