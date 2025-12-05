@@ -130,7 +130,7 @@ METADATA_FIELDS = {
 # Fields that support --head/--tail options (returns first/last N lines)
 HEAD_TAIL_SUPPORTED_FIELDS = {"stdout", "stderr"}
 
-# Fields that display lineage graphs (support --depth and --ids-only)
+# Fields that display lineage graphs (support --depth)
 LINEAGE_FIELDS = {"upstream", "downstream", "lineage"}
 
 
@@ -515,7 +515,6 @@ def _handle_lineage_field(
     exp_ids: list[str],
     field: str,
     depth: int,
-    ids_only: bool,
     fmt: OutputFormat,
 ) -> None:
     """Handle lineage field output (upstream, downstream, lineage).
@@ -524,7 +523,6 @@ def _handle_lineage_field(
         exp_ids: List of experiment IDs to get lineage for.
         field: One of "upstream", "downstream", or "lineage".
         depth: Maximum traversal depth.
-        ids_only: If True, output only IDs comma-separated.
         fmt: Output format.
     """
     import os
@@ -559,12 +557,6 @@ def _handle_lineage_field(
         graph = dep_graph.get_multi_downstream(exp_ids, max_depth=depth)
     else:  # lineage
         graph = dep_graph.get_multi_lineage(exp_ids, max_depth=depth)
-
-    # Handle --ids-only output
-    if ids_only:
-        ids = get_lineage_ids(graph)
-        click.echo(",".join(ids), nl=False)
-        return
 
     # Handle different output formats
     if fmt == OutputFormat.JSON:
@@ -646,11 +638,6 @@ def _handle_lineage_field(
     default=10,
     help="Maximum depth for lineage traversal (default: 10, only for lineage fields)",
 )
-@click.option(
-    "--ids-only",
-    is_flag=True,
-    help="Output only experiment IDs comma-separated (only for lineage fields)",
-)
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
 def get_field(
@@ -658,7 +645,7 @@ def get_field(
     experiment_id: str | None,
     field: str,
     # Filter options from decorator
-    ids: tuple | None,
+    ids: str | None,
     status: str | None,
     name_pattern: str | None,
     script_pattern: str | None,
@@ -681,7 +668,6 @@ def get_field(
     head: int | None,
     follow: bool,
     depth: int,
-    ids_only: bool,
 ):
     """
     Get a specific field value from experiment(s).
@@ -752,7 +738,7 @@ def get_field(
       yanex get downstream abc123          Show dependents as DAG
       yanex get lineage abc123             Show full dependency graph
       yanex get lineage abc123 --depth 3   Limit traversal depth
-      yanex get lineage abc123 --ids-only  Get IDs only (for scripting)
+      yanex get lineage abc123 -F sweep    Get IDs only (for scripting)
       yanex get lineage abc123 -F json     JSON format (nodes + edges)
 
     \b
@@ -815,17 +801,16 @@ def get_field(
             f"--depth option only applies to lineage fields (upstream, downstream, lineage), not '{field}'"
         )
 
-    # Validate --ids-only only applies to lineage fields
-    if ids_only and field not in LINEAGE_FIELDS:
-        raise click.ClickException(
-            f"--ids-only option only applies to lineage fields (upstream, downstream, lineage), not '{field}'"
-        )
+    # Parse comma-separated IDs into a list
+    ids_list = None
+    if ids:
+        ids_list = [id_str.strip() for id_str in ids.split(",") if id_str.strip()]
 
     # Determine if we have filters or a single experiment
     # Note: name_pattern="" is a valid filter for unnamed experiments
     has_filters = any(
         [
-            ids,
+            ids_list,
             status,
             name_pattern is not None,
             script_pattern,
@@ -880,7 +865,7 @@ def get_field(
 
         # Handle lineage fields (upstream, downstream, lineage)
         if field in LINEAGE_FIELDS:
-            _handle_lineage_field([exp.id], field, depth, ids_only, fmt)
+            _handle_lineage_field([exp.id], field, depth, fmt)
             return
 
         value, found = resolve_field_value(exp, field, default_value, tail, head)
@@ -895,8 +880,8 @@ def get_field(
     # Multi-experiment mode with filters
     # Build filter kwargs
     filter_kwargs = {}
-    if ids:
-        filter_kwargs["ids"] = list(ids)
+    if ids_list:
+        filter_kwargs["ids"] = ids_list
     if status:
         filter_kwargs["status"] = status
     if name_pattern is not None:
@@ -928,7 +913,7 @@ def get_field(
     # Handle lineage fields with multiple targets
     if field in LINEAGE_FIELDS:
         target_ids = [exp.id for exp in experiments]
-        _handle_lineage_field(target_ids, field, depth, ids_only, fmt)
+        _handle_lineage_field(target_ids, field, depth, fmt)
         return
 
     # Collect all values

@@ -88,8 +88,8 @@ def experiment_filter_options(
         if include_ids:
             func = click.option(
                 "--ids",
-                multiple=True,
-                help="Filter by specific experiment IDs (repeatable for OR logic)",
+                "-i",
+                help="Filter by experiment ID(s). Accepts a single ID or comma-separated list (e.g., 'abc123' or 'a1,b2,c3')",
             )(func)
 
         if include_archived:
@@ -115,7 +115,7 @@ def experiment_filter_options(
 
 
 def validate_filter_arguments(
-    ids: tuple | None = None,
+    ids: str | None = None,
     status: str | None = None,
     name_pattern: str | None = None,
     tags: tuple | None = None,
@@ -130,7 +130,7 @@ def validate_filter_arguments(
     Validate and normalize filter arguments from CLI.
 
     Args:
-        ids: Tuple of experiment IDs from Click
+        ids: Comma-separated experiment IDs string (e.g., 'a1,b2,c3')
         status: Status string from Click
         name_pattern: Name pattern string
         tags: Tuple of tags from Click
@@ -149,9 +149,11 @@ def validate_filter_arguments(
     """
     normalized = {}
 
-    # Convert Click tuples to lists and handle empty cases
-    if ids and len(ids) > 0:
-        normalized["ids"] = list(ids)
+    # Parse comma-separated IDs into a list
+    if ids:
+        id_list = [id_str.strip() for id_str in ids.split(",") if id_str.strip()]
+        if id_list:
+            normalized["ids"] = id_list
 
     if status:
         normalized["status"] = status

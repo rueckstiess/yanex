@@ -209,7 +209,14 @@ See [open command documentation](commands/open.md) for platform details.
 
 ### Filtering Experiments
 
-All list-based commands (`list`, `compare`, `archive`, `delete`) support consistent filtering:
+All list-based commands (`list`, `compare`, `archive`, `delete`, `update`) support consistent filtering:
+
+**By Experiment IDs:**
+```bash
+--ids abc123           # or: -i abc123
+--ids abc123,def456    # Multiple IDs (comma-separated)
+--ids $(yanex get upstream d7742130 -F sweep)  # Dynamic from other commands
+```
 
 **By Status:**
 ```bash

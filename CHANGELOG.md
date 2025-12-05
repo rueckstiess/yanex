@@ -66,7 +66,7 @@ This beta release includes significant new features: a comprehensive dependency 
   - `yanex get lineage <exp>` - Show both directions combined
   - Multi-experiment support: filter multiple experiments to visualize connected/disconnected graphs
   - `--depth N` option to limit traversal depth
-  - `--ids-only` flag for scripting with comma-separated IDs
+  - `-F sweep` format for scripting with comma-separated IDs
 
 - **Parameter Access Tracking**: Store only parameters actually used by scripts
   - `TrackedDict` wrapper monitors parameter access patterns

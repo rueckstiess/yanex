@@ -64,6 +64,7 @@ yanex list [OPTIONS]
 
 | Option | Short | Description |
 |--------|-------|-------------|
+| `--ids IDS` | `-i` | Filter by experiment ID(s), comma-separated (e.g., `a1,b2,c3`) |
 | `--status STATUS` | `-s` | Filter by status: running, completed, failed, cancelled, staged |
 | `--name PATTERN` | `-n` | Filter by name pattern (glob) |
 | `--tag TAG` | `-t` | Filter by tag (repeatable, AND logic) |
@@ -81,6 +82,7 @@ yanex list [OPTIONS]
 yanex list -s completed -n "yelp-2-*"
 yanex list -t training -t sweep --started-after "1 week ago"
 yanex list -s failed -l 10
+yanex list --ids abc123,def456,ghi789  # List specific experiments by ID
 ```
 
 ## yanex get
@@ -103,7 +105,6 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `--tail N` | | Return last N lines (stdout/stderr only) |
 | `--follow` | `-f` | Follow output in real-time (stdout/stderr, single experiment only) |
 | `--depth N` | | Limit dependency traversal depth (lineage fields, default: 10) |
-| `--ids-only` | | Output comma-separated IDs only (lineage fields, for scripting) |
 
 ### Field Paths
 
@@ -160,7 +161,7 @@ yanex get upstream abc12345            # Show dependency graph (what this depend
 yanex get downstream abc12345          # Show dependent graph (what depends on this)
 yanex get lineage abc12345             # Show full lineage (both directions)
 yanex get upstream abc12345 --depth 3  # Limit to 3 levels of dependencies
-yanex get upstream abc12345 --ids-only # Get just dependency IDs (for scripting)
+yanex get upstream abc12345 -F sweep   # Get just dependency IDs (for scripting)
 ```
 
 ### Command Reconstruction
@@ -279,7 +280,7 @@ Legend: `<*>` = target experiment, `<slot>` = dependency slot, `✓`/`✗`/`●`
 
 ```bash
 # Get dependency IDs for scripting
-yanex get upstream abc12345 --ids-only
+yanex get upstream abc12345 -F sweep
 # → def67890,ghi11111
 
 # JSON output for programmatic use
@@ -318,11 +319,19 @@ yanex compare [OPTIONS]
 
 | Option | Short | Description |
 |--------|-------|-------------|
+| `--ids IDS` | `-i` | Filter by experiment ID(s), comma-separated (e.g., `a1,b2,c3`) |
 | `--only-different` | | Show only differing columns |
 | `--tag TAG` | `-t` | Filter by tag |
 | `--status STATUS` | `-s` | Filter by status |
 | `--name PATTERN` | `-n` | Filter by name |
 | `--format FORMAT` | `-F` | Output format: default, json, csv, markdown |
+
+### Examples
+
+```bash
+yanex compare --ids abc123,def456,ghi789   # Compare specific experiments
+yanex compare -s completed -n "train-*"    # Compare matching experiments
+```
 
 ## yanex archive / unarchive
 

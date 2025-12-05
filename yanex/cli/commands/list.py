@@ -41,7 +41,7 @@ LIST_HEADERS = {
     help="Show all experiments (overrides default limit of 10)",
 )
 @format_options()
-@experiment_filter_options(include_ids=False, include_archived=True, include_limit=True)
+@experiment_filter_options(include_ids=True, include_archived=True, include_limit=True)
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
 def list_experiments(
@@ -52,6 +52,7 @@ def list_experiments(
     csv_flag: bool,
     markdown_flag: bool,
     limit: int | None,
+    ids: str | None,
     status: str | None,
     name_pattern: str | None,
     tags: tuple,
@@ -122,8 +123,15 @@ def list_experiments(
             )
         )
 
+        # Parse comma-separated IDs into a list
+        ids_list = None
+        if ids:
+            ids_list = [id_str.strip() for id_str in ids.split(",") if id_str.strip()]
+
         if verbose:
             click.echo("Filtering experiments...")
+            if ids_list:
+                click.echo(f"  IDs: {', '.join(ids_list)}")
             if status:
                 click.echo(f"  Status: {status}")
             if name_pattern:
@@ -149,6 +157,7 @@ def list_experiments(
         force_all = show_all or archived
 
         experiments = experiment_filter.filter_experiments(
+            ids=ids_list,
             status=status,
             name=name_pattern,
             tags=list(tags) if tags else None,

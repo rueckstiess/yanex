@@ -36,6 +36,7 @@ Unlike archiving, deleted experiments cannot be recovered. Use this command only
 
 ### Filter Options
 
+- `--ids`, `-i IDS`: Delete experiments by ID(s), comma-separated (e.g., `--ids a1,b2,c3`)
 - `--status`, `-s STATUS`: Delete experiments with specific status (completed, failed, cancelled, running, staged)
 - `--name`, `-n PATTERN`: Delete experiments matching name pattern (supports glob syntax like `*test*`)
 - `--tag`, `-t TAG`: Delete experiments with ALL specified tags (repeatable)

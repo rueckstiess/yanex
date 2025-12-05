@@ -127,14 +127,29 @@ class TestValidateFilterArguments:
         result = validate_filter_arguments()
         assert result == {}
 
-    def test_validate_converts_ids_tuple_to_list(self):
-        """Test that IDs tuple is converted to list."""
-        result = validate_filter_arguments(ids=("exp1", "exp2", "exp3"))
+    def test_validate_parses_single_id(self):
+        """Test that a single ID string is parsed to a list."""
+        result = validate_filter_arguments(ids="exp1")
+        assert result == {"ids": ["exp1"]}
+
+    def test_validate_parses_comma_separated_ids(self):
+        """Test that comma-separated IDs are parsed to a list."""
+        result = validate_filter_arguments(ids="exp1,exp2,exp3")
         assert result == {"ids": ["exp1", "exp2", "exp3"]}
 
-    def test_validate_ignores_empty_ids_tuple(self):
-        """Test that empty IDs tuple is ignored."""
-        result = validate_filter_arguments(ids=())
+    def test_validate_parses_comma_separated_ids_with_spaces(self):
+        """Test that comma-separated IDs with spaces are parsed correctly."""
+        result = validate_filter_arguments(ids="exp1, exp2 , exp3")
+        assert result == {"ids": ["exp1", "exp2", "exp3"]}
+
+    def test_validate_ignores_empty_ids_string(self):
+        """Test that empty IDs string is ignored."""
+        result = validate_filter_arguments(ids="")
+        assert result == {}
+
+    def test_validate_ignores_none_ids(self):
+        """Test that None IDs is ignored."""
+        result = validate_filter_arguments(ids=None)
         assert result == {}
 
     def test_validate_preserves_status(self):
@@ -216,7 +231,7 @@ class TestValidateFilterArguments:
     def test_validate_combined_arguments(self):
         """Test validation with multiple arguments."""
         result = validate_filter_arguments(
-            ids=("exp1", "exp2"),
+            ids="exp1,exp2",
             status="completed",
             name_pattern="test-*",
             tags=("ml", "training"),

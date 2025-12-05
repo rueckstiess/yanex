@@ -68,6 +68,31 @@ yanex list -t production
 yanex list -t baseline -t validated
 ```
 
+### By Experiment IDs
+
+Filter using `--ids` or `-i`:
+
+```bash
+# Single ID
+yanex list --ids abc12345
+
+# Multiple IDs (comma-separated)
+yanex list --ids abc123,def456,ghi789
+yanex list -i a1,b2,c3
+
+# Combined with other filters
+yanex list --ids abc123,def456 -s completed
+```
+
+This is particularly useful for:
+- Viewing a specific set of experiments from a sweep
+- Filtering based on output from other commands (e.g., lineage queries)
+
+```bash
+# List all upstream dependencies of an experiment
+yanex list --ids $(yanex get upstream d7742130 -F sweep)
+```
+
 ### By Time Range
 
 ```bash
@@ -147,6 +172,7 @@ yanex list -F markdown
 
 All options have convenient short aliases:
 
+- `-i` for `--ids`
 - `-s` for `--status`
 - `-n` for `--name`
 - `-t` for `--tag`
