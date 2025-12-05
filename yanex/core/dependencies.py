@@ -1,7 +1,7 @@
 """Dependency resolution and validation for experiment workflows."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from graphlib import CycleError, TopologicalSorter
 from typing import TYPE_CHECKING, Any
 
@@ -47,7 +47,7 @@ class DependencyStorage:
 
         data = {
             "dependencies": dependencies,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "metadata": metadata or {},
         }
 

@@ -1,5 +1,9 @@
 # Yanex - Yet Another Experiment Tracker
 
+[![PyPI version](https://img.shields.io/pypi/v/yanex)](https://pypi.org/project/yanex/)
+[![Python versions](https://img.shields.io/pypi/pyversions/yanex)](https://pypi.org/project/yanex/)
+[![License](https://img.shields.io/pypi/l/yanex)](https://github.com/rueckstiess/yanex/blob/main/LICENSE)
+
 A lightweight, Git-aware experiment tracking system for Python that makes reproducible research effortless.
 
 ## Why Yanex?
