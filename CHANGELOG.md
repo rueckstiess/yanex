@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Minimum Python version increased to 3.11** (dropped Python 3.10 support)
+- Added Python 3.12 to officially supported versions
+- Added README badges for PyPI version, Python versions, and license
+
 ## [0.5.0] - 2025-12-05
 
 This beta release includes significant new features: a comprehensive dependency tracking system for multi-stage workflows, an AI-friendly `yanex get` command with lineage visualization, a completely redesigned artifact API, and parameter access tracking.
