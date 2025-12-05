@@ -2,7 +2,7 @@
 Tests for the unified experiment filtering system.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -271,9 +271,7 @@ class TestExperimentFilter:
         """Test time-based filtering."""
 
         # Get current time for relative comparisons
-        now = datetime.now(timezone.utc).replace(
-            microsecond=0
-        )  # Use UTC timezone-aware time
+        now = datetime.now(UTC).replace(microsecond=0)  # Use UTC timezone-aware time
         past = now - timedelta(hours=1)
         # future = now + timedelta(hours=1)  # Not used in tests
 

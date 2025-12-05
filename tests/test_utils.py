@@ -7,7 +7,7 @@ across test files while maintaining test isolation and safety.
 
 import json
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -164,7 +164,7 @@ class TestDataFactory:
         """
         result = {
             "step": step,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         result.update(metrics)
         return result

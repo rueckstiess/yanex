@@ -2,7 +2,7 @@
 Tests for yanex CLI filtering functionality.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
@@ -228,13 +228,13 @@ class TestExperimentFilter:
             # started_after 10:30 should match 11:00 and 12:00
             (
                 "started_after",
-                datetime(2025, 6, 28, 10, 30, 0, tzinfo=timezone.utc),
+                datetime(2025, 6, 28, 10, 30, 0, tzinfo=UTC),
                 ["exp67890", "exp11111"],
             ),
             # started_before 10:30 should match 10:00, 15:00 on 27th, and 09:00 on 26th
             (
                 "started_before",
-                datetime(2025, 6, 28, 10, 30, 0, tzinfo=timezone.utc),
+                datetime(2025, 6, 28, 10, 30, 0, tzinfo=UTC),
                 ["exp12345", "exp22222", "exp33333"],
             ),
         ],
@@ -335,7 +335,7 @@ class TestExperimentFilter:
         )
 
         # Test with timezone-aware comparison time
-        after_time = datetime(2025, 6, 28, 9, 30, 0, tzinfo=timezone.utc)
+        after_time = datetime(2025, 6, 28, 9, 30, 0, tzinfo=UTC)
 
         with patch.object(
             self.filter, "_load_all_experiments", return_value=[exp_no_tz]
@@ -388,7 +388,7 @@ class TestTimeUtils:
             (
                 "today",
                 lambda: datetime.combine(
-                    datetime.now().date(), datetime.min.time(), timezone.utc
+                    datetime.now().date(), datetime.min.time(), UTC
                 ),
             ),
             (
@@ -396,7 +396,7 @@ class TestTimeUtils:
                 lambda: datetime.combine(
                     datetime.now().date() - timedelta(days=1),
                     datetime.min.time(),
-                    timezone.utc,
+                    UTC,
                 ),
             ),
             (
@@ -404,13 +404,13 @@ class TestTimeUtils:
                 lambda: datetime.combine(
                     datetime.now().date() + timedelta(days=1),
                     datetime.min.time(),
-                    timezone.utc,
+                    UTC,
                 ),
             ),
             (
                 "TODAY",
                 lambda: datetime.combine(
-                    datetime.now().date(), datetime.min.time(), timezone.utc
+                    datetime.now().date(), datetime.min.time(), UTC
                 ),
             ),  # Case insensitive
         ],
@@ -434,6 +434,6 @@ class TestTimeUtils:
         assert result.tzinfo is not None
 
         # Should be approximately 1 hour ago (within 5 minutes tolerance)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         time_diff = abs((now - result).total_seconds() - 3600)  # 1 hour = 3600 seconds
         assert time_diff < 300  # 5 minutes tolerance

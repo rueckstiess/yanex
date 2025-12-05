@@ -1,6 +1,6 @@
 """Tests for datetime utilities module."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from yanex.utils.datetime_utils import (
     calculate_duration_seconds,
@@ -18,7 +18,7 @@ class TestParseIsoTimestamp:
     def test_parse_z_suffix(self):
         """Test parsing timestamp with Z suffix."""
         result = parse_iso_timestamp("2023-01-01T12:00:00Z")
-        expected = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        expected = datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC)
         assert result == expected
 
     def test_parse_timezone_offset(self):
@@ -34,7 +34,7 @@ class TestParseIsoTimestamp:
     def test_parse_naive_timestamp(self):
         """Test parsing timestamp without timezone (assumes UTC)."""
         result = parse_iso_timestamp("2023-01-01T12:00:00")
-        expected = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        expected = datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC)
         assert result == expected
 
     def test_parse_invalid_timestamp(self):
@@ -56,14 +56,14 @@ class TestEnsureTimezoneAware:
         """Test that naive datetime gets UTC timezone."""
         naive_dt = datetime(2023, 1, 1, 12, 0, 0)
         result = ensure_timezone_aware(naive_dt)
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
     def test_aware_datetime_unchanged(self):
         """Test that timezone-aware datetime is unchanged."""
-        aware_dt = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        aware_dt = datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC)
         result = ensure_timezone_aware(aware_dt)
         assert result == aware_dt
-        assert result.tzinfo == timezone.utc
+        assert result.tzinfo == UTC
 
 
 class TestCalculateDurationSeconds:
@@ -101,21 +101,21 @@ class TestFormatDuration:
 
     def test_format_short_duration(self):
         """Test formatting short duration."""
-        start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2023, 1, 1, 12, 0, 30, tzinfo=timezone.utc)
+        start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC)
+        end = datetime(2023, 1, 1, 12, 0, 30, tzinfo=UTC)
         result = format_duration(start, end)
         assert result == "30s"
 
     def test_format_medium_duration(self):
         """Test formatting medium duration."""
-        start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2023, 1, 1, 12, 2, 30, tzinfo=timezone.utc)
+        start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC)
+        end = datetime(2023, 1, 1, 12, 2, 30, tzinfo=UTC)
         result = format_duration(start, end)
         assert result == "2m 30s"
 
     def test_format_ongoing_duration(self):
         """Test formatting ongoing duration (no end time)."""
-        start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        start = datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC)
         result = format_duration(start, None)
         assert "+" in result
 
@@ -128,12 +128,12 @@ class TestFormatRelativeTime:
         # Create a datetime that's just a few seconds ago
         import datetime as dt
 
-        recent = datetime.now(timezone.utc) - dt.timedelta(seconds=30)
+        recent = datetime.now(dt.UTC) - dt.timedelta(seconds=30)
         result = format_relative_time(recent)
         assert result == "just now"
 
     def test_format_old_time(self):
         """Test formatting old time shows date."""
-        old_time = datetime(2020, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        old_time = datetime(2020, 1, 1, 12, 0, 0, tzinfo=UTC)
         result = format_relative_time(old_time)
         assert "2020-01-01" in result

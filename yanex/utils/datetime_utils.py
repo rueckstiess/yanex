@@ -1,6 +1,6 @@
 """Centralized date/time parsing and formatting utilities for Yanex."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 
 def parse_iso_timestamp(timestamp: str) -> datetime | None:
@@ -48,15 +48,13 @@ def parse_iso_timestamp(timestamp: str) -> datetime | None:
         # No timezone info - assume UTC for consistency
         else:
             naive_dt = datetime.fromisoformat(timestamp)
-            return naive_dt.replace(tzinfo=timezone.utc)
+            return naive_dt.replace(tzinfo=UTC)
 
     except (ValueError, TypeError):
         return None
 
 
-def ensure_timezone_aware(
-    dt: datetime, default_tz: timezone = timezone.utc
-) -> datetime:
+def ensure_timezone_aware(dt: datetime, default_tz: timezone = UTC) -> datetime:
     """Ensure datetime object has timezone information.
 
     Args:
@@ -96,7 +94,7 @@ def format_duration(start_time: datetime, end_time: datetime | None = None) -> s
         "+ 5m 12s"
     """
     if end_time is None:
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         is_ongoing = True
     else:
         is_ongoing = False
@@ -152,7 +150,7 @@ def format_relative_time(dt: datetime) -> str:
         >>> format_relative_time(old_time)
         "2023-01-01"  # Shows actual date for old times
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Ensure dt has timezone info
     dt = ensure_timezone_aware(dt)

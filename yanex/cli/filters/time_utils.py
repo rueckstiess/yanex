@@ -2,7 +2,7 @@
 Time parsing utilities for human-readable date specifications.
 """
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 
 import dateparser
 
@@ -43,13 +43,13 @@ def parse_time_spec(time_spec: str) -> datetime | None:
         # Handle special cases for relative day terms to return beginning of day
         if time_spec in ["today"]:
             today = date.today()
-            return datetime.combine(today, time.min, tzinfo=timezone.utc)
+            return datetime.combine(today, time.min, tzinfo=UTC)
         elif time_spec in ["yesterday"]:
             yesterday = date.today() - timedelta(days=1)
-            return datetime.combine(yesterday, time.min, tzinfo=timezone.utc)
+            return datetime.combine(yesterday, time.min, tzinfo=UTC)
         elif time_spec in ["tomorrow"]:
             tomorrow = date.today() + timedelta(days=1)
-            return datetime.combine(tomorrow, time.min, tzinfo=timezone.utc)
+            return datetime.combine(tomorrow, time.min, tzinfo=UTC)
 
         # Use dateparser to handle natural language and various formats
         parsed_dt = dateparser.parse(
@@ -69,7 +69,7 @@ def parse_time_spec(time_spec: str) -> datetime | None:
         if parsed_dt.tzinfo is None:
             # Add local timezone if not present
 
-            local_tz = timezone.utc.replace(tzinfo=timezone.utc).astimezone().tzinfo
+            local_tz = UTC.replace(tzinfo=UTC).astimezone().tzinfo
             parsed_dt = parsed_dt.replace(tzinfo=local_tz)
 
         return parsed_dt

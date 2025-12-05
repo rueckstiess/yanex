@@ -1,6 +1,6 @@
 """Tests for CLI error handling utilities."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import click
@@ -95,7 +95,7 @@ class TestCLIErrorHandler:
     @patch("yanex.cli.error_handling.parse_time_spec")
     def test_parse_time_filters_valid_specs(self, mock_parse):
         """Test parsing with valid time specifications."""
-        mock_dt = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        mock_dt = datetime(2023, 1, 1, tzinfo=UTC)
         mock_parse.return_value = mock_dt
 
         result = CLIErrorHandler.parse_time_filters(
@@ -135,7 +135,7 @@ class TestCLIErrorHandler:
         self, mock_parse, time_specs, expected_call_count
     ):
         """Test that parse_time_spec is called the correct number of times."""
-        mock_dt = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        mock_dt = datetime(2023, 1, 1, tzinfo=UTC)
         mock_parse.return_value = mock_dt
 
         CLIErrorHandler.parse_time_filters(**time_specs)

@@ -7,6 +7,8 @@ These formatters are used by CLI commands to ensure consistent output across
 all yanex commands when using the default output format.
 """
 
+from datetime import UTC
+
 from rich.text import Text
 
 from yanex.utils.datetime_utils import (
@@ -233,7 +235,7 @@ def format_experiment_duration(experiment: dict) -> Text:
     Returns:
         Styled Text object with duration.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     started_at = experiment.get("started_at")
     status = experiment.get("status", "")
@@ -261,7 +263,7 @@ def format_experiment_duration(experiment: dict) -> Text:
         pass
     else:
         # For non-running experiments without end time, use current time
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
 
     duration_str = format_duration(start_time, end_time)
 

@@ -3,7 +3,7 @@ Tests for yanex CLI show command functionality.
 """
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -160,7 +160,7 @@ class TestFormatterHelperMethods:
 
         # Mock the current time to be 5 minutes later
         with patch("yanex.cli.filters.time_utils.datetime") as mock_datetime:
-            mock_now = datetime(2025, 6, 28, 15, 35, 0, tzinfo=timezone.utc)
+            mock_now = datetime(2025, 6, 28, 15, 35, 0, tzinfo=UTC)
             mock_datetime.now.return_value = mock_now
             mock_datetime.fromisoformat = datetime.fromisoformat
 
