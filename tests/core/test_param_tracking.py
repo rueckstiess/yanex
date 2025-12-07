@@ -257,3 +257,94 @@ class TestDeduplicatePaths:
         paths = {"model", "model.train", "model.train.lr", "seed"}
         result = deduplicate_paths(paths)
         assert result == {"model.train.lr", "seed"}
+
+
+class TestExtractAccessedParamsWithMutations:
+    """Test extract_accessed_params handles TrackedDict mutations.
+
+    These tests verify that values are extracted from the original config,
+    not from the TrackedDict which may have been mutated by user code.
+    """
+
+    def test_pop_removes_value_but_still_extracted(self):
+        """Test that popped values are still extracted from original config."""
+        import copy
+
+        original_config = {"model": {"lr": 0.01, "preset": "small"}}
+        tracked = TrackedDict(copy.deepcopy(original_config))
+
+        # Access and pop preset
+        _ = tracked["model"]["preset"]
+        tracked["model"].pop("preset")  # Value now gone from TrackedDict
+
+        result = extract_accessed_params(tracked, original_config=original_config)
+        # Should still have preset because we accessed it
+        assert result == {"model": {"preset": "small"}}
+
+    def test_del_removes_value_but_still_extracted(self):
+        """Test that deleted values are still extracted from original config."""
+        import copy
+
+        original_config = {"a": 1, "b": 2}
+        tracked = TrackedDict(copy.deepcopy(original_config))
+
+        _ = tracked["a"]
+        del tracked["a"]  # Value now gone from TrackedDict
+
+        result = extract_accessed_params(tracked, original_config=original_config)
+        assert result == {"a": 1}
+
+    def test_mutated_value_uses_original(self):
+        """Test that mutated values use original from config, not current."""
+        import copy
+
+        original_config = {"seed": 42}
+        tracked = TrackedDict(copy.deepcopy(original_config))
+
+        _ = tracked["seed"]
+        tracked["seed"] = 999  # Changed after access
+
+        result = extract_accessed_params(tracked, original_config=original_config)
+        # Should use original value, not mutated
+        assert result == {"seed": 42}
+
+    def test_nested_pop_preserves_sibling_values(self):
+        """Test that popping one nested value doesn't affect siblings."""
+        import copy
+
+        original_config = {"model": {"lr": 0.01, "preset": "small", "layers": 5}}
+        tracked = TrackedDict(copy.deepcopy(original_config))
+
+        # Access lr and preset, then pop preset
+        _ = tracked["model"]["lr"]
+        _ = tracked["model"]["preset"]
+        tracked["model"].pop("preset")
+
+        result = extract_accessed_params(tracked, original_config=original_config)
+        # Should have both lr and preset (from original config)
+        assert result == {"model": {"lr": 0.01, "preset": "small"}}
+
+    def test_clear_nested_dict_still_extracts_from_original(self):
+        """Test that clearing a nested dict still extracts accessed values."""
+        import copy
+
+        original_config = {"model": {"lr": 0.01, "epochs": 100}}
+        tracked = TrackedDict(copy.deepcopy(original_config))
+
+        # Access values then clear the nested dict
+        _ = tracked["model"]["lr"]
+        _ = tracked["model"]["epochs"]
+        tracked["model"].clear()
+
+        result = extract_accessed_params(tracked, original_config=original_config)
+        # Should have all accessed values from original
+        assert result == {"model": {"lr": 0.01, "epochs": 100}}
+
+    def test_fallback_to_tracked_dict_when_no_original(self):
+        """Test backward compatibility when original_config is not provided."""
+        tracked = TrackedDict({"a": 1, "b": 2})
+        _ = tracked["a"]
+
+        # Without original_config, should fall back to TrackedDict values
+        result = extract_accessed_params(tracked)
+        assert result == {"a": 1}

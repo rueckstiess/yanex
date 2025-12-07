@@ -42,8 +42,7 @@ class TrackedDict(dict):
         _accessed_paths: Set of full path strings that have been accessed
         _path: Current path prefix for nested tracking
         _lock: Thread lock for safe concurrent access
-        _dependencies: Dict mapping slot names to Experiment objects (root only)
-        _root: Reference to root TrackedDict for sharing state
+        _dependencies: Dict mapping slot names to Experiment objects
 
     Example:
         >>> config = {"model": {"lr": 0.01, "layers": 5}, "seed": 42}
@@ -59,7 +58,9 @@ class TrackedDict(dict):
         path: str = "",
         *,
         dependencies: dict[str, "Experiment"] | None = None,
-        _root: "TrackedDict | None" = None,
+        _shared_paths: set[str] | None = None,
+        _shared_lock: Any = None,
+        _shared_deps: dict[str, "Experiment"] | None = None,
     ) -> None:
         """Initialize TrackedDict with optional data and path.
 
@@ -67,25 +68,25 @@ class TrackedDict(dict):
             data: Dictionary to wrap and track. Defaults to empty dict.
             path: Path prefix for nested tracking (used internally for recursion)
             dependencies: Dict mapping slot names to Experiment objects.
-                         Only set on root TrackedDict, nested dicts share via _root.
-            _root: Reference to root TrackedDict (used internally for nested dicts)
+                         Only set on root TrackedDict.
+            _shared_paths: Shared accessed paths set (internal, for nested dicts)
+            _shared_lock: Shared threading lock (internal, for nested dicts)
+            _shared_deps: Shared dependencies dict (internal, for nested dicts)
         """
         super().__init__(data or {})
         self._path = path
 
-        # Root TrackedDict owns the shared state
-        if _root is None:
-            self._accessed_paths: set[str] = set()
-            self._lock = threading.Lock()
-            self._dependencies: dict[str, Experiment] = dependencies or {}
-            self._root: TrackedDict = self
+        # Use shared state if provided (nested TrackedDict), otherwise create new (root)
+        if _shared_paths is not None:
+            # Nested TrackedDict - share state with parent
+            self._accessed_paths: set[str] = _shared_paths
+            self._lock = _shared_lock
+            self._dependencies: dict[str, Experiment] = _shared_deps  # type: ignore[assignment]
         else:
-            # Nested TrackedDicts share state via root reference
-            self._root = _root
-            # Access shared state through _root
-            self._accessed_paths = _root._accessed_paths
-            self._lock = _root._lock
-            self._dependencies = _root._dependencies
+            # Root TrackedDict - create new state
+            self._accessed_paths = set()
+            self._lock = threading.Lock()
+            self._dependencies = dependencies or {}
 
     def __getitem__(self, key: str) -> Any:
         """Get item by key, mark as accessed, and check for conflicts.
@@ -112,14 +113,20 @@ class TrackedDict(dict):
 
         # Wrap nested dicts recursively for continued tracking
         if isinstance(value, dict) and not isinstance(value, TrackedDict):
-            # Create tracked wrapper with accumulated path, sharing root
-            tracked_value = TrackedDict(value, path=full_path, _root=self._root)
+            # Create tracked wrapper with accumulated path, sharing state
+            tracked_value = TrackedDict(
+                value,
+                path=full_path,
+                _shared_paths=self._accessed_paths,
+                _shared_lock=self._lock,
+                _shared_deps=self._dependencies,
+            )
             # Cache the wrapped value
             super().__setitem__(key, tracked_value)
             return tracked_value
 
         # For leaf values (non-dict), check for conflicts with dependencies
-        if not isinstance(value, dict) and self._root._dependencies:
+        if not isinstance(value, dict) and self._dependencies:
             self._check_for_conflicts(full_path, value)
 
         return value
@@ -145,7 +152,7 @@ class TrackedDict(dict):
         value_sources[hashable_local] = [("config", None)]
 
         # Check each dependency
-        for slot_name, dep_experiment in self._root._dependencies.items():
+        for slot_name, dep_experiment in self._dependencies.items():
             try:
                 dep_value = dep_experiment.get_param(full_path, default=_MISSING)
                 if dep_value is not _MISSING:
@@ -171,7 +178,7 @@ class TrackedDict(dict):
                 else:
                     # Get from first dependency that has this value
                     slot_name = sources[0][0]
-                    dep = self._root._dependencies[slot_name]
+                    dep = self._dependencies[slot_name]
                     original_val = dep.get_param(full_path)
 
                 # Use repr() for unhashable types to allow use as dict key

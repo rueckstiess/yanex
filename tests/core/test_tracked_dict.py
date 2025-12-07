@@ -508,19 +508,24 @@ class TestTrackedDictConflictDetection:
         # Should not raise - dependency error is silently ignored
         assert tracked["lr"] == 0.01
 
-    def test_root_shared_across_nested(self):
-        """Test that _root is correctly shared across nested TrackedDicts."""
+    def test_shared_state_across_nested(self):
+        """Test that shared state is correctly propagated across nested TrackedDicts."""
         mock_dep = self._create_mock_experiment("abc12345", {"model": {"lr": 0.001}})
         tracked = TrackedDict({"model": {"lr": 0.01}}, dependencies={"dep": mock_dep})
 
         # Access nested dict
         model_dict = tracked["model"]
 
-        # Verify root is shared
-        assert model_dict._root is tracked
+        # Verify shared state is propagated (no root reference)
         assert model_dict._dependencies is tracked._dependencies
+        assert model_dict._accessed_paths is tracked._accessed_paths
+        assert model_dict._lock is tracked._lock
 
-        # Conflict should still be detected via shared root
+        # Verify nested dict doesn't have access to root TrackedDict object
+        # (this is important for safety - prevents accidental root iteration)
+        assert not hasattr(model_dict, "_root")
+
+        # Conflict should still be detected via shared dependencies
         with pytest.raises(ParameterConflictError):
             _ = model_dict["lr"]
 

@@ -24,6 +24,7 @@ from .utils.exceptions import (
     AmbiguousArtifactError,
     ExperimentContextError,
     ExperimentNotFoundError,
+    StorageError,
 )
 
 # Thread-local storage for current experiment context
@@ -102,13 +103,19 @@ def _atexit_handler_wrapper(experiment_id: str, tracked_dict: TrackedDict) -> No
     Args:
         experiment_id: ID of the experiment
         tracked_dict: TrackedDict instance with tracked accesses
+
+    Raises:
+        Exception: Re-raises any exception from save_accessed_params EXCEPT
+                  StorageError (which indicates the experiment directory was
+                  already cleaned up, e.g., during test teardown).
     """
     global _should_save_on_exit
     if _should_save_on_exit:
         try:
             save_accessed_params(experiment_id, tracked_dict)
-        except Exception:
-            # Silently ignore errors during exit (storage may be cleaned up)
+        except StorageError:
+            # Experiment directory was already cleaned up (e.g., test teardown)
+            # This is expected in test environments - skip silently
             pass
 
 

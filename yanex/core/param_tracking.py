@@ -10,31 +10,43 @@ from typing import Any
 from .tracked_dict import TrackedDict
 
 
-def extract_accessed_params(tracked_dict: TrackedDict) -> dict[str, Any]:
-    """Extract only accessed parameters from TrackedDict, preserving nested structure.
+def extract_accessed_params(
+    tracked_dict: TrackedDict,
+    original_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Extract only accessed parameters, using original config for values.
 
     This function takes the set of accessed paths (e.g., {"model.lr", "model.layers", "seed"})
     and reconstructs a nested dictionary containing only those values. It intelligently handles
     cases where both parent and child paths are accessed by only including leaf values.
 
+    When original_config is provided, values are extracted from it instead of from the
+    TrackedDict. This is important because users may mutate the TrackedDict (via pop, del,
+    etc.) but we still want to save the original values that were accessed.
+
     Args:
         tracked_dict: TrackedDict instance with tracked accesses
+        original_config: Original configuration dict to get values from.
+                        If None, falls back to TrackedDict (legacy/test behavior).
 
     Returns:
-        Dictionary containing only accessed parameters with original nested structure
+        Dictionary containing only accessed parameters with original values
 
     Example:
         >>> config = {"model": {"lr": 0.01, "layers": 5, "dropout": 0.1}, "seed": 42}
         >>> tracked = TrackedDict(config)
         >>> _ = tracked["model"]["lr"]
         >>> _ = tracked["seed"]
-        >>> extract_accessed_params(tracked)
+        >>> extract_accessed_params(tracked, original_config=config)
         {'model': {'lr': 0.01}, 'seed': 42}
     """
     accessed_paths = tracked_dict.get_accessed_paths()
 
     if not accessed_paths:
         return {}
+
+    # Use original config for values if provided, otherwise fall back to tracked_dict
+    source_config = original_config if original_config is not None else tracked_dict
 
     # Deduplicate to get only leaf paths (deepest accessed values)
     # This removes parent paths when children are also accessed
@@ -44,11 +56,15 @@ def extract_accessed_params(tracked_dict: TrackedDict) -> dict[str, Any]:
     result: dict[str, Any] = {}
 
     for path in leaf_paths:
-        # Get the value at this path
-        value = _get_value_by_path(tracked_dict, path)
+        try:
+            # Get the value from the SOURCE config (original or TrackedDict)
+            value = _get_value_by_path(source_config, path)
 
-        # Set the value in result dict, creating nested structure as needed
-        _set_value_by_path(result, path, value)
+            # Set the value in result dict, creating nested structure as needed
+            _set_value_by_path(result, path, value)
+        except KeyError:
+            # Key was accessed but doesn't exist in source config - skip
+            continue
 
     return result
 
@@ -116,9 +132,14 @@ def _set_value_by_path(data: dict, path: str, value: Any, separator: str = ".") 
 def save_accessed_params(experiment_id: str, tracked_dict: TrackedDict) -> None:
     """Save only accessed parameters to experiment storage.
 
-    This function extracts accessed parameters and saves them to params.yaml,
-    overwriting any previous parameter file. It's typically called from an
-    atexit handler at script end.
+    This function:
+    1. Gets the set of accessed paths from TrackedDict
+    2. Loads the ORIGINAL config from params.yaml (saved at experiment creation)
+    3. Filters original config to only accessed paths
+    4. Saves the filtered config back to params.yaml
+
+    This approach ensures that even if the TrackedDict was mutated (via pop, del,
+    etc.), the original values are preserved in the final params.yaml.
 
     If no parameters were accessed, an empty dict is saved.
 
@@ -134,11 +155,17 @@ def save_accessed_params(experiment_id: str, tracked_dict: TrackedDict) -> None:
     # Import here to avoid circular dependency
     from ..api import _get_experiment_manager
 
-    # Extract only accessed params (empty dict if none accessed)
-    accessed_params = extract_accessed_params(tracked_dict)
-
-    # Save to storage (this will overwrite the full config saved at creation)
     manager = _get_experiment_manager()
+
+    # Load ORIGINAL config from storage (saved at experiment creation)
+    original_config = manager.storage.load_config(experiment_id)
+
+    # Extract only accessed params using ORIGINAL values (not TrackedDict values)
+    accessed_params = extract_accessed_params(
+        tracked_dict, original_config=original_config
+    )
+
+    # Save filtered config back to storage
     manager.storage.save_config(experiment_id, accessed_params)
 
 
