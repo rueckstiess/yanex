@@ -728,3 +728,133 @@ class TestExperimentDependencies:
         # Check values
         assert data["has_dependencies"] is False
         assert data["dependency_ids"] == []
+
+    def test_get_params_without_include_deps(
+        self, manager, prep_experiment, train_experiment
+    ):
+        """Test get_params returns only local params when include_deps=False."""
+        exp = Experiment(train_experiment, manager)
+
+        # Default behavior (include_deps=False)
+        params = exp.get_params()
+        assert params == {"learning_rate": 0.01}
+        assert "dataset" not in params
+        assert "samples" not in params
+
+    def test_get_params_with_include_deps(
+        self, manager, prep_experiment, train_experiment
+    ):
+        """Test get_params merges dependency params when include_deps=True."""
+        exp = Experiment(train_experiment, manager)
+
+        # With include_deps=True
+        params = exp.get_params(include_deps=True)
+
+        # Should have local params
+        assert params["learning_rate"] == 0.01
+
+        # Should also have dependency params
+        assert params["dataset"] == "mnist"
+        assert params["samples"] == 1000
+
+    def test_get_params_local_overrides_dependency(
+        self, manager, isolated_experiments_dir
+    ):
+        """Test that local params override dependency params on conflict."""
+        from unittest.mock import patch
+
+        with (
+            patch("yanex.core.manager.get_current_commit_info") as mock_git_info,
+            patch("yanex.core.manager.capture_full_environment") as mock_capture_env,
+        ):
+            mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+            mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+            # Create dependency with lr=0.001
+            dep_id = manager.create_experiment(
+                script_path=Path("encoder.py"),
+                name="encoder",
+                config={"learning_rate": 0.001, "n_embd": 128},
+                tags=["unit-tests"],
+            )
+            manager.start_experiment(dep_id)
+            manager.complete_experiment(dep_id)
+
+            # Create child with lr=0.01 (override)
+            child_id = manager.create_experiment(
+                script_path=Path("advisor.py"),
+                name="advisor",
+                config={"learning_rate": 0.01, "batch_size": 32},
+                tags=["unit-tests"],
+                dependencies={"encoder": dep_id},
+            )
+            manager.start_experiment(child_id)
+            manager.complete_experiment(child_id)
+
+            exp = Experiment(child_id, manager)
+            params = exp.get_params(include_deps=True)
+
+            # Local learning_rate should override dependency
+            assert params["learning_rate"] == 0.01
+
+            # Dependency-only params should be included
+            assert params["n_embd"] == 128
+
+            # Local-only params should be included
+            assert params["batch_size"] == 32
+
+    def test_get_params_transitive_dependencies(
+        self, manager, prep_experiment, train_experiment, eval_experiment
+    ):
+        """Test get_params includes transitive dependencies."""
+        exp = Experiment(eval_experiment, manager)
+
+        # eval depends on train, which depends on prep
+        params = exp.get_params(include_deps=True)
+
+        # Should have params from all the way up the chain
+        assert "dataset" in params  # from prep_experiment
+        assert "samples" in params  # from prep_experiment
+        assert "learning_rate" in params  # from train_experiment
+
+    def test_get_params_direct_deps_only(
+        self, manager, prep_experiment, train_experiment, eval_experiment
+    ):
+        """Test get_params with transitive=False only gets direct deps."""
+        exp = Experiment(eval_experiment, manager)
+
+        # With transitive=False, should only get direct dependency (train_experiment)
+        params = exp.get_params(include_deps=True, transitive=False)
+
+        # Should have params from train_experiment (direct dep)
+        assert params.get("learning_rate") == 0.01
+
+        # Should NOT have params from prep_experiment (transitive dep)
+        assert "dataset" not in params
+        assert "samples" not in params
+
+    def test_get_param_with_include_deps(
+        self, manager, prep_experiment, train_experiment
+    ):
+        """Test get_param works with include_deps flag."""
+        exp = Experiment(train_experiment, manager)
+
+        # Without include_deps (default)
+        assert exp.get_param("learning_rate") == 0.01
+        assert exp.get_param("dataset") is None
+
+        # With include_deps=True
+        assert exp.get_param("learning_rate", include_deps=True) == 0.01
+        assert exp.get_param("dataset", include_deps=True) == "mnist"
+        assert exp.get_param("samples", include_deps=True) == 1000
+
+    def test_get_params_no_dependencies_unchanged(self, manager, prep_experiment):
+        """Test that include_deps has no effect on experiments without dependencies."""
+        exp = Experiment(prep_experiment, manager)
+
+        params_default = exp.get_params()
+        params_with_deps = exp.get_params(include_deps=True)
+
+        # Should be identical since there are no dependencies
+        assert params_default == params_with_deps
+        assert params_default == {"dataset": "mnist", "samples": 1000}

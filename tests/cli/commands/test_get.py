@@ -94,12 +94,23 @@ class TestGetCommandValidation:
         assert "Unknown field: 'linage'" in result.output
         assert "Did you mean: lineage" in result.output
 
-    def test_get_unknown_field_no_suggestion_for_unrelated(self):
-        """Test error for completely unknown field."""
+    def test_get_unknown_field_no_suggestion_for_unrelated(
+        self, per_test_experiments_dir
+    ):
+        """Test that unrelated fields are allowed through (might be param/metric keys).
+
+        Fields that don't look like typos of static getter fields are allowed
+        through because they might be valid parameter/metric keys that will be
+        resolved via AccessResolver when an experiment is loaded.
+
+        Uses per_test_experiments_dir for isolation - without it, experiments
+        created by other tests would cause this to fail when resolving 'foobar'.
+        """
         result = self.runner.invoke(cli, ["get", "foobar", "-s", "completed"])
-        assert result.exit_code != 0
-        assert "Unknown field: 'foobar'" in result.output
-        assert "yanex get --help" in result.output
+        # No experiments match, so command succeeds with no output
+        # (foobar would be resolved per-experiment if any matched)
+        assert result.exit_code == 0
+        assert "Unknown field" not in result.output
 
     def test_get_valid_dynamic_fields_accepted(self):
         """Test that params.* and metrics.* prefixes are accepted."""
@@ -538,7 +549,7 @@ class TestResolveFieldValueUnit:
         value, found = resolve_field_value(exp, "params.lr", "[not_found]")
         assert value == 0.01
         assert found is True
-        exp.get_param.assert_called_once_with("lr")
+        exp.get_param.assert_called_once_with("lr", include_deps=False)
 
     def test_resolve_params_missing(self):
         """Test resolving missing params.* fields."""
@@ -605,6 +616,7 @@ class TestResolveFieldValueUnit:
         value, found = resolve_field_value(exp, "params", "[not_found]")
         assert value == ["batch_size", "epochs", "lr"]  # Sorted alphabetically
         assert found is True
+        exp.get_params.assert_called_once_with(include_deps=False)
 
     def test_resolve_params_list_empty(self):
         """Test resolving params field with no parameters."""
@@ -616,6 +628,7 @@ class TestResolveFieldValueUnit:
         value, found = resolve_field_value(exp, "params", "[not_found]")
         assert value == []
         assert found is True
+        exp.get_params.assert_called_once_with(include_deps=False)
 
     def test_resolve_metrics_list(self):
         """Test resolving metrics field returns list of metric names."""
@@ -1893,3 +1906,255 @@ class TestGetLineageIntegration:
 
         assert result.exit_code != 0
         assert "no experiment found" in result.output.lower()
+
+
+class TestGetAccessResolverIntegration:
+    """Test AccessResolver integration for sub-path resolution and new syntax."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.runner = create_cli_runner()
+
+    def test_get_param_new_syntax(self, clean_git_repo, sample_experiment_script):
+        """Test getting param using new param: syntax."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "get-new-syntax-test",
+                "--param",
+                "learning_rate=0.001",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Use new param: syntax
+        result = self.runner.invoke(cli, ["get", "param:learning_rate", exp_id])
+        assert result.exit_code == 0
+        assert "0.001" in result.output
+
+    def test_get_metric_new_syntax(self, clean_git_repo, tmp_path):
+        """Test getting metric using new metric: syntax."""
+        # Create script that logs metrics
+        script = tmp_path / "metric_script.py"
+        script.write_text(
+            """
+import yanex
+yanex.log_metrics({"train_accuracy": 0.95, "train_loss": 0.05})
+"""
+        )
+
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(script),
+                "--name",
+                "get-metric-syntax-test",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Use new metric: syntax
+        result = self.runner.invoke(cli, ["get", "metric:train_accuracy", exp_id])
+        assert result.exit_code == 0
+        assert "0.95" in result.output
+
+    def test_get_meta_new_syntax(self, clean_git_repo, sample_experiment_script):
+        """Test getting metadata using new meta: syntax."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "meta-syntax-experiment",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Use new meta: syntax
+        result = self.runner.invoke(cli, ["get", "meta:name", exp_id])
+        assert result.exit_code == 0
+        assert "meta-syntax-experiment" in result.output
+
+        result = self.runner.invoke(cli, ["get", "meta:status", exp_id])
+        assert result.exit_code == 0
+        assert "completed" in result.output
+
+    def test_get_pattern_rejected(self, clean_git_repo, sample_experiment_script):
+        """Test that patterns are rejected in yanex get (use compare instead)."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "pattern-test",
+                "--param",
+                "learning_rate=0.01",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Try to use pattern - should fail
+        result = self.runner.invoke(cli, ["get", "param:*.rate", exp_id])
+        assert result.exit_code != 0
+        assert "Pattern matching is not supported" in result.output
+        assert "yanex compare" in result.output
+
+    def test_get_pattern_wildcard_rejected(
+        self, clean_git_repo, sample_experiment_script
+    ):
+        """Test that wildcard patterns are rejected."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "wildcard-test",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Try various pattern characters
+        for pattern in ["*", "train.*", "loss?", "model[12]"]:
+            result = self.runner.invoke(cli, ["get", pattern, exp_id])
+            assert result.exit_code != 0
+            assert "Pattern matching is not supported" in result.output
+
+    def test_get_unqualified_field_resolved(self, clean_git_repo, tmp_path):
+        """Test that unqualified field names are resolved via AccessResolver."""
+        # Create script with unique param name
+        script = tmp_path / "unique_param.py"
+        script.write_text("print('test')")
+
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(script),
+                "--name",
+                "resolver-test",
+                "--param",
+                "unique_learning_rate=0.01",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Use unqualified name - should resolve to param:unique_learning_rate
+        result = self.runner.invoke(cli, ["get", "unique_learning_rate", exp_id])
+        assert result.exit_code == 0
+        assert "0.01" in result.output
+
+    def test_get_meta_git_branch(self, clean_git_repo, sample_experiment_script):
+        """Test getting nested metadata via meta: syntax."""
+        result = self.runner.invoke(
+            cli,
+            [
+                "run",
+                str(sample_experiment_script),
+                "--name",
+                "git-meta-test",
+            ],
+        )
+        assert result.exit_code == 0
+        exp_id = self._extract_experiment_id(result.output)
+        assert exp_id is not None
+
+        # Get git.branch via meta: syntax
+        result = self.runner.invoke(cli, ["get", "meta:git.branch", exp_id])
+        assert result.exit_code == 0
+        # Should return some branch name (could be main, master, etc.)
+
+    def _extract_experiment_id(self, output: str) -> str | None:
+        """Extract experiment ID from yanex run output."""
+        for line in output.split("\n"):
+            if "Experiment completed successfully:" in line:
+                return line.split(":")[-1].strip()
+        return None
+
+
+class TestResolveFieldForExperimentUnit:
+    """Unit tests for resolve_field_for_experiment function."""
+
+    def test_resolve_known_static_field(self):
+        """Test that known static fields pass through unchanged."""
+        from unittest.mock import Mock
+
+        from yanex.cli.commands.get import resolve_field_for_experiment
+
+        exp = Mock()
+
+        # Static fields should pass through without resolution
+        assert resolve_field_for_experiment(exp, "status") == "status"
+        assert resolve_field_for_experiment(exp, "id") == "id"
+        assert resolve_field_for_experiment(exp, "name") == "name"
+
+    def test_resolve_prefixed_field(self):
+        """Test that already-prefixed fields use resolver for sub-path."""
+        from unittest.mock import Mock
+
+        from yanex.cli.commands.get import resolve_field_for_experiment
+
+        exp = Mock()
+        exp.get_params = Mock(return_value={"advisor": {"lr": 0.01}})
+        exp.get_metrics = Mock(return_value=[])
+        exp._load_metadata = Mock(return_value={})
+
+        # param:advisor.lr should resolve correctly
+        result = resolve_field_for_experiment(exp, "param:advisor.lr")
+        assert result == "param:advisor.lr"
+
+    def test_resolve_unqualified_unique(self):
+        """Test resolution of unqualified field that has unique match."""
+        from unittest.mock import Mock
+
+        from yanex.cli.commands.get import resolve_field_for_experiment
+
+        exp = Mock()
+        exp.get_params = Mock(return_value={"unique_param": 42})
+        exp.get_metrics = Mock(return_value=[])
+        exp._load_metadata = Mock(return_value={"id": "abc123"})
+
+        result = resolve_field_for_experiment(exp, "unique_param")
+        assert result == "param:unique_param"
+
+    def test_resolve_ambiguous_raises_error(self):
+        """Test that ambiguous field raises helpful error."""
+        from unittest.mock import Mock
+
+        import click
+        import pytest
+
+        from yanex.cli.commands.get import resolve_field_for_experiment
+
+        exp = Mock()
+        # Both params have "lr" suffix
+        exp.get_params = Mock(
+            return_value={"model": {"lr": 0.01}, "optimizer": {"lr": 0.001}}
+        )
+        exp.get_metrics = Mock(return_value=[])
+        exp._load_metadata = Mock(return_value={})
+
+        with pytest.raises(click.ClickException) as exc_info:
+            resolve_field_for_experiment(exp, "lr")
+
+        assert "Ambiguous field 'lr'" in str(exc_info.value.message)
+        assert "param:model.lr" in str(exc_info.value.message)
+        assert "param:optimizer.lr" in str(exc_info.value.message)

@@ -28,17 +28,86 @@ from yanex.cli.formatters import (
     resolve_output_format,
 )
 from yanex.cli.formatters.console import ExperimentTableFormatter
+from yanex.core.access_resolver import AccessResolver, parse_canonical_key
 from yanex.core.manager import ExperimentManager
+from yanex.utils.exceptions import AmbiguousKeyError, KeyNotFoundError
 
 from .confirm import find_experiment
+
+
+def _resolve_metrics_for_experiment(
+    manager: ExperimentManager,
+    experiment_id: str,
+    requested_metrics: list[str],
+    include_archived: bool = False,
+) -> list[str]:
+    """Resolve metric names using AccessResolver for sub-path resolution and patterns.
+
+    Args:
+        manager: ExperimentManager instance
+        experiment_id: The experiment ID
+        requested_metrics: List of metric names/patterns to resolve
+        include_archived: Whether to include archived experiments
+
+    Returns:
+        List of resolved metric names (paths without group prefix)
+
+    Raises:
+        click.ClickException: If resolution fails
+    """
+    # Load experiment results to build resolver
+    try:
+        results = manager.storage.load_results(experiment_id, include_archived)
+    except Exception:
+        results = []
+
+    # Build metrics dict from results
+    all_metrics: dict = {}
+    if results:
+        for result in results:
+            for key, value in result.items():
+                if key not in ["step", "timestamp"] and key not in all_metrics:
+                    all_metrics[key] = value
+
+    if not all_metrics:
+        # No metrics available, return original list to let display handle warnings
+        return requested_metrics
+
+    # Build resolver with metrics only (we only care about metric scope)
+    resolver = AccessResolver(params={}, metrics=all_metrics, meta={})
+
+    try:
+        # Resolve each metric (handles sub-path resolution and patterns)
+        canonical_keys = resolver.resolve_list(requested_metrics, scope="metric")
+
+        # Strip group prefixes to get paths
+        paths = []
+        for key in canonical_keys:
+            _, path = parse_canonical_key(key)
+            paths.append(path)
+
+        return paths
+
+    except AmbiguousKeyError as e:
+        matches_str = ", ".join(e.matches[:5])
+        if len(e.matches) > 5:
+            matches_str += f", ... ({len(e.matches)} total)"
+        raise click.ClickException(
+            f"Ambiguous metric '{e.key}' matches multiple: {matches_str}\n"
+            f"Use a more specific path or the full metric name"
+        )
+    except KeyNotFoundError:
+        # Return original list and let display function handle warnings
+        # This provides better UX by showing which metrics exist
+        return requested_metrics
 
 
 @click.command("show")
 @click.argument("experiment_identifier", required=True)
 @format_options()
 @click.option(
-    "--show-metric",
-    "show_metrics",
+    "--metrics",
+    "metrics",
     help="Comma-separated list of specific metrics to show in results table (e.g., 'accuracy,loss,f1_score')",
 )
 @click.option("--archived", is_flag=True, help="Include archived experiments in search")
@@ -50,7 +119,7 @@ def show_experiment(
     json_flag: bool,
     csv_flag: bool,
     markdown_flag: bool,
-    show_metrics: str | None,
+    metrics: str | None,
     archived: bool,
 ):
     """
@@ -104,12 +173,16 @@ def show_experiment(
             )
             ctx.exit(1)
 
-        # Parse show_metrics if provided
+        # Parse metrics if provided
         requested_metrics = None
-        if show_metrics:
+        if metrics:
             requested_metrics = [
-                metric.strip() for metric in show_metrics.split(",") if metric.strip()
+                metric.strip() for metric in metrics.split(",") if metric.strip()
             ]
+            # Resolve metric names (sub-path resolution and patterns)
+            requested_metrics = _resolve_metrics_for_experiment(
+                filter_obj.manager, experiment["id"], requested_metrics, archived
+            )
 
         # Handle different output formats
         if fmt == OutputFormat.JSON:

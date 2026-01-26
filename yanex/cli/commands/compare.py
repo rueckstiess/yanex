@@ -4,8 +4,10 @@ Compare experiments - interactive table with parameters and metrics.
 
 import click
 
+from ...core.access_resolver import AccessResolver, parse_canonical_key
 from ...core.comparison import ExperimentComparisonData
 from ...ui.compare_table import run_comparison_table
+from ...utils.exceptions import AmbiguousKeyError, KeyNotFoundError
 from ..filters import ExperimentFilter, parse_time_spec
 from ..filters.arguments import experiment_filter_options
 from ..formatters import (
@@ -21,22 +23,162 @@ from ..formatters import (
 from .confirm import find_experiments_by_filters, find_experiments_by_identifiers
 
 
+def _build_resolver_from_experiments(
+    comparison_extractor: ExperimentComparisonData,
+    experiment_ids: list[str],
+    include_archived: bool = False,
+    include_dep_params: bool = False,
+) -> AccessResolver | None:
+    """Build an AccessResolver from experiment data.
+
+    Aggregates params, metrics, and metadata across all experiments to build
+    a comprehensive resolver that can resolve any key present in any experiment.
+
+    Args:
+        comparison_extractor: ExperimentComparisonData instance
+        experiment_ids: List of experiment IDs
+        include_archived: Whether to include archived experiments
+        include_dep_params: Whether to include parameters from dependencies
+
+    Returns:
+        AccessResolver instance or None if no experiments could be loaded
+    """
+    from ...utils.dict_utils import flatten_dict
+
+    # Aggregate data from all experiments
+    all_params: dict = {}
+    all_metrics: dict = {}
+    all_meta: dict = {}
+
+    for exp_id in experiment_ids:
+        try:
+            exp_data = comparison_extractor._extract_single_experiment(
+                exp_id, include_archived, include_dep_params=include_dep_params
+            )
+            if not exp_data:
+                continue
+
+            # Aggregate params (config)
+            config = exp_data.get("config", {})
+            flat_config = flatten_dict(config)
+            for key, value in flat_config.items():
+                if key not in all_params:
+                    all_params[key] = value
+
+            # Aggregate metrics
+            results = exp_data.get("results", {})
+            if isinstance(results, dict):
+                for key, value in results.items():
+                    if key not in all_metrics:
+                        all_metrics[key] = value
+            elif isinstance(results, list) and results:
+                # Use last entry for metrics
+                last_entry = results[-1] if isinstance(results[-1], dict) else {}
+                for key, value in last_entry.items():
+                    if key not in all_metrics:
+                        all_metrics[key] = value
+
+            # Aggregate meta from metadata
+            metadata = exp_data.get("metadata", {})
+            flat_meta = flatten_dict(metadata)
+            for key, value in flat_meta.items():
+                if key not in all_meta:
+                    all_meta[key] = value
+
+            # Add convenience fields to meta
+            for field in ["id", "name", "status", "description", "tags"]:
+                if field not in all_meta and field in exp_data:
+                    all_meta[field] = exp_data[field]
+
+        except Exception:
+            # Continue with other experiments if one fails
+            continue
+
+    if not all_params and not all_metrics and not all_meta:
+        return None
+
+    return AccessResolver(params=all_params, metrics=all_metrics, meta=all_meta)
+
+
+def _resolve_column_spec(
+    resolver: AccessResolver,
+    spec: str | list[str],
+    scope: str,
+) -> str | list[str]:
+    """Resolve a column specification using AccessResolver.
+
+    Args:
+        resolver: AccessResolver instance
+        spec: Column specification - "auto", "all", "none", or list of keys/patterns
+        scope: Scope for resolution - "param", "metric", or "meta"
+
+    Returns:
+        Special value unchanged, or list of resolved paths (without group prefix)
+
+    Raises:
+        click.ClickException: If resolution fails
+    """
+    # Special values pass through unchanged
+    if spec in ("auto", "all", "none"):
+        return spec
+
+    # Resolve list of keys/patterns
+    if not isinstance(spec, list):
+        return spec
+
+    try:
+        # Resolve each value (handles both single keys and patterns)
+        canonical_keys = resolver.resolve_list(spec, scope=scope)
+
+        # Strip group prefixes to get paths for comparison extractor
+        paths = []
+        for key in canonical_keys:
+            _, path = parse_canonical_key(key)
+            paths.append(path)
+
+        return paths
+
+    except AmbiguousKeyError as e:
+        matches_str = ", ".join(e.matches[:5])
+        if len(e.matches) > 5:
+            matches_str += f", ... ({len(e.matches)} total)"
+        raise click.ClickException(
+            f"Ambiguous key '{e.key}' in --{scope}s matches multiple: {matches_str}\n"
+            f"Use a more specific path or group prefix (e.g., {scope}:{e.key})"
+        )
+    except KeyNotFoundError as e:
+        available = resolver.get_paths(scope=scope)[:10]
+        available_str = ", ".join(available) if available else "(none)"
+        if len(resolver.get_paths(scope=scope)) > 10:
+            available_str += ", ..."
+        raise click.ClickException(
+            f"Key '{e.key}' not found in {scope}s.\nAvailable: {available_str}"
+        )
+
+
 @click.command("compare")
 @click.argument("experiment_identifiers", nargs=-1)
 @format_options()
 @experiment_filter_options(include_ids=True, include_archived=True, include_limit=False)
 @click.option(
     "--params",
-    help="Show only specified parameters (comma-separated, e.g., 'learning_rate,epochs')",
+    default="auto",
+    help="Parameters to show: 'auto' (differing only), 'all', 'none', or comma-separated list",
 )
 @click.option(
     "--metrics",
-    help="Show only specified metrics (comma-separated, e.g., 'accuracy,loss')",
+    default="auto",
+    help="Metrics to show: 'auto' (differing only), 'all', 'none', or comma-separated list",
 )
 @click.option(
-    "--only-different",
+    "--meta",
+    default="auto",
+    help="Metadata to show: 'auto' (id,name,status), 'all', 'none', or comma-separated list",
+)
+@click.option(
+    "--include-dep-params",
     is_flag=True,
-    help="Show only columns where values differ between experiments",
+    help="Include parameters from dependency experiments (merged with local params)",
 )
 @click.option(
     "--no-interactive",
@@ -66,9 +208,10 @@ def compare_experiments(
     ended_after: str | None,
     ended_before: str | None,
     archived: bool,
-    params: str | None,
-    metrics: str | None,
-    only_different: bool,
+    params: str,
+    metrics: str,
+    meta: str,
+    include_dep_params: bool,
     no_interactive: bool,
     max_rows: int | None,
 ):
@@ -77,6 +220,13 @@ def compare_experiments(
 
     EXPERIMENT_IDENTIFIERS can be experiment IDs or names.
     If no identifiers provided, experiments are filtered by options.
+
+    \b
+    Column selection (--params, --metrics, --meta):
+      auto     Show only columns that differ across experiments (default)
+      all      Show all columns in that category
+      none     Hide all columns in that category
+      <list>   Comma-separated list of specific columns
 
     Supports multiple output formats:
 
@@ -94,11 +244,11 @@ def compare_experiments(
     Examples:
 
     \b
-        yanex compare                                    # All experiments
+        yanex compare                                    # All experiments (auto mode)
         yanex compare exp1 exp2 exp3                    # Specific experiments
         yanex compare -s completed                      # Completed experiments
-        yanex compare -t training --only-different      # Training experiments, show differences only
-        yanex compare --params learning_rate,epochs    # Show only specified parameters
+        yanex compare --params all --metrics none      # All params, no metrics
+        yanex compare --params lr,epochs               # Show only specified parameters
         yanex compare --format csv > results.csv       # Export to CSV file
         yanex compare --format json                     # Export as JSON
         yanex compare --no-interactive                  # Static table output
@@ -181,22 +331,47 @@ def compare_experiments(
         # Extract experiment IDs from the experiment metadata dictionaries
         experiment_ids = [exp["id"] for exp in experiments]
 
-        # Parse parameter and metric lists
-        param_list = None
-        if params:
-            param_list = [p.strip() for p in params.split(",") if p.strip()]
+        # Parse parameter, metric, and meta column specifications
+        # Special values "auto", "all", "none" are passed as strings
+        # Otherwise, parse as comma-separated list
+        def parse_column_spec(spec: str) -> str | list[str]:
+            if spec in ("auto", "all", "none"):
+                return spec
+            return [s.strip() for s in spec.split(",") if s.strip()]
 
-        metric_list = None
-        if metrics:
-            metric_list = [m.strip() for m in metrics.split(",") if m.strip()]
+        params_spec = parse_column_spec(params)
+        metrics_spec = parse_column_spec(metrics)
+        meta_spec = parse_column_spec(meta)
+
+        # Get comparison data extractor
+        comparison_data_extractor = ExperimentComparisonData()
+
+        # Build resolver for sub-path resolution and pattern matching
+        # Only needed if any spec is a list (not "auto", "all", "none")
+        needs_resolution = any(
+            isinstance(s, list) for s in [params_spec, metrics_spec, meta_spec]
+        )
+
+        if needs_resolution:
+            resolver = _build_resolver_from_experiments(
+                comparison_data_extractor,
+                experiment_ids,
+                include_archived=archived,
+                include_dep_params=include_dep_params,
+            )
+            if resolver:
+                # Resolve column specs (handles sub-path resolution and patterns)
+                params_spec = _resolve_column_spec(resolver, params_spec, "param")
+                metrics_spec = _resolve_column_spec(resolver, metrics_spec, "metric")
+                meta_spec = _resolve_column_spec(resolver, meta_spec, "meta")
 
         # Get comparison data
-        comparison_data_extractor = ExperimentComparisonData()
         comparison_data = comparison_data_extractor.get_comparison_data(
             experiment_ids=experiment_ids,
-            params=param_list,
-            metrics=metric_list,
-            only_different=only_different,
+            params=params_spec,
+            metrics=metrics_spec,
+            meta=meta_spec,
+            include_dep_params=include_dep_params,
         )
 
         if not comparison_data.get("rows"):

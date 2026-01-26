@@ -303,6 +303,9 @@ def get_param(
 def _get_local_param(key: str, default: Any = None) -> Any:
     """Get parameter from local config only, bypassing conflict detection.
 
+    Still uses TrackedDict to track access (for param filtering at exit),
+    but temporarily disables conflict detection by clearing dependencies.
+
     Args:
         key: Parameter key (supports dot notation)
         default: Default value if not found
@@ -310,27 +313,30 @@ def _get_local_param(key: str, default: Any = None) -> Any:
     Returns:
         Local parameter value or default
     """
-    experiment_id = _get_current_experiment_id()
-    if experiment_id is None:
+    # Use get_params() to ensure TrackedDict is initialized and atexit is registered
+    params = get_params()
+
+    if not params:
         return default
 
-    # Load raw params without TrackedDict wrapper to avoid conflict check
-    if hasattr(_local, "experiment_id"):
-        manager = _get_experiment_manager()
-        raw_params = manager.storage.load_config(experiment_id)
+    # Track the access by navigating through the TrackedDict,
+    # but temporarily disable conflict detection by clearing dependencies
+    if isinstance(params, TrackedDict):
+        # Save and clear dependencies to bypass conflict detection
+        original_deps = params._dependencies
+        params._dependencies = {}
+        try:
+            _sentinel = object()
+            value = get_nested_value(params, key, default=_sentinel)
+            if value is _sentinel:
+                return default
+            return value
+        finally:
+            # Restore dependencies
+            params._dependencies = original_deps
     else:
-        raw_params = {}
-        for env_key, value in os.environ.items():
-            if env_key.startswith("YANEX_PARAM_"):
-                param_key = env_key[12:]
-                try:
-                    import json
-
-                    raw_params[param_key] = json.loads(value)
-                except (json.JSONDecodeError, ValueError):
-                    raw_params[param_key] = value
-
-    return get_nested_value(raw_params, key, default=default)
+        # Fallback for non-TrackedDict (shouldn't happen in experiment mode)
+        return get_nested_value(params, key, default=default)
 
 
 def _get_param_from_dependency(key: str, slot: str, default: Any = None) -> Any:

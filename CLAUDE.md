@@ -459,6 +459,63 @@ for fail in failed:
 
 This feature eliminated ~222 lines of duplicate code from the CLI by refactoring sweep execution to use the shared `run_multiple()` function. The CLI now builds `ExperimentSpec` objects and delegates to the executor.
 
+### Results Python API (yanex.results)
+
+The `yanex.results` module (aliased as `yr`) provides post-hoc analysis and comparison of experiments:
+
+```python
+import yanex.results as yr
+
+# Compare experiments with wide format DataFrame
+df = yr.compare(
+    tags=['sweep'],
+    params=['learning_rate', 'epochs'],   # or 'auto', 'all', 'none'
+    metrics=['accuracy', 'loss'],          # or 'all', 'none'
+    meta=['name', 'status', 'started_at']  # metadata columns
+)
+# Columns use prefixed names: meta:name, param:learning_rate, metric:accuracy
+
+# Get time-series metrics in long format (for visualization)
+df = yr.get_metrics(
+    tags=['sweep'],
+    metrics=['train_loss'],           # or None for all
+    params='auto',                    # 'auto', 'all', 'none', or list
+    meta=['name']                     # NEW: metadata columns for faceting
+)
+# Columns: experiment_id, step, metric_name, value, name, lr, ...
+
+# Other useful functions
+experiments = yr.get_experiments(status='completed')
+latest = yr.get_latest(tags=['training'])
+best = yr.get_best('accuracy', minimize=False, status='completed')
+```
+
+**Key API Differences**:
+- `yr.compare()`: Wide format with prefixed column names (`meta:id`, `param:lr`, `metric:accuracy`)
+- `yr.get_metrics()`: Long format with bare column names (`experiment_id`, `lr`, `accuracy`) - optimized for plotting
+
+### Unified Key Syntax
+
+CLI commands and the Python API support a canonical key syntax with group prefixes:
+
+**New canonical syntax** (preferred):
+```bash
+yanex get param:lr abc123              # Get parameter
+yanex get metric:accuracy abc123       # Get metric
+yanex get meta:status abc123           # Get metadata
+yanex compare --params lr --metrics accuracy  # Flags provide scope
+```
+
+**AccessResolver features**:
+- **Sub-path resolution**: `lr` resolves to `param:advisor.lr` if unambiguous
+- **Pattern matching** (compare/show only): `*.lr` matches all keys ending in `.lr`
+- **Scope from flags**: `--params lr` searches only params scope
+- **Ambiguity errors**: Clear errors when multiple matches exist
+
+**Core files**:
+- `yanex/core/access_resolver.py` - Key resolution logic
+- `yanex/utils/exceptions.py` - `AmbiguousKeyError`, `KeyNotFoundError`
+
 ## Ruff Linting Memories
 
 - Don't add whitespace to empty lines to pass ruff's rule W293. 

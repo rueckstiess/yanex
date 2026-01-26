@@ -349,3 +349,125 @@ class TestFromDependencySlot:
         finally:
             yanex._clear_current_experiment_id()
             yanex.api._tracked_params = None
+
+
+class TestIgnoreDependenciesTracking:
+    """Test that ignore_dependencies=True still tracks parameter access.
+
+    Regression tests for a bug where get_param(key, ignore_dependencies=True)
+    bypassed TrackedDict initialization entirely, causing all parameters to be
+    saved instead of just the accessed ones.
+    """
+
+    @pytest.fixture(autouse=True)
+    def setup(self, per_test_experiments_dir, git_repo):
+        """Set up test fixtures."""
+        self.experiments_dir = per_test_experiments_dir
+        self.git_repo = git_repo
+        self.manager = ExperimentManager(per_test_experiments_dir)
+
+        self.script_path = Path(git_repo.working_dir) / "train.py"
+        self.script_path.write_text("print('training')")
+
+    def test_ignore_dependencies_tracks_accessed_param(self):
+        """Test that ignore_dependencies=True tracks the accessed parameter.
+
+        Regression test: Previously, _get_local_param() bypassed get_params()
+        entirely, so TrackedDict was never initialized and no access was tracked.
+        """
+        # Create experiment with multiple parameters
+        exp_id = self.manager.create_experiment(
+            script_path=self.script_path,
+            config={"seed": 42, "another_param": True, "lr": 0.01},
+        )
+
+        yanex._set_current_experiment_id(exp_id)
+        try:
+            # Access only 'seed' using ignore_dependencies
+            seed = yanex.get_param("seed", ignore_dependencies=True)
+            assert seed == 42
+
+            # Verify TrackedDict was initialized and tracks the access
+            tracked = yanex.api._tracked_params
+            assert tracked is not None, "TrackedDict should be initialized"
+
+            accessed_paths = tracked.get_accessed_paths()
+            assert "seed" in accessed_paths, "Accessed param should be tracked"
+            assert "another_param" not in accessed_paths, (
+                "Unaccessed params should not be tracked"
+            )
+            assert "lr" not in accessed_paths, "Unaccessed params should not be tracked"
+        finally:
+            yanex._clear_current_experiment_id()
+            yanex.api._tracked_params = None
+
+    def test_ignore_dependencies_saves_only_accessed_params(self):
+        """Test that only accessed params are saved when using ignore_dependencies.
+
+        This tests the full flow including the atexit handler behavior.
+        """
+        from yanex.core.param_tracking import extract_accessed_params
+
+        # Create experiment with multiple parameters
+        exp_id = self.manager.create_experiment(
+            script_path=self.script_path,
+            config={"seed": 42, "another_param": True, "lr": 0.01},
+        )
+
+        yanex._set_current_experiment_id(exp_id)
+        try:
+            # Access only 'seed' using ignore_dependencies
+            seed = yanex.get_param("seed", ignore_dependencies=True)
+            assert seed == 42
+
+            # Get the tracked dict and extract what would be saved
+            tracked = yanex.api._tracked_params
+            original_config = {"seed": 42, "another_param": True, "lr": 0.01}
+            filtered = extract_accessed_params(tracked, original_config)
+
+            # Only 'seed' should be in the filtered params
+            assert "seed" in filtered, "Accessed param should be saved"
+            assert filtered["seed"] == 42
+            assert "another_param" not in filtered, (
+                "Unaccessed params should not be saved"
+            )
+            assert "lr" not in filtered, "Unaccessed params should not be saved"
+        finally:
+            yanex._clear_current_experiment_id()
+            yanex.api._tracked_params = None
+
+    def test_ignore_dependencies_with_nested_params(self):
+        """Test tracking works for nested params with ignore_dependencies."""
+        # Create experiment with nested parameters
+        exp_id = self.manager.create_experiment(
+            script_path=self.script_path,
+            config={
+                "model": {"lr": 0.01, "layers": 5},
+                "seed": 42,
+                "unused": "value",
+            },
+        )
+
+        yanex._set_current_experiment_id(exp_id)
+        try:
+            # Access nested param using ignore_dependencies
+            lr = yanex.get_param("model.lr", ignore_dependencies=True)
+            assert lr == 0.01
+
+            # Verify only the accessed path is tracked
+            tracked = yanex.api._tracked_params
+            accessed_paths = tracked.get_accessed_paths()
+
+            # model.lr should be tracked (or model if entire dict was accessed)
+            assert any("model" in p for p in accessed_paths), (
+                "Nested param access should be tracked"
+            )
+            assert "seed" not in accessed_paths, (
+                "Unaccessed params should not be tracked"
+            )
+            assert "unused" not in accessed_paths, (
+                "Unaccessed params should not be tracked"
+            )
+        finally:
+            yanex._clear_current_experiment_id()
+            yanex.api._tracked_params = None

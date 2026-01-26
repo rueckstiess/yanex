@@ -2,7 +2,7 @@
 pandas DataFrame integration for experiment comparison.
 
 This module provides functions to convert experiment comparison data into
-pandas DataFrames with proper hierarchical columns and data types.
+pandas DataFrames with flat group:path column names (e.g., "param:lr", "metric:accuracy").
 """
 
 from typing import TYPE_CHECKING, Any
@@ -17,13 +17,14 @@ else:
 
 def experiments_to_dataframe(comparison_data: dict[str, Any]) -> pd.DataFrame:
     """
-    Convert experiment comparison data to pandas DataFrame with hierarchical columns.
+    Convert experiment comparison data to pandas DataFrame with flat group:path columns.
 
     Args:
         comparison_data: Comparison data from ExperimentComparisonData.get_comparison_data()
 
     Returns:
-        pandas DataFrame with hierarchical columns (category, name)
+        pandas DataFrame with flat column names using group:path format
+        (e.g., "param:lr", "metric:accuracy", "meta:id")
 
     Raises:
         ImportError: If pandas is not available
@@ -31,8 +32,8 @@ def experiments_to_dataframe(comparison_data: dict[str, Any]) -> pd.DataFrame:
     Examples:
         >>> comparison_data = extractor.get_comparison_data(...)
         >>> df = experiments_to_dataframe(comparison_data)
-        >>> print(df[("param", "learning_rate")])  # Access parameter column
-        >>> print(df.xs("metric", axis=1, level=0))  # All metrics
+        >>> print(df["param:learning_rate"])  # Access parameter column
+        >>> param_cols = [c for c in df.columns if c.startswith("param:")]
     """
     try:
         import pandas as pd
@@ -44,53 +45,31 @@ def experiments_to_dataframe(comparison_data: dict[str, Any]) -> pd.DataFrame:
     rows = comparison_data.get("rows", [])
 
     if not rows:
-        # Return empty DataFrame with proper MultiIndex structure
-        return pd.DataFrame(
-            columns=pd.MultiIndex.from_tuples([], names=["category", "name"])
-        )
+        return pd.DataFrame()
 
-    # Extract data and build hierarchical column structure
-    data_dict = {}
-    column_tuples = []
+    # Extract data - columns already use group:path format from comparison data
+    data_dict: dict[str, list] = {}
 
     # Process first row to determine column structure
     first_row = rows[0]
 
     for key in first_row.keys():
-        if key.startswith("param:"):
-            param_name = key[6:]  # Remove "param:" prefix
-            column_tuples.append(("param", param_name))
-            data_dict[("param", param_name)] = []
-        elif key.startswith("metric:"):
-            metric_name = key[7:]  # Remove "metric:" prefix
-            column_tuples.append(("metric", metric_name))
-            data_dict[("metric", metric_name)] = []
-        else:
-            # Metadata columns
-            column_tuples.append(("meta", key))
-            data_dict[("meta", key)] = []
+        # Ensure all columns use canonical group:path format
+        canonical_key = _ensure_canonical_column(key)
+        data_dict[canonical_key] = []
 
     # Fill data for all rows
     for row in rows:
         for key in first_row.keys():
-            if key.startswith("param:"):
-                param_name = key[6:]
-                data_dict[("param", param_name)].append(row.get(key, None))
-            elif key.startswith("metric:"):
-                metric_name = key[7:]
-                data_dict[("metric", metric_name)].append(row.get(key, None))
-            else:
-                data_dict[("meta", key)].append(row.get(key, None))
-
-    # Create MultiIndex columns
-    columns = pd.MultiIndex.from_tuples(column_tuples, names=["category", "name"])
+            canonical_key = _ensure_canonical_column(key)
+            data_dict[canonical_key].append(row.get(key, None))
 
     # Create DataFrame
-    df = pd.DataFrame(data_dict, columns=columns)
+    df = pd.DataFrame(data_dict)
 
     # Set experiment ID as index if available
-    if ("meta", "id") in df.columns:
-        df = df.set_index(("meta", "id"))
+    if "meta:id" in df.columns:
+        df = df.set_index("meta:id")
         df.index.name = "experiment_id"
 
     # Optimize data types
@@ -99,12 +78,30 @@ def experiments_to_dataframe(comparison_data: dict[str, Any]) -> pd.DataFrame:
     return df
 
 
+def _ensure_canonical_column(key: str) -> str:
+    """
+    Ensure a column name uses canonical group:path format.
+
+    Args:
+        key: Column name (may or may not have group prefix)
+
+    Returns:
+        Canonical column name with group prefix
+    """
+    # Already has a valid group prefix
+    if key.startswith(("param:", "metric:", "meta:")):
+        return key
+
+    # Legacy metadata fields without prefix -> add meta:
+    return f"meta:{key}"
+
+
 def format_dataframe_for_analysis(df: pd.DataFrame) -> pd.DataFrame:
     """
     Optimize DataFrame for analysis by setting proper data types.
 
     Args:
-        df: Input DataFrame with experiment data
+        df: Input DataFrame with experiment data (flat group:path columns)
 
     Returns:
         DataFrame with optimized dtypes and formatting
@@ -120,9 +117,9 @@ def format_dataframe_for_analysis(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
-    # Convert numeric columns
+    # Convert numeric columns (param: and metric: columns)
     for col in df.columns:
-        if col[0] in ["param", "metric"]:  # Only process parameter and metric columns
+        if col.startswith(("param:", "metric:")):
             # Try to convert to numeric, keeping non-numeric as object
             try:
                 df[col] = pd.to_numeric(df[col])
@@ -131,10 +128,10 @@ def format_dataframe_for_analysis(df: pd.DataFrame) -> pd.DataFrame:
 
     # Convert datetime columns
     datetime_columns = [
-        ("meta", "started"),
-        ("meta", "started_at"),
-        ("meta", "ended_at"),
-        ("meta", "completed_at"),
+        "meta:started",
+        "meta:started_at",
+        "meta:ended_at",
+        "meta:completed_at",
     ]
 
     for col in datetime_columns:
@@ -145,18 +142,18 @@ def format_dataframe_for_analysis(df: pd.DataFrame) -> pd.DataFrame:
                 pass  # Keep original dtype if conversion fails
 
     # Convert duration to timedelta if it's in HH:MM:SS format
-    if ("meta", "duration") in df.columns:
-        duration_col = df[("meta", "duration")]
+    if "meta:duration" in df.columns:
+        duration_col = df["meta:duration"]
         try:
             # Try to convert HH:MM:SS format to timedelta
-            df[("meta", "duration")] = pd.to_timedelta(duration_col)
+            df["meta:duration"] = pd.to_timedelta(duration_col)
         except (ValueError, TypeError):
             pass  # Keep original format if conversion fails
 
     # Convert categorical columns
     categorical_columns = [
-        ("meta", "status"),
-        ("meta", "name"),
+        "meta:status",
+        "meta:name",
     ]
 
     for col in categorical_columns:
@@ -171,39 +168,53 @@ def format_dataframe_for_analysis(df: pd.DataFrame) -> pd.DataFrame:
 
 def flatten_dataframe_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Flatten hierarchical columns to single-level with descriptive names.
+    Convert group:path column names to underscore format.
+
+    This is a legacy compatibility function. With the new flat column format,
+    this converts "param:learning_rate" to "param_learning_rate".
 
     Args:
-        df: DataFrame with hierarchical columns
+        df: DataFrame with group:path columns
 
     Returns:
-        DataFrame with flattened column names
+        DataFrame with underscore-separated column names
 
     Examples:
-        >>> flat_df = flatten_dataframe_columns(hierarchical_df)
-        >>> print(flat_df.columns)  # ['param_learning_rate', 'metric_accuracy', ...]
+        >>> flat_df = flatten_dataframe_columns(df)
+        >>> print(flat_df.columns)  # ['param_learning_rate', 'metric_accuracy', 'id', ...]
     """
     try:
         import pandas as pd
     except ImportError:
         return df
 
-    if not isinstance(df.columns, pd.MultiIndex):
-        return df  # Already flat
+    # Handle legacy MultiIndex columns
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df.copy()
+        new_columns = []
+        for category, name in df.columns:
+            if category == "meta":
+                new_columns.append(name)
+            else:
+                new_columns.append(f"{category}_{name}")
+        df.columns = new_columns
+        return df
 
     df = df.copy()
 
-    # Create new column names
+    # Convert group:path to group_path format
     new_columns = []
-    for category, name in df.columns:
-        if category == "meta":
-            new_columns.append(name)
+    for col in df.columns:
+        if col.startswith("meta:"):
+            # Strip meta: prefix for metadata columns
+            new_columns.append(col[5:])
+        elif col.startswith(("param:", "metric:")):
+            # Replace : with _ for param/metric columns
+            new_columns.append(col.replace(":", "_", 1))
         else:
-            new_columns.append(f"{category}_{name}")
+            new_columns.append(col)
 
-    # Flatten columns
     df.columns = new_columns
-
     return df
 
 
@@ -212,7 +223,7 @@ def get_parameter_summary(df: pd.DataFrame) -> pd.DataFrame:
     Get summary statistics for all parameters.
 
     Args:
-        df: DataFrame with experiment data
+        df: DataFrame with experiment data (flat group:path columns)
 
     Returns:
         DataFrame with parameter summary statistics
@@ -226,11 +237,8 @@ def get_parameter_summary(df: pd.DataFrame) -> pd.DataFrame:
     except ImportError:
         raise ImportError("pandas is required for summary statistics")
 
-    if not isinstance(df.columns, pd.MultiIndex):
-        return pd.DataFrame()  # Can't process without hierarchical columns
-
-    # Get all parameter columns
-    param_cols = [col for col in df.columns if col[0] == "param"]
+    # Get all parameter columns (param:* format)
+    param_cols = [col for col in df.columns if col.startswith("param:")]
 
     if not param_cols:
         return pd.DataFrame()
@@ -240,8 +248,8 @@ def get_parameter_summary(df: pd.DataFrame) -> pd.DataFrame:
     # Generate summary statistics
     summary = param_df.describe(include="all")
 
-    # Clean up column names for summary
-    summary.columns = [col[1] for col in summary.columns]  # Remove "param" prefix
+    # Clean up column names for summary (remove "param:" prefix)
+    summary.columns = [col[6:] for col in summary.columns]
 
     return summary
 
@@ -251,7 +259,7 @@ def get_metric_summary(df: pd.DataFrame) -> pd.DataFrame:
     Get summary statistics for all metrics.
 
     Args:
-        df: DataFrame with experiment data
+        df: DataFrame with experiment data (flat group:path columns)
 
     Returns:
         DataFrame with metric summary statistics
@@ -265,11 +273,8 @@ def get_metric_summary(df: pd.DataFrame) -> pd.DataFrame:
     except ImportError:
         raise ImportError("pandas is required for summary statistics")
 
-    if not isinstance(df.columns, pd.MultiIndex):
-        return pd.DataFrame()  # Can't process without hierarchical columns
-
-    # Get all metric columns
-    metric_cols = [col for col in df.columns if col[0] == "metric"]
+    # Get all metric columns (metric:* format)
+    metric_cols = [col for col in df.columns if col.startswith("metric:")]
 
     if not metric_cols:
         return pd.DataFrame()
@@ -279,8 +284,8 @@ def get_metric_summary(df: pd.DataFrame) -> pd.DataFrame:
     # Generate summary statistics
     summary = metric_df.describe(include="all")
 
-    # Clean up column names for summary
-    summary.columns = [col[1] for col in summary.columns]  # Remove "metric" prefix
+    # Clean up column names for summary (remove "metric:" prefix)
+    summary.columns = [col[7:] for col in summary.columns]
 
     return summary
 
@@ -290,7 +295,7 @@ def correlation_analysis(df: pd.DataFrame) -> pd.DataFrame:
     Compute correlation matrix between parameters and metrics.
 
     Args:
-        df: DataFrame with experiment data
+        df: DataFrame with experiment data (flat group:path columns)
 
     Returns:
         Correlation matrix DataFrame
@@ -304,12 +309,9 @@ def correlation_analysis(df: pd.DataFrame) -> pd.DataFrame:
     except ImportError:
         raise ImportError("pandas is required for correlation analysis")
 
-    if not isinstance(df.columns, pd.MultiIndex):
-        return pd.DataFrame()
-
     # Get numeric parameter and metric columns
-    param_cols = [col for col in df.columns if col[0] == "param"]
-    metric_cols = [col for col in df.columns if col[0] == "metric"]
+    param_cols = [col for col in df.columns if col.startswith("param:")]
+    metric_cols = [col for col in df.columns if col.startswith("metric:")]
 
     all_cols = param_cols + metric_cols
 
@@ -322,8 +324,16 @@ def correlation_analysis(df: pd.DataFrame) -> pd.DataFrame:
     if numeric_df.empty:
         return pd.DataFrame()
 
-    # Flatten column names for correlation matrix
-    numeric_df.columns = [col[1] for col in numeric_df.columns]
+    # Simplify column names for correlation matrix (remove group: prefix)
+    new_columns = []
+    for col in numeric_df.columns:
+        if col.startswith("param:"):
+            new_columns.append(col[6:])
+        elif col.startswith("metric:"):
+            new_columns.append(col[7:])
+        else:
+            new_columns.append(col)
+    numeric_df.columns = new_columns
 
     # Compute correlation matrix
     correlation_matrix = numeric_df.corr()
@@ -338,8 +348,8 @@ def find_best_experiments(
     Find the best experiments based on a specific metric.
 
     Args:
-        df: DataFrame with experiment data
-        metric: Metric name to optimize
+        df: DataFrame with experiment data (flat group:path columns)
+        metric: Metric name to optimize (with or without "metric:" prefix)
         maximize: True to find maximum values, False for minimum
         top_n: Number of top experiments to return
 
@@ -350,15 +360,11 @@ def find_best_experiments(
         >>> best = find_best_experiments(df, "accuracy", maximize=True, top_n=3)
         >>> print(best)  # Top 3 experiments with highest accuracy
     """
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("pandas is required for finding best experiments")
-
-    if not isinstance(df.columns, pd.MultiIndex):
-        return df.head(0)  # Return empty DataFrame
-
-    metric_col = ("metric", metric)
+    # Support both "metric:accuracy" and "accuracy" formats
+    if metric.startswith("metric:"):
+        metric_col = metric
+    else:
+        metric_col = f"metric:{metric}"
 
     if metric_col not in df.columns:
         raise ValueError(f"Metric '{metric}' not found in DataFrame")
@@ -375,7 +381,9 @@ def find_best_experiments(
     return sorted_df.head(top_n)
 
 
-def determine_varying_params(experiments: list) -> list[str]:
+def determine_varying_params(
+    experiments: list, include_dep_params: bool = False
+) -> list[str]:
     """
     Determine which parameters vary across experiments.
 
@@ -384,6 +392,8 @@ def determine_varying_params(experiments: list) -> list[str]:
 
     Args:
         experiments: List of Experiment objects
+        include_dep_params: If True, include parameters from dependencies when
+            determining variation
 
     Returns:
         List of parameter names (with dot notation for nested params) that have
@@ -394,6 +404,8 @@ def determine_varying_params(experiments: list) -> list[str]:
         >>> print(varying)  # ['lr', 'batch_size'] if only these vary
         >>> # Nested params are flattened:
         >>> print(varying)  # ['train.lr', 'model.n_layer']
+        >>> # Include dependency params:
+        >>> varying = determine_varying_params(experiments, include_dep_params=True)
     """
     if not experiments:
         return []
@@ -403,7 +415,7 @@ def determine_varying_params(experiments: list) -> list[str]:
     # Collect all params from all experiments (flattened)
     all_params: dict[str, set[str]] = {}
     for exp in experiments:
-        params = exp.get_params()
+        params = exp.get_params(include_deps=include_dep_params)
         # Flatten nested params to dot notation
         flat_params = flatten_dict(params)
         for key, value in flat_params.items():
@@ -416,10 +428,57 @@ def determine_varying_params(experiments: list) -> list[str]:
     return sorted([key for key, values in all_params.items() if len(values) > 1])
 
 
+def _get_experiment_meta(exp: Any, meta_name: str) -> Any:
+    """
+    Extract a metadata value from an Experiment object.
+
+    Args:
+        exp: Experiment object
+        meta_name: Metadata field name (e.g., 'name', 'status', 'tags')
+
+    Returns:
+        The metadata value, or None if not found
+    """
+    # Direct attribute access for common fields
+    if meta_name == "id":
+        return exp.id
+    elif meta_name == "name":
+        return exp.name
+    elif meta_name == "status":
+        return exp.status
+    elif meta_name == "description":
+        return exp.description
+    elif meta_name == "tags":
+        return exp.tags
+    elif meta_name == "started_at":
+        return exp.started_at
+    elif meta_name == "completed_at":
+        return exp.completed_at
+    elif meta_name == "script_path":
+        return str(exp.script_path) if exp.script_path else None
+
+    # Try to get from metadata dict for other fields
+    try:
+        metadata = exp._load_metadata()
+        if meta_name in metadata:
+            return metadata[meta_name]
+        # Handle nested paths like git.branch
+        if "." in meta_name:
+            from ..utils.dict_utils import get_nested_value
+
+            return get_nested_value(metadata, meta_name)
+    except Exception:
+        pass
+
+    return None
+
+
 def metrics_to_long_dataframe(
     experiments: list,
     metrics: list[str] | None = None,
     param_cols: list[str] | None = None,
+    meta_cols: list[str] | None = None,
+    include_dep_params: bool = False,
 ) -> pd.DataFrame:
     """
     Convert experiment metrics to long (tidy) format DataFrame.
@@ -431,15 +490,21 @@ def metrics_to_long_dataframe(
         experiments: List of Experiment objects
         metrics: List of metric names to include (None for all)
         param_cols: List of parameter names (with dot notation for nested) to include as columns
+        meta_cols: List of metadata field names to include as columns (e.g., 'name', 'status')
+        include_dep_params: If True, include parameters from dependencies when extracting params
 
     Returns:
-        DataFrame with columns: [experiment_id, step, metric_name, value, <params...>]
+        DataFrame with columns: [experiment_id, step, metric_name, value, <meta...>, <params...>]
 
     Examples:
         >>> df = metrics_to_long_dataframe(experiments, metrics=['train_loss'], param_cols=['lr'])
         >>> print(df.columns)  # ['experiment_id', 'step', 'metric_name', 'value', 'lr']
         >>> # Nested params use dot notation:
         >>> df = metrics_to_long_dataframe(experiments, param_cols=['train.lr', 'model.n_layer'])
+        >>> # Include meta columns for faceting:
+        >>> df = metrics_to_long_dataframe(experiments, meta_cols=['name', 'status'])
+        >>> # Include dependency params:
+        >>> df = metrics_to_long_dataframe(experiments, param_cols=['model.n_embd'], include_dep_params=True)
     """
     try:
         import pandas as pd
@@ -451,6 +516,8 @@ def metrics_to_long_dataframe(
     if not experiments:
         # Return empty DataFrame with expected structure
         columns = ["experiment_id", "step", "metric_name", "value"]
+        if meta_cols:
+            columns.extend(meta_cols)
         if param_cols:
             columns.extend(param_cols)
         return pd.DataFrame(columns=columns)
@@ -464,7 +531,17 @@ def metrics_to_long_dataframe(
         exp_metrics = exp.get_metrics(as_dataframe=False)  # Returns list[dict]
 
         # Get params for this experiment (flattened to support dot notation)
-        exp_params = flatten_dict(exp.get_params()) if param_cols else {}
+        exp_params = (
+            flatten_dict(exp.get_params(include_deps=include_dep_params))
+            if param_cols
+            else {}
+        )
+
+        # Get meta values for this experiment
+        exp_meta = {}
+        if meta_cols:
+            for meta_name in meta_cols:
+                exp_meta[meta_name] = _get_experiment_meta(exp, meta_name)
 
         # Process each step
         for step_data in exp_metrics:
@@ -487,6 +564,11 @@ def metrics_to_long_dataframe(
                     "metric_name": metric_name,
                     "value": metric_value,
                 }
+
+                # Add meta columns
+                if meta_cols:
+                    for meta_name in meta_cols:
+                        row[meta_name] = exp_meta.get(meta_name)
 
                 # Add param columns (from flattened params)
                 if param_cols:

@@ -581,3 +581,344 @@ class TestMissingSentinel:
         """Test _MISSING is distinguishable from None."""
         assert _MISSING is not None
         assert _MISSING != None  # noqa: E711
+
+
+class TestTrackedDictPop:
+    """Test pop() method tracking."""
+
+    def test_pop_tracks_access(self):
+        """Test that pop() tracks the accessed key."""
+        tracked = TrackedDict({"a": 1, "b": 2})
+        value = tracked.pop("a")
+        assert value == 1
+        assert "a" in tracked.get_accessed_paths()
+        assert "b" not in tracked.get_accessed_paths()
+
+    def test_pop_removes_key(self):
+        """Test that pop() removes the key from dict."""
+        tracked = TrackedDict({"a": 1, "b": 2})
+        tracked.pop("a")
+        assert "a" not in tracked
+        assert "b" in tracked
+
+    def test_pop_with_default(self):
+        """Test pop() with default for missing key."""
+        tracked = TrackedDict({"a": 1})
+        value = tracked.pop("missing", "default")
+        assert value == "default"
+        # Missing key should not be tracked
+        assert "missing" not in tracked.get_accessed_paths()
+
+    def test_pop_missing_raises_keyerror(self):
+        """Test pop() raises KeyError for missing key without default."""
+        tracked = TrackedDict({"a": 1})
+        with pytest.raises(KeyError):
+            tracked.pop("missing")
+
+    def test_pop_nested_tracks_path(self):
+        """Test pop() on nested TrackedDict tracks full path."""
+        tracked = TrackedDict({"model": {"lr": 0.01, "epochs": 10}})
+        model = tracked["model"]
+        lr = model.pop("lr")
+        assert lr == 0.01
+        assert "model.lr" in tracked.get_accessed_paths()
+        assert "lr" not in model  # Removed from nested dict
+
+    def _create_mock_experiment(self, exp_id: str, params: dict) -> MagicMock:
+        """Create a mock Experiment with get_param() support."""
+        mock_exp = MagicMock()
+        mock_exp.id = exp_id
+
+        def mock_get_param(key, default=None):
+            keys = key.split(".")
+            value = params
+            for k in keys:
+                if isinstance(value, dict) and k in value:
+                    value = value[k]
+                else:
+                    return default
+            return value
+
+        mock_exp.get_param = mock_get_param
+        return mock_exp
+
+    def test_pop_with_conflict_raises(self):
+        """Test pop() raises ParameterConflictError on conflict."""
+        mock_dep = self._create_mock_experiment("abc12345", {"lr": 0.001})
+        tracked = TrackedDict({"lr": 0.01}, dependencies={"dep": mock_dep})
+
+        with pytest.raises(ParameterConflictError):
+            tracked.pop("lr")
+
+
+class TestTrackedDictSetdefault:
+    """Test setdefault() method tracking."""
+
+    def test_setdefault_existing_key_tracks(self):
+        """Test setdefault() tracks access for existing key."""
+        tracked = TrackedDict({"a": 1, "b": 2})
+        value = tracked.setdefault("a", 999)
+        assert value == 1  # Original value
+        assert "a" in tracked.get_accessed_paths()
+
+    def test_setdefault_missing_key_tracks_and_sets(self):
+        """Test setdefault() tracks and sets missing key."""
+        tracked = TrackedDict({"a": 1})
+        value = tracked.setdefault("b", 999)
+        assert value == 999
+        assert tracked["b"] == 999
+        assert "b" in tracked.get_accessed_paths()
+
+    def test_setdefault_default_none(self):
+        """Test setdefault() with default None."""
+        tracked = TrackedDict({"a": 1})
+        value = tracked.setdefault("b")
+        assert value is None
+        assert tracked["b"] is None
+
+    def test_setdefault_nested_wraps_dict(self):
+        """Test setdefault() wraps nested dict values."""
+        tracked = TrackedDict({"model": {"lr": 0.01}})
+        model = tracked.setdefault("model", {})
+        assert isinstance(model, TrackedDict)
+        assert model["lr"] == 0.01
+
+    def _create_mock_experiment(self, exp_id: str, params: dict) -> MagicMock:
+        """Create a mock Experiment with get_param() support."""
+        mock_exp = MagicMock()
+        mock_exp.id = exp_id
+
+        def mock_get_param(key, default=None):
+            keys = key.split(".")
+            value = params
+            for k in keys:
+                if isinstance(value, dict) and k in value:
+                    value = value[k]
+                else:
+                    return default
+            return value
+
+        mock_exp.get_param = mock_get_param
+        return mock_exp
+
+    def test_setdefault_with_conflict_raises(self):
+        """Test setdefault() raises ParameterConflictError on conflict."""
+        mock_dep = self._create_mock_experiment("abc12345", {"lr": 0.001})
+        tracked = TrackedDict({"lr": 0.01}, dependencies={"dep": mock_dep})
+
+        with pytest.raises(ParameterConflictError):
+            tracked.setdefault("lr", 0.1)
+
+
+class TestTrackedDictPopitem:
+    """Test popitem() method tracking."""
+
+    def test_popitem_tracks_and_removes(self):
+        """Test popitem() tracks the removed key."""
+        tracked = TrackedDict({"a": 1})
+        key, value = tracked.popitem()
+        assert key == "a"
+        assert value == 1
+        assert "a" in tracked.get_accessed_paths()
+        assert len(tracked) == 0
+
+    def test_popitem_empty_raises(self):
+        """Test popitem() raises KeyError on empty dict."""
+        tracked = TrackedDict({})
+        with pytest.raises(KeyError):
+            tracked.popitem()
+
+    def test_popitem_multiple(self):
+        """Test multiple popitem() calls track all removed keys."""
+        tracked = TrackedDict({"a": 1, "b": 2, "c": 3})
+        items = []
+        for _ in range(3):
+            items.append(tracked.popitem())
+
+        accessed = tracked.get_accessed_paths()
+        assert len(accessed) == 3
+        assert "a" in accessed
+        assert "b" in accessed
+        assert "c" in accessed
+
+
+class TestTrackedDictCopy:
+    """Test copy() method."""
+
+    def test_copy_returns_tracked_dict(self):
+        """Test copy() returns a TrackedDict, not plain dict."""
+        tracked = TrackedDict({"a": 1, "b": 2})
+        copied = tracked.copy()
+        assert isinstance(copied, TrackedDict)
+
+    def test_copy_shares_tracking(self):
+        """Test copy() shares tracking state with original."""
+        tracked = TrackedDict({"a": 1, "b": 2})
+        copied = tracked.copy()
+
+        # Access on copy should be tracked in original's paths
+        _ = copied["a"]
+        assert "a" in tracked.get_accessed_paths()
+        assert "a" in copied.get_accessed_paths()
+
+    def test_copy_is_shallow(self):
+        """Test copy() is a shallow copy of data."""
+        tracked = TrackedDict({"a": 1, "b": 2})
+        copied = tracked.copy()
+
+        # Modify copy doesn't affect original
+        copied["c"] = 3
+        assert "c" in copied
+        assert "c" not in tracked
+
+    def test_copy_nested_tracking(self):
+        """Test copy() preserves nested tracking capability."""
+        tracked = TrackedDict({"model": {"lr": 0.01, "epochs": 10}})
+        copied = tracked.copy()
+
+        # Access nested value on copy
+        _ = copied["model"]["lr"]
+
+        # Should be tracked in shared state
+        accessed = tracked.get_accessed_paths()
+        assert "model" in accessed
+        assert "model.lr" in accessed
+
+    def test_copy_preserves_dependencies(self):
+        """Test copy() preserves dependency checking."""
+        mock_dep = MagicMock()
+        mock_dep.id = "abc12345"
+        mock_dep.get_param.return_value = 0.001  # Different value
+
+        tracked = TrackedDict({"lr": 0.01}, dependencies={"dep": mock_dep})
+        copied = tracked.copy()
+
+        # Conflict should still be detected on copy
+        with pytest.raises(ParameterConflictError):
+            _ = copied["lr"]
+
+    def test_copy_does_not_mark_all_accessed(self):
+        """Test copy() itself doesn't mark all keys as accessed."""
+        tracked = TrackedDict({"a": 1, "b": 2, "c": 3})
+        _ = tracked.copy()
+
+        # copy() should not mark keys as accessed (unlike dict(tracked))
+        assert tracked.get_accessed_paths() == set()
+
+
+class TestTrackedDictPickle:
+    """Test pickle support for TrackedDict."""
+
+    def test_pickle_roundtrip(self):
+        """Test TrackedDict can be pickled and unpickled."""
+        import pickle
+
+        tracked = TrackedDict({"a": 1, "b": 2, "model": {"lr": 0.01}})
+        _ = tracked["a"]  # Access to track
+
+        # Pickle and unpickle
+        pickled = pickle.dumps(tracked)
+        restored = pickle.loads(pickled)
+
+        # Should have same data
+        assert restored["a"] == 1
+        assert restored["b"] == 2
+        assert restored["model"]["lr"] == 0.01
+
+    def test_pickle_preserves_data(self):
+        """Test pickling preserves all dictionary data."""
+        import pickle
+
+        data = {
+            "int": 42,
+            "float": 3.14,
+            "str": "hello",
+            "list": [1, 2, 3],
+            "nested": {"deep": {"value": True}},
+        }
+        tracked = TrackedDict(data)
+
+        restored = pickle.loads(pickle.dumps(tracked))
+
+        assert dict(restored) == data
+
+    def test_pickle_preserves_accessed_paths(self):
+        """Test pickling preserves the accessed paths set."""
+        import pickle
+
+        tracked = TrackedDict({"a": 1, "b": 2, "c": 3})
+        _ = tracked["a"]
+        _ = tracked["b"]
+
+        restored = pickle.loads(pickle.dumps(tracked))
+
+        # Accessed paths should be preserved
+        assert "a" in restored.get_accessed_paths()
+        assert "b" in restored.get_accessed_paths()
+        assert "c" not in restored.get_accessed_paths()
+
+    def test_pickle_restores_lock(self):
+        """Test unpickling creates a new functional lock."""
+        import pickle
+
+        tracked = TrackedDict({"a": 1})
+        restored = pickle.loads(pickle.dumps(tracked))
+
+        # Lock should work after unpickling
+        with restored._lock:
+            pass  # Should not raise
+
+        # Tracking should still work (uses the lock)
+        _ = restored["a"]
+        assert "a" in restored.get_accessed_paths()
+
+    def test_pickle_nested_tracking_works(self):
+        """Test nested tracking works after unpickling."""
+        import pickle
+
+        tracked = TrackedDict({"model": {"train": {"lr": 0.01}}})
+        restored = pickle.loads(pickle.dumps(tracked))
+
+        # Access nested value
+        _ = restored["model"]["train"]["lr"]
+
+        # Should track the full path
+        accessed = restored.get_accessed_paths()
+        assert "model" in accessed
+        assert "model.train" in accessed
+        assert "model.train.lr" in accessed
+
+    def test_pickle_preserves_path(self):
+        """Test pickling preserves the path prefix."""
+        import pickle
+
+        tracked = TrackedDict({"a": 1}, path="root.nested")
+        restored = pickle.loads(pickle.dumps(tracked))
+
+        assert restored._path == "root.nested"
+
+    def test_torch_save_compatible(self):
+        """Test TrackedDict works with torch.save-like operations.
+
+        torch.save uses pickle internally. This test verifies that TrackedDict
+        can be pickled when embedded in another object (simulating a model
+        that stores its config as a TrackedDict).
+        """
+        import pickle
+
+        # Simulate what happens when a model stores TrackedDict config:
+        # 1. Create a TrackedDict with parameters
+        config = TrackedDict({"lr": 0.01, "epochs": 10})
+        _ = config["lr"]  # Access param (triggers tracking)
+
+        # 2. Store it in a dict (simulating model.__dict__ or a checkpoint dict)
+        checkpoint = {"config": config, "weights": [1.0, 2.0, 3.0]}
+
+        # 3. This should not raise "cannot pickle '_thread.lock' object"
+        pickled = pickle.dumps(checkpoint)
+        restored = pickle.loads(pickled)
+
+        # 4. Verify restored config works correctly
+        assert restored["config"]["lr"] == 0.01
+        assert restored["config"]["epochs"] == 10
+        assert isinstance(restored["config"], TrackedDict)

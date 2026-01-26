@@ -159,12 +159,32 @@ class Experiment:
         """Get artifacts directory path."""
         return self.experiment_dir / "artifacts"
 
-    def get_params(self) -> dict[str, Any]:
+    def get_params(
+        self, include_deps: bool = False, transitive: bool = True
+    ) -> dict[str, Any]:
         """
-        Get all experiment parameters.
+        Get all experiment parameters, optionally including dependency parameters.
+
+        Args:
+            include_deps: If True, merge parameters from dependencies (local wins on conflict)
+            transitive: If True (default), include all transitive dependencies;
+                       if False, only include direct dependencies
 
         Returns:
-            Dictionary of experiment parameters
+            Dictionary of experiment parameters. When include_deps=True, dependency
+            parameters are merged with local parameters, with local values taking
+            precedence on conflicts.
+
+        Examples:
+            >>> exp = get_experiment("abc12345")
+            >>> # Get local params only (default)
+            >>> params = exp.get_params()
+            >>>
+            >>> # Get params merged with all transitive dependencies
+            >>> all_params = exp.get_params(include_deps=True)
+            >>>
+            >>> # Get params merged with direct dependencies only
+            >>> direct_params = exp.get_params(include_deps=True, transitive=False)
         """
         if self._cached_config is None:
             try:
@@ -173,20 +193,58 @@ class Experiment:
                 )
             except StorageError:
                 self._cached_config = {}
-        return self._cached_config.copy()
 
-    def get_param(self, key: str, default: Any = None) -> Any:
+        local_params = self._cached_config.copy()
+
+        if not include_deps:
+            return local_params
+
+        # Merge dependency params (local wins on conflict)
+        from ..utils.dict_utils import deep_merge
+
+        merged = {}
+        dependencies = self.get_dependencies(transitive=transitive)
+
+        if isinstance(dependencies, dict):
+            # Direct dependencies as dict[slot, Experiment]
+            deps_list = list(dependencies.values())
+        else:
+            # Transitive dependencies as list[Experiment]
+            deps_list = dependencies
+
+        # Merge dependency params in order (later deps override earlier)
+        for dep in deps_list:
+            dep_params = dep.get_params()  # Don't recurse include_deps
+            merged = deep_merge(merged, dep_params)
+
+        # Local params override dependency params
+        merged = deep_merge(merged, local_params)
+
+        return merged
+
+    def get_param(
+        self, key: str, default: Any = None, include_deps: bool = False
+    ) -> Any:
         """
         Get a specific parameter with support for dot notation.
 
         Args:
             key: Parameter key (supports dot notation like "model.learning_rate")
             default: Default value if key not found
+            include_deps: If True, search in merged params including dependencies
 
         Returns:
             Parameter value or default
+
+        Examples:
+            >>> exp = get_experiment("abc12345")
+            >>> # Get local param only (default)
+            >>> lr = exp.get_param("learning_rate")
+            >>>
+            >>> # Get param from merged params (includes dependencies)
+            >>> n_embd = exp.get_param("model.n_embd", include_deps=True)
         """
-        params = self.get_params()
+        params = self.get_params(include_deps=include_deps)
         return get_nested_value(params, key, default=default)
 
     def get_metrics(

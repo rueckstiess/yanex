@@ -53,6 +53,27 @@ class ExperimentTableFormatter:
         """
         self.console = console or Console()
 
+    def _get_meta_value(self, exp: dict, key: str, default: Any = None) -> Any:
+        """Get a metadata value, checking both prefixed and unprefixed keys.
+
+        Comparison data uses 'meta:' prefixed keys, while list data uses unprefixed.
+        This method handles both formats.
+
+        Args:
+            exp: Experiment dictionary
+            key: Unprefixed key name (e.g., 'id', 'name', 'status')
+            default: Default value if not found
+
+        Returns:
+            The value from 'meta:{key}' or '{key}', or default if neither exists
+        """
+        # First check meta: prefixed key (comparison data format)
+        prefixed_key = f"meta:{key}"
+        if prefixed_key in exp:
+            return exp[prefixed_key]
+        # Fall back to unprefixed key (list data format)
+        return exp.get(key, default)
+
     def format_experiments_table(
         self,
         experiments: list[dict[str, Any]],
@@ -130,20 +151,27 @@ class ExperimentTableFormatter:
             row_values = []
 
             # Add standard column values (unless excluded)
+            # Use _get_meta_value to handle both prefixed (meta:key) and unprefixed keys
             if "id" not in exclude_set:
-                row_values.append(self._format_id(exp.get("id", "")))
+                row_values.append(self._format_id(self._get_meta_value(exp, "id", "")))
             if "script" not in exclude_set:
-                row_values.append(format_script(exp.get("script_path")))
+                row_values.append(
+                    format_script(self._get_meta_value(exp, "script_path"))
+                )
             if "name" not in exclude_set:
-                row_values.append(self._format_name(exp.get("name")))
+                row_values.append(self._format_name(self._get_meta_value(exp, "name")))
             if "status" not in exclude_set:
-                row_values.append(format_status(exp.get("status", "unknown")))
+                row_values.append(
+                    format_status(self._get_meta_value(exp, "status", "unknown"))
+                )
             if "duration" not in exclude_set:
                 row_values.append(format_experiment_duration(exp))
             if "tags" not in exclude_set:
-                row_values.append(format_tags(exp.get("tags", [])))
+                row_values.append(format_tags(self._get_meta_value(exp, "tags", [])))
             if "started" not in exclude_set:
-                row_values.append(format_timestamp_relative(exp.get("started_at")))
+                row_values.append(
+                    format_timestamp_relative(self._get_meta_value(exp, "started_at"))
+                )
 
             # Add param values
             if param_columns:

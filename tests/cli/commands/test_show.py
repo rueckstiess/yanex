@@ -24,7 +24,7 @@ class TestShowCommandHelp:
         assert result.exit_code == 0
         assert "Show detailed information about an experiment" in result.output
         assert "EXPERIMENT_IDENTIFIER" in result.output
-        assert "--show-metric" in result.output
+        assert "--metrics" in result.output
         assert "--archived" in result.output
 
     def test_show_help_shows_identifier_types(self):
@@ -124,7 +124,7 @@ class TestShowCommandMetrics:
             pass  # Metrics logging may not work in test context
 
         # Show with metric filter
-        result = self.runner.invoke(cli, ["show", exp_id, "--show-metric", "accuracy"])
+        result = self.runner.invoke(cli, ["show", exp_id, "--metrics", "accuracy"])
         assert result.exit_code == 0
         # May or may not show metrics depending on whether logging succeeded
 
@@ -150,7 +150,7 @@ class TestShowCommandMetrics:
 
         # Show with multiple metrics
         result = self.runner.invoke(
-            cli, ["show", exp_id, "--show-metric", "accuracy,loss,f1_score"]
+            cli, ["show", exp_id, "--metrics", "accuracy,loss,f1_score"]
         )
         assert result.exit_code == 0
 
@@ -176,7 +176,7 @@ class TestShowCommandMetrics:
 
         # Show with nonexistent metric
         result = self.runner.invoke(
-            cli, ["show", exp_id, "--show-metric", "nonexistent_metric"]
+            cli, ["show", exp_id, "--metrics", "nonexistent_metric"]
         )
         assert result.exit_code == 0
         # Should handle gracefully - may show warning
@@ -688,7 +688,7 @@ class TestShowCommandFailedExperiments:
         # Request metrics that don't exist
         result = self.runner.invoke(
             cli,
-            ["show", exp_id, "--show-metric", "nonexistent1,nonexistent2,nonexistent3"],
+            ["show", exp_id, "--metrics", "nonexistent1,nonexistent2,nonexistent3"],
         )
         assert result.exit_code == 0
         # Should handle gracefully - may show warning about missing metrics

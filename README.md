@@ -6,6 +6,8 @@
 
 A lightweight, Git-aware experiment tracking system for Python that makes reproducible research effortless.
 
+Yanex is inspired by the now-discontinued [Guild AI](https://guild.ai) ([more info](https://github.com/guildai/guildai/discussions/523)).
+
 ## Why Yanex?
 
 **Stop losing track of your experiments.** Yanex automatically tracks parameters, results, and code state so you can focus on what matters - your research.

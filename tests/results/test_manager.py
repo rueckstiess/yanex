@@ -307,16 +307,20 @@ class TestResultsManager:
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 2  # Two training experiments
 
-        # Check hierarchical columns
-        assert isinstance(df.columns, pd.MultiIndex)
+        # Check flat column format (not MultiIndex)
+        assert not isinstance(df.columns, pd.MultiIndex)
 
-        # Check parameter columns exist
-        assert ("param", "learning_rate") in df.columns
-        assert ("param", "epochs") in df.columns
+        # Check parameter columns exist with group:path format
+        assert "param:learning_rate" in df.columns
+        assert "param:epochs" in df.columns
 
-        # Check metric columns exist
-        assert ("metric", "accuracy") in df.columns
-        assert ("metric", "loss") in df.columns
+        # Check metric columns exist with group:path format
+        assert "metric:accuracy" in df.columns
+        assert "metric:loss" in df.columns
+
+        # Check metadata columns exist with meta: prefix
+        assert "meta:name" in df.columns
+        assert "meta:status" in df.columns
 
     def test_compare_experiments_without_pandas(
         self, manager, sample_experiments, monkeypatch
@@ -445,10 +449,10 @@ class TestResultsManager:
 
     @patch("yanex.core.manager.get_current_commit_info")
     @patch("yanex.core.manager.capture_full_environment")
-    def test_get_metrics_include_params_modes(
+    def test_get_metrics_params_modes(
         self, mock_capture_env, mock_git_info, manager, experiment_manager
     ):
-        """Test different include_params modes."""
+        """Test different params modes."""
 
         # Setup mocks
         mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
@@ -473,28 +477,26 @@ class TestResultsManager:
         experiment_manager.storage.add_result_step(exp2_id, {"loss": 0.6})
         experiment_manager.complete_experiment(exp2_id)
 
-        # Test include_params='auto' (default - only varying)
-        df_auto = manager.get_metrics(tags=["params-test"], include_params="auto")
+        # Test params='auto' (default - only varying)
+        df_auto = manager.get_metrics(tags=["params-test"], params="auto")
         assert "lr" in df_auto.columns  # varies
         assert "epochs" not in df_auto.columns  # does not vary
         assert "batch_size" not in df_auto.columns  # does not vary
 
-        # Test include_params='all'
-        df_all = manager.get_metrics(tags=["params-test"], include_params="all")
+        # Test params='all'
+        df_all = manager.get_metrics(tags=["params-test"], params="all")
         assert "lr" in df_all.columns
         assert "epochs" in df_all.columns
         assert "batch_size" in df_all.columns
 
-        # Test include_params='none'
-        df_none = manager.get_metrics(tags=["params-test"], include_params="none")
+        # Test params='none'
+        df_none = manager.get_metrics(tags=["params-test"], params="none")
         assert "lr" not in df_none.columns
         assert "epochs" not in df_none.columns
         assert "batch_size" not in df_none.columns
 
-        # Test include_params with list
-        df_list = manager.get_metrics(
-            tags=["params-test"], include_params=["lr", "batch_size"]
-        )
+        # Test params with list
+        df_list = manager.get_metrics(tags=["params-test"], params=["lr", "batch_size"])
         assert "lr" in df_list.columns
         assert "batch_size" in df_list.columns
         assert "epochs" not in df_list.columns
@@ -613,7 +615,7 @@ class TestResultsManager:
         experiment_manager.complete_experiment(exp2_id)
 
         # Test auto mode - should flatten and show only varying params
-        df_auto = manager.get_metrics(tags=["nested-test"], include_params="auto")
+        df_auto = manager.get_metrics(tags=["nested-test"], params="auto")
         assert "train.lr" in df_auto.columns  # Flattened and varies
         assert "train.epochs" not in df_auto.columns  # Does not vary
         assert "model.n_layer" not in df_auto.columns  # Does not vary
@@ -625,15 +627,136 @@ class TestResultsManager:
         assert exp2_rows["train.lr"].iloc[0] == 0.01
 
         # Test all mode - should flatten and show all params
-        df_all = manager.get_metrics(tags=["nested-test"], include_params="all")
+        df_all = manager.get_metrics(tags=["nested-test"], params="all")
         assert "train.lr" in df_all.columns
         assert "train.epochs" in df_all.columns
         assert "model.n_layer" in df_all.columns
 
         # Test specific nested param selection
         df_list = manager.get_metrics(
-            tags=["nested-test"], include_params=["train.lr", "model.n_layer"]
+            tags=["nested-test"], params=["train.lr", "model.n_layer"]
         )
         assert "train.lr" in df_list.columns
         assert "model.n_layer" in df_list.columns
         assert "train.epochs" not in df_list.columns
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_with_meta_columns(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test get_metrics with meta parameter for faceting columns."""
+        import pandas as pd
+
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiments with unique names for faceting
+        exp1_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            name="model-small",
+            config={"lr": 0.01, "size": "small"},
+            tags=["meta-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp1_id)
+        experiment_manager.storage.add_result_step(exp1_id, {"loss": 0.5, "acc": 0.8})
+        experiment_manager.storage.add_result_step(exp1_id, {"loss": 0.4, "acc": 0.85})
+        experiment_manager.complete_experiment(exp1_id)
+
+        exp2_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            name="model-large",
+            config={"lr": 0.001, "size": "large"},
+            tags=["meta-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp2_id)
+        experiment_manager.storage.add_result_step(exp2_id, {"loss": 0.6, "acc": 0.75})
+        experiment_manager.storage.add_result_step(exp2_id, {"loss": 0.45, "acc": 0.82})
+        experiment_manager.complete_experiment(exp2_id)
+
+        # Get metrics with meta columns for faceting (e.g., color by name)
+        df = manager.get_metrics(tags=["meta-test"], meta=["name", "status"])
+
+        assert isinstance(df, pd.DataFrame)
+
+        # Check meta columns are present
+        assert "name" in df.columns
+        assert "status" in df.columns
+
+        # Check base columns still present
+        assert "experiment_id" in df.columns
+        assert "step" in df.columns
+        assert "metric_name" in df.columns
+        assert "value" in df.columns
+
+        # Check meta values are correct for each experiment
+        exp1_rows = df[df["experiment_id"] == exp1_id]
+        exp2_rows = df[df["experiment_id"] == exp2_id]
+
+        assert exp1_rows["name"].iloc[0] == "model-small"
+        assert exp1_rows["status"].iloc[0] == "completed"
+        assert exp2_rows["name"].iloc[0] == "model-large"
+        assert exp2_rows["status"].iloc[0] == "completed"
+
+        # Check that all rows for each experiment have the same meta values
+        assert exp1_rows["name"].nunique() == 1
+        assert exp2_rows["name"].nunique() == 1
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_meta_with_none_meta(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test get_metrics without meta parameter (default behavior)."""
+        import pandas as pd
+
+        # Setup mocks
+        mock_git_info.return_value = {"commit": "abc123", "branch": "main"}
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        # Create experiment
+        exp_id = experiment_manager.create_experiment(
+            script_path=Path("train.py"),
+            name="test-exp",
+            config={"lr": 0.01},
+            tags=["meta-none-test", "unit-tests"],
+        )
+        experiment_manager.start_experiment(exp_id)
+        experiment_manager.storage.add_result_step(exp_id, {"loss": 0.5})
+        experiment_manager.complete_experiment(exp_id)
+
+        # Get metrics without meta (default)
+        df = manager.get_metrics(tags=["meta-none-test"], meta=None)
+
+        assert isinstance(df, pd.DataFrame)
+
+        # Check meta columns are NOT present (default behavior)
+        assert "name" not in df.columns
+        assert "status" not in df.columns
+
+        # Base columns should still be present
+        assert "experiment_id" in df.columns
+        assert "step" in df.columns
+
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_get_metrics_meta_empty_experiments(
+        self, mock_capture_env, mock_git_info, manager, experiment_manager
+    ):
+        """Test get_metrics with meta when no experiments match."""
+        import pandas as pd
+
+        # Get metrics with meta for non-existent tag
+        df = manager.get_metrics(tags=["nonexistent-meta-tag"], meta=["name", "status"])
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 0
+
+        # Empty DataFrame should have the expected columns
+        assert "experiment_id" in df.columns
+        assert "step" in df.columns
+        assert "metric_name" in df.columns
+        assert "value" in df.columns
+        assert "name" in df.columns
+        assert "status" in df.columns

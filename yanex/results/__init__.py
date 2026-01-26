@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 from .experiment import Experiment
 from .manager import ResultsManager
+from .plotting import plot_metrics
 
 # Global default manager instance (lazy-loaded)
 _default_manager: ResultsManager | None = None
@@ -193,56 +194,78 @@ def list_experiments(limit: int = 10, **filters) -> list[dict[str, Any]]:
 
 # Comparison and DataFrames
 def compare(
-    params: list[str] | None = None,
-    metrics: list[str] | None = None,
-    only_different: bool = False,
+    params: str | list[str] = "auto",
+    metrics: str | list[str] = "auto",
+    meta: str | list[str] = "auto",
+    include_dep_params: bool = False,
     **filters,
 ) -> "pd.DataFrame":
     """
     Compare experiments and return pandas DataFrame.
 
     Args:
-        params: List of parameter names to include (None for auto-discovery)
-        metrics: List of metric names to include (None for auto-discovery)
-        only_different: If True, only show columns where values differ
+        params: Parameter columns to include:
+            - "auto" (default): Only parameters that differ across experiments
+            - "all": All parameters
+            - "none": No parameter columns
+            - list[str]: Specific parameter names (supports patterns like "*.lr")
+        metrics: Metric columns to include:
+            - "auto" (default): Only metrics that differ across experiments
+            - "all": All metrics
+            - "none": No metric columns
+            - list[str]: Specific metric names (supports patterns like "train.*")
+        meta: Metadata columns to include:
+            - "auto" (default): id, name, status
+            - "all": All metadata fields
+            - "none": No metadata columns
+            - list[str]: Specific metadata fields
+        include_dep_params: If True, include parameters from dependencies
+            (merged with local params, local values take precedence)
         **filters: Filter arguments to select experiments
 
     Returns:
-        pandas DataFrame with hierarchical columns for comparison
+        pandas DataFrame with flat group:path columns (e.g., "param:lr", "metric:accuracy")
 
     Raises:
         ImportError: If pandas is not available
 
     Examples:
-        >>> # Compare specific experiments
-        >>> df = compare(
-        ...     ids=["abc123", "def456", "ghi789"],
-        ...     params=["learning_rate", "epochs"],
-        ...     metrics=["accuracy", "loss"]
-        ... )
+        >>> # Default: show differing params and metrics
+        >>> df = compare(status="completed")
 
-        >>> # Compare by filter criteria
-        >>> df = compare(
-        ...     status="completed",
-        ...     tags=["training"],
-        ...     params=["learning_rate", "batch_size"],
-        ...     metrics=["accuracy", "f1_score"]
-        ... )
+        >>> # Explicit field selection
+        >>> df = compare(params=["lr", "epochs"], metrics=["accuracy", "loss"])
 
-        >>> # Access data
-        >>> print(df[("param", "learning_rate")])  # Parameter column
-        >>> print(df[("metric", "accuracy")].max())  # Best accuracy
-        >>> params_df = df.xs("param", axis=1, level=0)  # All parameters
+        >>> # With patterns
+        >>> df = compare(params=["*.lr"], metrics=["train.*"])
+
+        >>> # Special values
+        >>> df = compare(params="all", metrics="none")
+        >>> df = compare(params="auto", metrics="all", meta=["id", "status"])
+
+        >>> # Include parameters from dependencies
+        >>> df = compare(tags=["sweep"], params=["model.n_embd"], include_dep_params=True)
+
+        >>> # Access data with flat column names
+        >>> print(df["param:lr"])  # Parameter column
+        >>> print(df["metric:accuracy"].max())  # Best accuracy
+        >>> param_cols = [c for c in df.columns if c.startswith("param:")]
     """
     return _get_manager().compare_experiments(
-        params, metrics, only_different, **filters
+        params=params,
+        metrics=metrics,
+        meta=meta,
+        include_dep_params=include_dep_params,
+        **filters,
     )
 
 
 def get_metrics(
     *,
     metrics: str | list[str] | None = None,
-    include_params: list[str] | Literal["auto", "all", "none"] = "auto",
+    params: list[str] | Literal["auto", "all", "none"] = "auto",
+    meta: list[str] | None = None,
+    include_dep_params: bool = False,
     as_dataframe: bool = True,
     **filters,
 ) -> "pd.DataFrame | dict[str, list[dict]]":
@@ -257,16 +280,21 @@ def get_metrics(
             - None: All metrics (default)
             - str: Single metric name
             - list[str]: List of specific metric names
-        include_params: Which parameter columns to include:
-            - 'auto' (default): Include only parameters that vary across experiments
-            - 'all': Include all parameters
-            - 'none': No parameter columns
+        params: Which parameter columns to include:
+            - "auto" (default): Include only parameters that vary across experiments
+            - "all": Include all parameters
+            - "none": No parameter columns
             - list[str]: Include only specified parameters
+        meta: List of metadata fields to include as columns for faceting:
+            - None: No metadata columns (default)
+            - list[str]: Include specified fields (e.g., ['name', 'status'])
+        include_dep_params: If True, include parameters from dependencies
+            (merged with local params, local values take precedence)
         as_dataframe: If True (default), return DataFrame. If False, return dict.
         **filters: Filter arguments to select experiments (same as get_experiments)
 
     Returns:
-        DataFrame with columns: [experiment_id, step, metric_name, value, <params...>]
+        DataFrame with columns: [experiment_id, step, metric_name, value, <meta...>, <params...>]
         or dict[str, list[dict]] mapping experiment_id to metrics list
 
     Raises:
@@ -317,13 +345,26 @@ def get_metrics(
         >>> df = yr.get_metrics(tags=['sweep'])
         >>>
         >>> # All params
-        >>> df = yr.get_metrics(tags=['sweep'], include_params='all')
+        >>> df = yr.get_metrics(tags=['sweep'], params='all')
         >>>
         >>> # No params
-        >>> df = yr.get_metrics(tags=['sweep'], include_params='none')
+        >>> df = yr.get_metrics(tags=['sweep'], params='none')
         >>>
         >>> # Specific params
-        >>> df = yr.get_metrics(tags=['sweep'], include_params=['lr', 'epochs'])
+        >>> df = yr.get_metrics(tags=['sweep'], params=['lr', 'epochs'])
+
+        Include parameters from dependencies:
+
+        >>> # Get dependency params (e.g., encoder settings from parent experiment)
+        >>> df = yr.get_metrics(tags=['sweep'], params=['model.n_embd'], include_dep_params=True)
+        >>> # Now model.n_embd column includes values from dependency experiments
+
+        Include metadata for faceting (e.g., color by experiment name):
+
+        >>> df = yr.get_metrics(tags=['sweep'], meta=['name'])
+        >>> # Columns: experiment_id, step, metric_name, value, name, lr, ...
+        >>> for name, group in df[df.metric_name == 'loss'].groupby('name'):
+        ...     plt.plot(group.step, group.value, label=name)
 
         Get raw dict format:
 
@@ -337,7 +378,9 @@ def get_metrics(
     """
     return _get_manager().get_metrics(
         metrics=metrics,
-        include_params=include_params,
+        params=params,
+        meta=meta,
+        include_dep_params=include_dep_params,
         as_dataframe=as_dataframe,
         **filters,
     )
@@ -504,6 +547,8 @@ __all__ = [
     # Comparison and DataFrames
     "compare",
     "get_metrics",
+    # Visualization
+    "plot_metrics",
     # Bulk operations
     "archive_experiments",
     "delete_experiments",

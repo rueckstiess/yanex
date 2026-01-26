@@ -11,6 +11,7 @@ from typing import Any
 from ..utils.datetime_utils import calculate_duration_seconds, parse_iso_timestamp
 from ..utils.dict_utils import flatten_dict
 from ..utils.exceptions import StorageError
+from .access_resolver import AUTO_META_FIELDS
 from .manager import ExperimentManager
 
 
@@ -28,7 +29,10 @@ class ExperimentComparisonData:
         self.storage = self.manager.storage
 
     def extract_experiment_data(
-        self, experiment_ids: list[str], include_archived: bool = False
+        self,
+        experiment_ids: list[str],
+        include_archived: bool = False,
+        include_dep_params: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Extract complete data for a list of experiments.
@@ -36,6 +40,7 @@ class ExperimentComparisonData:
         Args:
             experiment_ids: List of experiment IDs to extract data for
             include_archived: Whether to include archived experiments
+            include_dep_params: Whether to include params from dependencies
 
         Returns:
             List of experiment data dictionaries
@@ -47,7 +52,9 @@ class ExperimentComparisonData:
 
         for exp_id in experiment_ids:
             try:
-                exp_data = self._extract_single_experiment(exp_id, include_archived)
+                exp_data = self._extract_single_experiment(
+                    exp_id, include_archived, include_dep_params
+                )
                 if exp_data:
                     experiments_data.append(exp_data)
             except Exception as e:
@@ -58,7 +65,10 @@ class ExperimentComparisonData:
         return experiments_data
 
     def _extract_single_experiment(
-        self, experiment_id: str, include_archived: bool = False
+        self,
+        experiment_id: str,
+        include_archived: bool = False,
+        include_dep_params: bool = False,
     ) -> dict[str, Any] | None:
         """
         Extract data from a single experiment.
@@ -66,6 +76,7 @@ class ExperimentComparisonData:
         Args:
             experiment_id: Experiment ID to extract
             include_archived: Whether to search archived experiments
+            include_dep_params: Whether to include params from dependencies
 
         Returns:
             Experiment data dictionary or None if failed
@@ -74,9 +85,16 @@ class ExperimentComparisonData:
             # Load metadata (required)
             metadata = self.storage.load_metadata(experiment_id, include_archived)
 
-            # Load config (optional)
+            # Load config (optional, with optional dependency merging)
             try:
-                config = self.storage.load_config(experiment_id, include_archived)
+                if include_dep_params:
+                    # Use Experiment object to get merged params
+                    from ..results.experiment import Experiment
+
+                    exp = Experiment(experiment_id, self.manager)
+                    config = exp.get_params(include_deps=True)
+                else:
+                    config = self.storage.load_config(experiment_id, include_archived)
             except StorageError:
                 config = {}
 
@@ -146,27 +164,23 @@ class ExperimentComparisonData:
     def discover_columns(
         self,
         experiments_data: list[dict[str, Any]],
-        params: list[str] | None = None,
-        metrics: list[str] | None = None,
+        params: str | list[str] = "auto",
+        metrics: str | list[str] = "auto",
     ) -> tuple[list[str], list[str]]:
         """
         Discover available parameter and metric columns.
 
         Args:
             experiments_data: List of experiment data dictionaries
-            params: Specific parameters to include (None for auto-discovery)
-            metrics: Specific metrics to include (None for auto-discovery)
+            params: "auto" (only differing), "all", "none", or specific list
+            metrics: "auto" (only differing), "all", "none", or specific list
 
         Returns:
             Tuple of (parameter_columns, metric_columns)
         """
-        if params is not None and metrics is not None:
-            # Both specified - use as-is
-            return params, metrics
-
-        # Auto-discover columns
-        all_params = set()
-        all_metrics = set()
+        # Auto-discover all available columns first
+        all_params: set[str] = set()
+        all_metrics: set[str] = set()
 
         for exp_data in experiments_data:
             # Collect parameter keys from flattened config
@@ -184,17 +198,85 @@ class ExperimentComparisonData:
                     if isinstance(result_entry, dict):
                         all_metrics.update(result_entry.keys())
 
-        # Use specified or discovered columns
-        final_params = params if params is not None else sorted(all_params)
-        final_metrics = metrics if metrics is not None else sorted(all_metrics)
+        # Determine final params based on mode
+        if params == "none":
+            final_params: list[str] = []
+        elif params == "all":
+            final_params = sorted(all_params)
+        elif params == "auto":
+            # Will be filtered later by filter_different_columns
+            final_params = sorted(all_params)
+        elif isinstance(params, list):
+            final_params = params
+        else:
+            final_params = sorted(all_params)
+
+        # Determine final metrics based on mode
+        if metrics == "none":
+            final_metrics: list[str] = []
+        elif metrics == "all":
+            final_metrics = sorted(all_metrics)
+        elif metrics == "auto":
+            # Will be filtered later by filter_different_columns
+            final_metrics = sorted(all_metrics)
+        elif isinstance(metrics, list):
+            final_metrics = metrics
+        else:
+            final_metrics = sorted(all_metrics)
 
         return final_params, final_metrics
+
+    def discover_meta_columns(
+        self,
+        experiments_data: list[dict[str, Any]],
+        meta: str | list[str] = "auto",
+    ) -> list[str]:
+        """
+        Discover available metadata columns.
+
+        Args:
+            experiments_data: List of experiment data dictionaries
+            meta: "auto" (id, name, status), "all", "none", or specific list
+
+        Returns:
+            List of metadata column names
+        """
+        if meta == "none":
+            return []
+        elif meta == "auto":
+            return list(AUTO_META_FIELDS)
+        elif meta == "all":
+            # Return all available metadata fields
+            all_meta: set[str] = set()
+            for exp_data in experiments_data:
+                metadata = exp_data.get("metadata", {})
+                flat_meta = flatten_dict(metadata)
+                all_meta.update(flat_meta.keys())
+                # Add top-level convenience fields
+                for key in [
+                    "id",
+                    "name",
+                    "status",
+                    "description",
+                    "tags",
+                    "started_at",
+                    "ended_at",
+                    "script_path",
+                ]:
+                    if key in exp_data or key in metadata:
+                        all_meta.add(key)
+            return sorted(all_meta)
+        elif isinstance(meta, list):
+            return meta
+        else:
+            return list(AUTO_META_FIELDS)
 
     def build_comparison_matrix(
         self,
         experiments_data: list[dict[str, Any]],
         param_columns: list[str],
         metric_columns: list[str],
+        meta_columns: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Build comparison data matrix with unified columns.
@@ -203,6 +285,7 @@ class ExperimentComparisonData:
             experiments_data: List of experiment data dictionaries
             param_columns: Parameter column names
             metric_columns: Metric column names
+            meta_columns: Metadata column names (optional)
 
         Returns:
             List of row dictionaries for table display
@@ -210,7 +293,9 @@ class ExperimentComparisonData:
         comparison_rows = []
 
         for exp_data in experiments_data:
-            row = self._build_experiment_row(exp_data, param_columns, metric_columns)
+            row = self._build_experiment_row(
+                exp_data, param_columns, metric_columns, meta_columns
+            )
             comparison_rows.append(row)
 
         return comparison_rows
@@ -220,6 +305,7 @@ class ExperimentComparisonData:
         exp_data: dict[str, Any],
         param_columns: list[str],
         metric_columns: list[str],
+        meta_columns: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         Build a single experiment row for the comparison table.
@@ -228,34 +314,48 @@ class ExperimentComparisonData:
             exp_data: Experiment data dictionary
             param_columns: Parameter column names (using dot notation for nested params)
             metric_columns: Metric column names
+            meta_columns: Metadata column names (optional)
 
         Returns:
-            Row dictionary with all columns matching experiment metadata format
+            Row dictionary with all columns using group:path format
         """
         config = exp_data.get("config", {})
         results = exp_data.get("results", {})
+        metadata = exp_data.get("metadata", {})
 
         # Flatten config for parameter extraction
         flat_config = flatten_dict(config)
+        flat_metadata = flatten_dict(metadata)
 
-        # Fixed columns - use same field names as experiment metadata
-        # to enable shared formatting in ExperimentTableFormatter
-        row = {
-            "id": exp_data["id"],
-            "script_path": exp_data.get("script_path", ""),
-            "name": exp_data.get("name"),  # None for unnamed, let formatter handle
-            "started_at": exp_data.get("started_at"),
-            "ended_at": exp_data.get("ended_at"),
-            "status": exp_data["status"],
-            "tags": exp_data.get("tags", []),  # Keep as list for formatter
-        }
+        row: dict[str, Any] = {}
 
-        # Parameter columns (using flattened config with dot notation)
+        # Metadata columns with meta: prefix
+        if meta_columns:
+            for meta_col in meta_columns:
+                # Try different sources for metadata
+                if meta_col in exp_data:
+                    value = exp_data[meta_col]
+                elif meta_col in flat_metadata:
+                    value = flat_metadata[meta_col]
+                elif meta_col in metadata:
+                    value = metadata[meta_col]
+                else:
+                    value = None
+
+                # Format special values
+                if meta_col == "tags" and isinstance(value, list):
+                    row[f"meta:{meta_col}"] = value
+                else:
+                    row[f"meta:{meta_col}"] = (
+                        self._format_value(value) if value is not None else "-"
+                    )
+
+        # Parameter columns with param: prefix
         for param in param_columns:
             value = flat_config.get(param)
             row[f"param:{param}"] = self._format_value(value)
 
-        # Metric columns
+        # Metric columns with metric: prefix
         for metric in metric_columns:
             value = self._extract_metric_value(results, metric)
             row[f"metric:{metric}"] = self._format_value(value)
@@ -420,16 +520,16 @@ class ExperimentComparisonData:
         column_types = {}
 
         # Fixed columns - we know their types
-        # Using same field names as experiment metadata
+        # Using meta: prefix for metadata columns
         column_types.update(
             {
-                "id": "string",
-                "name": "string",
-                "script_path": "string",
-                "started_at": "datetime",
-                "ended_at": "datetime",
-                "status": "string",
-                "tags": "string",
+                "meta:id": "string",
+                "meta:name": "string",
+                "meta:script_path": "string",
+                "meta:started_at": "datetime",
+                "meta:ended_at": "datetime",
+                "meta:status": "string",
+                "meta:tags": "string",
             }
         )
 
@@ -488,27 +588,29 @@ class ExperimentComparisonData:
     def get_comparison_data(
         self,
         experiment_ids: list[str],
-        params: list[str] | None = None,
-        metrics: list[str] | None = None,
-        only_different: bool = False,
+        params: str | list[str] = "auto",
+        metrics: str | list[str] = "auto",
+        meta: str | list[str] = "auto",
         include_archived: bool = False,
+        include_dep_params: bool = False,
     ) -> dict[str, Any]:
         """
         Get complete comparison data for experiments.
 
         Args:
             experiment_ids: List of experiment IDs
-            params: Specific parameters to include (None for auto-discovery)
-            metrics: Specific metrics to include (None for auto-discovery)
-            only_different: Whether to show only columns with different values
+            params: "auto" (only differing), "all", "none", or specific list
+            metrics: "auto" (only differing), "all", "none", or specific list
+            meta: "auto" (id, name, status), "all", "none", or specific list
             include_archived: Whether to include archived experiments
+            include_dep_params: Whether to include params from dependencies
 
         Returns:
             Dictionary containing comparison data and metadata
         """
         # Extract experiment data
         experiments_data = self.extract_experiment_data(
-            experiment_ids, include_archived
+            experiment_ids, include_archived, include_dep_params
         )
 
         if not experiments_data:
@@ -516,6 +618,7 @@ class ExperimentComparisonData:
                 "rows": [],
                 "param_columns": [],
                 "metric_columns": [],
+                "meta_columns": [],
                 "column_types": {},
                 "total_experiments": 0,
             }
@@ -524,20 +627,26 @@ class ExperimentComparisonData:
         param_columns, metric_columns = self.discover_columns(
             experiments_data, params, metrics
         )
+        meta_columns = self.discover_meta_columns(experiments_data, meta)
 
         # Build comparison matrix
         comparison_rows = self.build_comparison_matrix(
-            experiments_data, param_columns, metric_columns
+            experiments_data, param_columns, metric_columns, meta_columns
         )
 
-        # Filter for different columns if requested
-        if only_different:
-            param_columns, metric_columns = self.filter_different_columns(
+        # Filter for different columns if "auto" mode
+        if params == "auto" or metrics == "auto":
+            filtered_params, filtered_metrics = self.filter_different_columns(
                 comparison_rows, param_columns, metric_columns
             )
+            # Only update columns that were in auto mode
+            if params == "auto":
+                param_columns = filtered_params
+            if metrics == "auto":
+                metric_columns = filtered_metrics
             # Rebuild matrix with filtered columns
             comparison_rows = self.build_comparison_matrix(
-                experiments_data, param_columns, metric_columns
+                experiments_data, param_columns, metric_columns, meta_columns
             )
 
         # Infer column types
@@ -549,6 +658,7 @@ class ExperimentComparisonData:
             "rows": comparison_rows,
             "param_columns": param_columns,
             "metric_columns": metric_columns,
+            "meta_columns": meta_columns,
             "column_types": column_types,
             "total_experiments": len(experiments_data),
         }

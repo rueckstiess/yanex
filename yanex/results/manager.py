@@ -17,12 +17,108 @@ else:
         DataFrame = "pd.DataFrame"
 
 
+from ..core.access_resolver import AccessResolver, parse_canonical_key
 from ..core.filtering import ExperimentFilter
 from ..core.manager import ExperimentManager
+from ..utils.dict_utils import flatten_dict
 from ..utils.exceptions import ExperimentNotFoundError
 from .experiment import Experiment
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_column_spec(
+    resolver: AccessResolver,
+    spec: str | list[str],
+    scope: str,
+) -> str | list[str]:
+    """Resolve a column specification using AccessResolver.
+
+    Args:
+        resolver: AccessResolver instance
+        spec: Column specification - "auto", "all", "none", or list of keys/patterns
+        scope: Scope for resolution - "param", "metric", or "meta"
+
+    Returns:
+        Special value unchanged, or list of resolved paths (without group prefix)
+    """
+    # Special values pass through unchanged
+    if spec in ("auto", "all", "none"):
+        return spec
+
+    # Resolve list of keys/patterns
+    if not isinstance(spec, list):
+        return spec
+
+    # Resolve each value (handles both single keys and patterns)
+    # If resolution fails, return original value to let comparison handle it
+    try:
+        canonical_keys = resolver.resolve_list(spec, scope=scope)
+    except Exception:
+        # Resolution failed - return original list
+        return spec
+
+    # Strip group prefixes to get paths for comparison extractor
+    paths = []
+    for key in canonical_keys:
+        _, path = parse_canonical_key(key)
+        paths.append(path)
+
+    return paths
+
+
+def _build_resolver_from_experiments(
+    experiments: list[Experiment],
+) -> AccessResolver | None:
+    """Build an AccessResolver from a list of Experiment objects.
+
+    Aggregates params, metrics, and metadata across all experiments.
+
+    Args:
+        experiments: List of Experiment objects
+
+    Returns:
+        AccessResolver instance or None if no data available
+    """
+    if not experiments:
+        return None
+
+    # Aggregate data from all experiments
+    all_params: dict = {}
+    all_metrics: dict = {}
+    all_meta: dict = {}
+
+    for exp in experiments:
+        try:
+            # Get params (flattened)
+            params = flatten_dict(exp.get_params())
+            for key, value in params.items():
+                if key not in all_params:
+                    all_params[key] = value
+
+            # Get metrics from last entry
+            metrics_list = exp.get_metrics(as_dataframe=False)
+            if metrics_list and isinstance(metrics_list, list):
+                last_entry = metrics_list[-1] if metrics_list else {}
+                if isinstance(last_entry, dict):
+                    for key, value in last_entry.items():
+                        if key not in ["step", "timestamp"] and key not in all_metrics:
+                            all_metrics[key] = value
+
+            # Add meta fields
+            for field in ["id", "name", "status", "description", "tags"]:
+                if field not in all_meta:
+                    value = getattr(exp, field, None)
+                    if value is not None:
+                        all_meta[field] = value
+
+        except Exception:
+            continue
+
+    if not all_params and not all_metrics and not all_meta:
+        return None
+
+    return AccessResolver(params=all_params, metrics=all_metrics, meta=all_meta)
 
 
 class ResultsManager:
@@ -125,22 +221,37 @@ class ResultsManager:
 
     def compare_experiments(
         self,
-        params: list[str] | None = None,
-        metrics: list[str] | None = None,
-        only_different: bool = False,
+        params: str | list[str] = "auto",
+        metrics: str | list[str] = "auto",
+        meta: str | list[str] = "auto",
+        include_dep_params: bool = False,
         **filters,
     ) -> pd.DataFrame:
         """
         Compare experiments and return pandas DataFrame.
 
         Args:
-            params: List of parameter names to include (None for auto-discovery)
-            metrics: List of metric names to include (None for auto-discovery)
-            only_different: If True, only show columns where values differ
+            params: Parameter columns to include:
+                - "auto" (default): Only parameters that differ across experiments
+                - "all": All parameters
+                - "none": No parameter columns
+                - list[str]: Specific parameter names
+            metrics: Metric columns to include:
+                - "auto" (default): Only metrics that differ across experiments
+                - "all": All metrics
+                - "none": No metric columns
+                - list[str]: Specific metric names
+            meta: Metadata columns to include:
+                - "auto" (default): id, name, status
+                - "all": All metadata fields
+                - "none": No metadata columns
+                - list[str]: Specific metadata fields
+            include_dep_params: If True, include parameters from dependencies
+                (merged with local params, local values take precedence)
             **filters: Filter arguments to select experiments
 
         Returns:
-            pandas DataFrame with hierarchical columns for comparison
+            pandas DataFrame with flat group:path columns
 
         Raises:
             ImportError: If pandas is not available
@@ -152,7 +263,13 @@ class ResultsManager:
             ...     params=["learning_rate", "epochs"],
             ...     metrics=["accuracy", "loss"]
             ... )
-            >>> print(df[("metric", "accuracy")].max())
+            >>> print(df["metric:accuracy"].max())
+            >>> # Include dependency params
+            >>> df = manager.compare_experiments(
+            ...     tags=["sweep"],
+            ...     params=["model.n_embd"],
+            ...     include_dep_params=True
+            ... )
         """
         try:
             import pandas as pd
@@ -168,6 +285,18 @@ class ResultsManager:
             # Return empty DataFrame with proper structure
             return pd.DataFrame()
 
+        # Resolve column specs if any are lists (for sub-path resolution and patterns)
+        needs_resolution = any(isinstance(s, list) for s in [params, metrics, meta])
+
+        if needs_resolution:
+            # Get Experiment objects to build resolver
+            experiment_objs = self.get_experiments(**filters)
+            resolver = _build_resolver_from_experiments(experiment_objs)
+            if resolver:
+                params = _resolve_column_spec(resolver, params, "param")
+                metrics = _resolve_column_spec(resolver, metrics, "metric")
+                meta = _resolve_column_spec(resolver, meta, "meta")
+
         # Use existing comparison system
         from ..core.comparison import ExperimentComparisonData
 
@@ -178,8 +307,9 @@ class ResultsManager:
             experiment_ids=experiment_ids,
             params=params,
             metrics=metrics,
-            only_different=only_different,
+            meta=meta,
             include_archived=filters.get("archived") is not False,
+            include_dep_params=include_dep_params,
         )
 
         # Convert to pandas DataFrame
@@ -191,7 +321,9 @@ class ResultsManager:
         self,
         *,
         metrics: str | list[str] | None = None,
-        include_params: list[str] | Literal["auto", "all", "none"] = "auto",
+        params: list[str] | Literal["auto", "all", "none"] = "auto",
+        meta: list[str] | None = None,
+        include_dep_params: bool = False,
         as_dataframe: bool = True,
         **filters,
     ) -> "pd.DataFrame | dict[str, list[dict]]":
@@ -206,16 +338,21 @@ class ResultsManager:
                 - None: All metrics (default)
                 - str: Single metric name
                 - list[str]: List of specific metric names
-            include_params: Which parameter columns to include:
-                - 'auto' (default): Include only parameters that vary across experiments
-                - 'all': Include all parameters
-                - 'none': No parameter columns
+            params: Which parameter columns to include:
+                - "auto" (default): Include only parameters that vary across experiments
+                - "all": Include all parameters
+                - "none": No parameter columns
                 - list[str]: Include only specified parameters
+            meta: List of metadata fields to include as columns for faceting:
+                - None: No metadata columns (default)
+                - list[str]: Include specified fields (e.g., ['name', 'status'])
+            include_dep_params: If True, include parameters from dependencies
+                (merged with local params, local values take precedence)
             as_dataframe: If True, return DataFrame. If False, return dict.
             **filters: Filter arguments to select experiments (same as get_experiments)
 
         Returns:
-            DataFrame with columns: [experiment_id, step, metric_name, value, <params...>]
+            DataFrame with columns: [experiment_id, step, metric_name, value, <meta...>, <params...>]
             or dict[str, list[dict]] mapping experiment_id to metrics list
 
         Raises:
@@ -232,9 +369,13 @@ class ResultsManager:
             >>> # Get specific metric only
             >>> df = manager.get_metrics(tags=['training'], metrics='train_loss')
             >>> # Include all params
-            >>> df = manager.get_metrics(tags=['sweep'], include_params='all')
+            >>> df = manager.get_metrics(tags=['sweep'], params='all')
             >>> # No params
-            >>> df = manager.get_metrics(tags=['sweep'], include_params='none')
+            >>> df = manager.get_metrics(tags=['sweep'], params='none')
+            >>> # Include meta for faceting (e.g., color by experiment name)
+            >>> df = manager.get_metrics(tags=['sweep'], meta=['name'])
+            >>> # Include dependency params
+            >>> df = manager.get_metrics(tags=['sweep'], params=['model.n_embd'], include_dep_params=True)
             >>> # Dict format
             >>> data = manager.get_metrics(tags=['training'], as_dataframe=False)
         """
@@ -258,9 +399,32 @@ class ResultsManager:
                     )
                 # Return empty DataFrame with expected structure
                 columns = ["experiment_id", "step", "metric_name", "value"]
+                if meta:
+                    columns.extend(meta)
                 return pd.DataFrame(columns=columns)
             else:
                 return {}
+
+        # Resolve column specs if any are lists (for sub-path resolution and patterns)
+        needs_resolution = any(
+            [
+                metrics_list is not None and isinstance(metrics_list, list),
+                isinstance(params, list),
+                meta is not None and isinstance(meta, list),
+            ]
+        )
+
+        if needs_resolution:
+            resolver = _build_resolver_from_experiments(experiments)
+            if resolver:
+                if metrics_list is not None:
+                    metrics_list = _resolve_column_spec(
+                        resolver, metrics_list, "metric"
+                    )
+                if isinstance(params, list):
+                    params = _resolve_column_spec(resolver, params, "param")
+                if meta is not None:
+                    meta = _resolve_column_spec(resolver, meta, "meta")
 
         # Return dict format if requested
         if not as_dataframe:
@@ -270,30 +434,38 @@ class ResultsManager:
             return result
 
         # Determine which params to include
-        if include_params == "auto":
+        if params == "auto":
             from .dataframe import determine_varying_params
 
-            param_cols = determine_varying_params(experiments)
-        elif include_params == "all":
+            param_cols = determine_varying_params(
+                experiments, include_dep_params=include_dep_params
+            )
+        elif params == "all":
             # Get all params from first experiment (flattened)
             if experiments:
                 from ..utils.dict_utils import flatten_dict
 
-                flat_params = flatten_dict(experiments[0].get_params())
+                flat_params = flatten_dict(
+                    experiments[0].get_params(include_deps=include_dep_params)
+                )
                 param_cols = sorted(flat_params.keys())
             else:
                 param_cols = []
-        elif include_params == "none":
+        elif params == "none":
             param_cols = []
         else:
             # Specific list provided
-            param_cols = include_params
+            param_cols = params
 
         # Convert to long format DataFrame
         from .dataframe import metrics_to_long_dataframe
 
         return metrics_to_long_dataframe(
-            experiments=experiments, metrics=metrics_list, param_cols=param_cols
+            experiments=experiments,
+            metrics=metrics_list,
+            param_cols=param_cols,
+            meta_cols=meta,
+            include_dep_params=include_dep_params,
         )
 
     def get_latest(self, **filters) -> Experiment | None:

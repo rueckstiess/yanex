@@ -157,3 +157,41 @@ class ParameterConflictError(ExperimentError):
         super().__init__("\n".join(lines))
         self.param_key = param_key
         self.conflicts = conflicts
+
+
+class AmbiguousKeyError(YanexError):
+    """Raised when a key matches multiple canonical keys during resolution."""
+
+    def __init__(self, key: str, matches: list[str]) -> None:
+        match_list = "\n".join(f"  - {match}" for match in matches)
+        super().__init__(
+            f"'{key}' matches multiple keys:\n{match_list}\n\n"
+            "Use a more specific key or the full qualified name."
+        )
+        self.key = key
+        self.matches = matches
+
+
+class InvalidGroupError(YanexError):
+    """Raised when using wrong group prefix (e.g., --params metric:foo)."""
+
+    def __init__(self, key: str, expected_group: str, actual_group: str) -> None:
+        super().__init__(
+            f"'{key}' belongs to '{actual_group}' group, "
+            f"but was used with '{expected_group}' scope."
+        )
+        self.key = key
+        self.expected_group = expected_group
+        self.actual_group = actual_group
+
+
+class KeyNotFoundError(YanexError):
+    """Raised when a key cannot be resolved to any canonical key."""
+
+    def __init__(self, key: str, scope: str | None = None) -> None:
+        if scope:
+            super().__init__(f"Key '{key}' not found in '{scope}' group.")
+        else:
+            super().__init__(f"Key '{key}' not found in any group.")
+        self.key = key
+        self.scope = scope

@@ -211,16 +211,18 @@ class TestExperimentComparisonData:
         # Use first available param and metric for testing
         param_columns = list(config.keys())[:1] if config else []
         metric_columns = list(results.keys())[:1] if results else []
+        meta_columns = ["id", "name", "status"]
 
         rows = self.comparison.build_comparison_matrix(
-            [exp_data], param_columns, metric_columns
+            [exp_data], param_columns, metric_columns, meta_columns
         )
 
         assert len(rows) == 1
         row = rows[0]
-        assert row["id"] == exp_id
-        assert row["name"] == metadata["name"]
-        assert row["status"] == metadata["status"]
+        # Check metadata columns with meta: prefix
+        assert row["meta:id"] == exp_id
+        assert row["meta:name"] == metadata["name"]
+        assert row["meta:status"] == metadata["status"]
 
         # Check parameter and metric columns are present
         for param in param_columns:
@@ -342,17 +344,18 @@ class TestExperimentComparisonData:
             exp2_dir, exp2_metadata, exp2_config, exp2_results
         )
 
-        # Get comparison data
+        # Get comparison data with auto mode (only show differing values)
         comparison_data = self.comparison.get_comparison_data(
-            [exp1_id, exp2_id], only_different=True
+            [exp1_id, exp2_id], params="auto", metrics="auto"
         )
 
         assert comparison_data["total_experiments"] == 2
         assert len(comparison_data["rows"]) == 2
 
-        # Should have some parameters and metrics
+        # Should have some parameters and metrics (auto filters to only different)
         assert len(comparison_data["param_columns"]) >= 0
         assert len(comparison_data["metric_columns"]) >= 0
+        assert len(comparison_data["meta_columns"]) >= 0
 
     @pytest.mark.parametrize(
         "start_time,end_time,expected_result",
@@ -407,16 +410,16 @@ class TestExperimentComparisonData:
             )
             experiment_ids.append(exp_id)
 
-        # Test full comparison workflow
+        # Test full comparison workflow with auto mode (only differing values)
         comparison_data = self.comparison.get_comparison_data(
-            experiment_ids, only_different=True
+            experiment_ids, params="auto", metrics="auto"
         )
 
         assert comparison_data["total_experiments"] == 3
         assert len(comparison_data["rows"]) == 3
 
         # Should discover columns from diverse experiment types
-        # Note: only_different=True may filter out some columns if they have identical values
+        # Note: params="auto" may filter out some columns if they have identical values
         assert (
             len(comparison_data["param_columns"]) >= 0
         )  # May be 0 if all params are identical
@@ -424,8 +427,8 @@ class TestExperimentComparisonData:
             len(comparison_data["metric_columns"]) >= 0
         )  # May be 0 if all metrics are identical
 
-        # Each row should have consistent structure
+        # Each row should have consistent structure with meta: prefix
         for row in comparison_data["rows"]:
-            assert "id" in row
-            assert "name" in row
-            assert "status" in row
+            assert "meta:id" in row
+            assert "meta:name" in row
+            assert "meta:status" in row

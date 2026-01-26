@@ -29,46 +29,179 @@ from yanex.cli.formatters.lineage import (
     lineage_to_csv,
     lineage_to_json,
 )
+from yanex.core.access_resolver import AccessResolver
 from yanex.core.dependency_graph import DependencyGraph
 from yanex.core.storage import ExperimentStorage
 from yanex.utils.dict_utils import get_nested_value
+from yanex.utils.exceptions import AmbiguousKeyError, KeyNotFoundError
 
 from .confirm import find_experiment
 
-# Valid field prefixes that accept dynamic suffixes (e.g., params.lr, metrics.accuracy)
-DYNAMIC_FIELD_PREFIXES = ("params.", "metrics.", "environment.")
+# Valid field prefixes that accept dynamic suffixes
+# New syntax: param:lr, metric:accuracy (colon separator)
+# Legacy syntax: params.lr, metrics.accuracy (dot separator with plural prefix)
+DYNAMIC_FIELD_PREFIXES = (
+    # New canonical syntax (singular with colon)
+    "param:",
+    "metric:",
+    "meta:",
+    # Legacy syntax (plural with dot)
+    "params.",
+    "metrics.",
+    "environment.",
+)
+
+
+def _contains_pattern(field: str) -> bool:
+    """Check if a field contains glob pattern characters.
+
+    Args:
+        field: Field name to check.
+
+    Returns:
+        True if field contains *, ?, or [] patterns.
+    """
+    return any(c in field for c in "*?[]")
 
 
 def validate_field(field: str) -> None:
     """Validate that a field name is recognized.
 
+    For `yanex get`, patterns are not allowed (use compare for patterns).
+    Unqualified fields (like 'lr') are allowed and resolved later via AccessResolver.
+
     Args:
         field: Field name to validate.
 
     Raises:
-        click.ClickException: If field is not a valid getter field.
+        click.ClickException: If field contains patterns or is invalid.
     """
+    # Check for patterns - not allowed in get (single-value context)
+    if _contains_pattern(field):
+        raise click.ClickException(
+            f"Pattern matching is not supported for 'yanex get'.\n\n"
+            f"Field '{field}' contains pattern characters (*, ?, []).\n"
+            f"Use 'yanex compare --params' or '--metrics' for pattern matching."
+        )
+
     # Check exact match in known fields
     if field in GETTER_TYPES:
         return
 
-    # Check dynamic prefixes (params.*, metrics.*, environment.*)
+    # Check dynamic prefixes (params.*, metrics.*, environment.*, param:*, etc.)
     for prefix in DYNAMIC_FIELD_PREFIXES:
         if field.startswith(prefix):
             return
 
-    # Field is not recognized - build helpful error message
+    # For unqualified fields, check if they look like typos of static GETTER_TYPES.
+    # If similar to a static field, reject early with helpful suggestions.
+    # If not similar to any static field, allow through for AccessResolver
+    # (they might be param/metric short keys like 'lr' -> 'param:model.lr')
     valid_fields = sorted(GETTER_TYPES.keys())
-
-    # Find similar fields for typo suggestions
     suggestions = _find_similar_fields(field, valid_fields)
 
-    error_msg = f"Unknown field: '{field}'"
     if suggestions:
+        # Field looks like a typo of a static getter - reject with suggestions
+        error_msg = f"Unknown field: '{field}'"
         error_msg += f"\n\nDid you mean: {', '.join(suggestions)}?"
-    error_msg += "\n\nUse 'yanex get --help' to see available fields."
+        error_msg += "\n\nUse 'yanex get --help' to see available fields."
+        error_msg += (
+            "\n\nTip: For parameters use 'param:<key>', for metrics use 'metric:<key>'."
+        )
+        raise click.ClickException(error_msg)
 
-    raise click.ClickException(error_msg)
+    # No similarity to static fields - allow through for AccessResolver resolution
+    # This enables sub-path resolution like 'lr' -> 'param:advisor.lr'
+    return
+
+
+def resolve_field_for_experiment(exp, field: str, include_deps: bool = False) -> str:
+    """Resolve an unqualified or partial field name using AccessResolver.
+
+    This enables sub-path resolution like 'lr' -> 'param:advisor.lr'.
+
+    Args:
+        exp: Experiment object with params, metrics, and metadata.
+        field: Field name to resolve (may be unqualified like 'lr').
+        include_deps: If True, include parameters from dependencies when resolving.
+
+    Returns:
+        Resolved canonical field name (e.g., 'param:advisor.lr').
+
+    Raises:
+        click.ClickException: If field is ambiguous or not found.
+    """
+    # Skip resolution for known static fields
+    if field in GETTER_TYPES:
+        return field
+
+    # Legacy prefixes use exact paths - skip resolution entirely
+    # The get_field_value function handles these directly
+    LEGACY_PREFIXES = ("params.", "metrics.", "environment.")
+    for prefix in LEGACY_PREFIXES:
+        if field.startswith(prefix):
+            return field
+
+    # New canonical prefixes (param:, metric:, meta:) with explicit full paths
+    # should be passed through directly. Resolution is only needed for short keys.
+    # e.g., 'param:model.lr' should pass through, 'param:lr' needs resolution
+    CANONICAL_PREFIXES = ("param:", "metric:", "meta:")
+    for prefix in CANONICAL_PREFIXES:
+        if field.startswith(prefix):
+            path = field[len(prefix) :]
+            # If path contains a dot, treat as fully-qualified and pass through
+            # This allows get_field_value to handle it directly
+            if "." in path:
+                return field
+
+    # New canonical prefixes with short paths need sub-path resolution
+    # e.g., 'param:lr' should resolve to 'param:advisor.lr' if that's the only match
+    # Unqualified fields (like 'lr') also need resolution
+
+    # Build AccessResolver with experiment data
+    params = exp.get_params(include_deps=include_deps)
+    metrics_data = exp.get_metrics(as_dataframe=False)
+
+    # Extract metric names from the list of dicts
+    metrics_dict = {}
+    if metrics_data:
+        for entry in metrics_data:
+            for key, value in entry.items():
+                if key not in ("step", "timestamp", "last_updated"):
+                    # Use the last value for each metric
+                    metrics_dict[key] = value
+
+    metadata = exp._load_metadata()
+
+    resolver = AccessResolver(params=params, metrics=metrics_dict, meta=metadata)
+
+    try:
+        # Try to resolve the field
+        canonical_key = resolver.resolve(field)
+        return canonical_key
+    except AmbiguousKeyError as e:
+        # Multiple matches - show helpful error
+        matches_str = ", ".join(e.matches)
+        raise click.ClickException(
+            f"Ambiguous field '{field}' matches multiple keys:\n"
+            f"  {matches_str}\n\n"
+            f"Please specify the full path or use a group prefix (param:, metric:, meta:)."
+        )
+    except KeyNotFoundError:
+        # Not found via resolver - let the original validation logic handle it
+        # This preserves the original error message with suggestions
+        valid_fields = sorted(GETTER_TYPES.keys())
+        suggestions = _find_similar_fields(field, valid_fields)
+
+        error_msg = f"Unknown field: '{field}'"
+        if suggestions:
+            error_msg += f"\n\nDid you mean: {', '.join(suggestions)}?"
+        error_msg += "\n\nUse 'yanex get --help' to see available fields."
+        error_msg += (
+            "\n\nTip: For parameters use 'param:<key>', for metrics use 'metric:<key>'."
+        )
+
+        raise click.ClickException(error_msg)
 
 
 def _find_similar_fields(field: str, valid_fields: list[str]) -> list[str]:
@@ -242,6 +375,7 @@ def resolve_field_value(
     default_value: str,
     tail: int | None = None,
     head: int | None = None,
+    include_deps: bool = False,
 ) -> tuple[Any, bool]:
     """
     Resolve a field value from an experiment.
@@ -252,6 +386,7 @@ def resolve_field_value(
         default_value: Default value for missing fields
         tail: If specified, return last N lines (only for stdout/stderr fields)
         head: If specified, return first N lines (only for stdout/stderr fields)
+        include_deps: If True, include parameters from dependencies
 
     Returns:
         Tuple of (value, found) where found indicates if the field was found
@@ -327,7 +462,7 @@ def resolve_field_value(
 
     # Handle special field: params (list of available parameter names)
     if field == "params":
-        params = exp.get_params()
+        params = exp.get_params(include_deps=include_deps)
         if params:
             return sorted(params.keys()), True
         return [], True
@@ -345,15 +480,34 @@ def resolve_field_value(
             return sorted(metric_names), True
         return [], True
 
-    # Handle params.* fields
-    if field.startswith("params."):
-        param_key = field[7:]  # Remove "params." prefix
-        value = exp.get_param(param_key)
+    # Handle param:* fields (new syntax)
+    if field.startswith("param:"):
+        param_key = field[6:]  # Remove "param:" prefix
+        value = exp.get_param(param_key, include_deps=include_deps)
         if value is not None:
             return value, True
         return default_value, False
 
-    # Handle metrics.* fields - get last logged value
+    # Handle params.* fields (legacy syntax)
+    if field.startswith("params."):
+        param_key = field[7:]  # Remove "params." prefix
+        value = exp.get_param(param_key, include_deps=include_deps)
+        if value is not None:
+            return value, True
+        return default_value, False
+
+    # Handle metric:* fields (new syntax) - get last logged value
+    if field.startswith("metric:"):
+        metric_name = field[7:]  # Remove "metric:" prefix
+        value = exp.get_metric(metric_name)
+        if value is not None:
+            # If it's a list, return the last value
+            if isinstance(value, list) and len(value) > 0:
+                return value[-1], True
+            return value, True
+        return default_value, False
+
+    # Handle metrics.* fields (legacy syntax) - get last logged value
     if field.startswith("metrics."):
         metric_name = field[8:]  # Remove "metrics." prefix
         value = exp.get_metric(metric_name)
@@ -361,6 +515,42 @@ def resolve_field_value(
             # If it's a list, return the last value
             if isinstance(value, list) and len(value) > 0:
                 return value[-1], True
+            return value, True
+        return default_value, False
+
+    # Handle meta:* fields (new syntax)
+    if field.startswith("meta:"):
+        meta_key = field[5:]  # Remove "meta:" prefix
+        # Check top-level experiment attributes
+        if meta_key == "id":
+            return exp.id, True
+        if meta_key == "name":
+            return exp.name if exp.name else default_value, exp.name is not None
+        if meta_key == "status":
+            return exp.status, True
+        if meta_key == "description":
+            return (
+                exp.description if exp.description else default_value,
+                exp.description is not None,
+            )
+        if meta_key == "tags":
+            return exp.tags, True
+        if meta_key == "script_path":
+            return str(exp.script_path) if exp.script_path else default_value, (
+                exp.script_path is not None
+            )
+        # Handle nested paths (e.g., meta:git.branch)
+        if meta_key.startswith("git."):
+            git_key = meta_key[4:]  # Remove "git." prefix
+            metadata = exp._load_metadata()
+            git_info = metadata.get("git", {})
+            if git_key in git_info:
+                return git_info[git_key], True
+            return default_value, False
+        # Try as timestamp or other metadata field
+        metadata = exp._load_metadata()
+        value = get_nested_value(metadata, meta_key)
+        if value is not None:
             return value, True
         return default_value, False
 
@@ -638,6 +828,11 @@ def _handle_lineage_field(
     default=10,
     help="Maximum depth for lineage traversal (default: 10, only for lineage fields)",
 )
+@click.option(
+    "--include-deps",
+    is_flag=True,
+    help="Include parameters from dependencies (only for param: fields)",
+)
 @click.pass_context
 @CLIErrorHandler.handle_cli_errors
 def get_field(
@@ -668,6 +863,7 @@ def get_field(
     head: int | None,
     follow: bool,
     depth: int,
+    include_deps: bool,
 ):
     """
     Get a specific field value from experiment(s).
@@ -676,21 +872,39 @@ def get_field(
     If omitted, use filter options to select experiments.
 
     \b
-    Available fields:
+    Available fields (new canonical syntax with group:path):
+      param:<key>
+          Get parameter value (e.g., param:lr, param:model.size)
+      metric:<key>
+          Get last logged metric value (e.g., metric:accuracy, metric:train.loss)
+      meta:<key>
+          Get metadata field (e.g., meta:status, meta:name, meta:git.branch)
+
+    \b
+    Metadata fields (accessible via meta:<key> or directly):
       id, name, status, description, tags
           Experiment metadata (single values or list for tags)
       created_at, started_at, completed_at, failed_at, cancelled_at
           Timestamps in ISO format
       script_path, error_message, cancellation_reason
           Script path and failure/cancellation details
+
+    \b
+    List fields:
       params
           List available parameter names
-      params.<key>
-          Get specific parameter value (e.g., params.lr, params.model.size)
       metrics
           List available metric names
+
+    \b
+    Legacy syntax (still supported):
+      params.<key>
+          Get parameter value (e.g., params.lr)
       metrics.<key>
-          Get last logged metric value (e.g., metrics.accuracy)
+          Get metric value (e.g., metrics.accuracy)
+
+    \b
+    Special fields:
       stdout, stderr
           Output content (supports --head N, --tail N, --follow/-f)
       artifacts
@@ -724,9 +938,11 @@ def get_field(
 
     \b
     Examples (single experiment):
-      yanex get status abc123              Experiment status
-      yanex get params.lr abc123           Parameter value
-      yanex get metrics.accuracy abc123    Last logged metric
+      yanex get meta:status abc123         Experiment status (new syntax)
+      yanex get param:lr abc123            Parameter value (new syntax)
+      yanex get metric:accuracy abc123     Last logged metric (new syntax)
+      yanex get status abc123              Metadata field (direct access)
+      yanex get params.lr abc123           Parameter (legacy syntax)
       yanex get stdout abc123 --tail 20    Last 20 lines of output
       yanex get stdout abc123 -f           Follow output in real-time
       yanex get cli-command abc123         Original CLI invocation
@@ -752,7 +968,7 @@ def get_field(
     Examples (multiple experiments with filters):
       yanex get id -s completed            IDs of completed experiments
       yanex get id -n "train-*" -F sweep   IDs comma-separated for sweeps
-      yanex get params.lr -t baseline      Learning rates from tagged exps
+      yanex get param:lr -t baseline       Learning rates from tagged exps
       yanex get stdout -s running --tail 5 Check progress of running exps
 
     \b
@@ -799,6 +1015,15 @@ def get_field(
     if depth != 10 and field not in LINEAGE_FIELDS:
         raise click.ClickException(
             f"--depth option only applies to lineage fields (upstream, downstream, lineage), not '{field}'"
+        )
+
+    # Validate --include-deps only applies to param fields
+    is_param_field = (
+        field.startswith("param:") or field.startswith("params.") or field == "params"
+    )
+    if include_deps and not is_param_field:
+        raise click.ClickException(
+            f"--include-deps option only applies to param fields (param:*, params.*, params), not '{field}'"
         )
 
     # Parse comma-separated IDs into a list
@@ -868,7 +1093,12 @@ def get_field(
             _handle_lineage_field([exp.id], field, depth, fmt)
             return
 
-        value, found = resolve_field_value(exp, field, default_value, tail, head)
+        # Resolve field name using AccessResolver (enables sub-path resolution)
+        resolved_field = resolve_field_for_experiment(exp, field, include_deps)
+
+        value, found = resolve_field_value(
+            exp, resolved_field, default_value, tail, head, include_deps
+        )
 
         # Determine getter type and output using unified handler
         getter_type = get_getter_type(field, value)
@@ -916,10 +1146,16 @@ def get_field(
         _handle_lineage_field(target_ids, field, depth, fmt)
         return
 
+    # Resolve field name using AccessResolver (use first experiment for resolution)
+    # The resolved field should be the same across all experiments
+    resolved_field = resolve_field_for_experiment(experiments[0], field, include_deps)
+
     # Collect all values
     results = []
     for exp in experiments:
-        value, found = resolve_field_value(exp, field, default_value, tail, head)
+        value, found = resolve_field_value(
+            exp, resolved_field, default_value, tail, head, include_deps
+        )
         results.append((exp.id, value))
 
     # Determine getter type using first non-None value

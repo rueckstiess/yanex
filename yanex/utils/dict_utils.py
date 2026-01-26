@@ -118,3 +118,39 @@ def get_nested_value(
             return default
 
     return current
+
+
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """
+    Deep merge two dictionaries, with override values taking precedence.
+
+    Recursively merges nested dictionaries. For non-dict values, the override
+    value replaces the base value. Neither input dictionary is modified.
+
+    Args:
+        base: Base dictionary
+        override: Dictionary with values that take precedence
+
+    Returns:
+        New merged dictionary
+
+    Examples:
+        >>> base = {"a": {"b": 1, "c": 2}, "d": 3}
+        >>> override = {"a": {"b": 10}, "e": 5}
+        >>> deep_merge(base, override)
+        {'a': {'b': 10, 'c': 2}, 'd': 3, 'e': 5}
+
+        >>> base = {"model": {"lr": 0.001, "layers": 3}}
+        >>> override = {"model": {"lr": 0.01}}
+        >>> deep_merge(base, override)
+        {'model': {'lr': 0.01, 'layers': 3}}
+    """
+    result = base.copy()
+
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+
+    return result

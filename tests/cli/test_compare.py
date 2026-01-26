@@ -267,7 +267,7 @@ class TestCompareCommand:
     @pytest.mark.parametrize(
         "flag_options",
         [
-            (["--only-different"]),
+            (["--params", "auto"]),  # Default behavior (differing only)
             (["--params", "learning_rate,epochs"]),
             (["--metrics", "accuracy,loss"]),
             (["--params", "learning_rate", "--metrics", "accuracy"]),
@@ -427,8 +427,11 @@ class TestCompareCommandIntegration:
         )
 
         # Test with real ExperimentComparisonData
+        # Use meta="all" to include all metadata fields for testing
         comparison = ExperimentComparisonData(ExperimentManager(experiments_dir))
-        comparison_data = comparison.get_comparison_data(["exp001", "exp002"])
+        comparison_data = comparison.get_comparison_data(
+            ["exp001", "exp002"], meta="all"
+        )
 
         # Verify data structure
         assert comparison_data["total_experiments"] == 2
@@ -444,21 +447,21 @@ class TestCompareCommandIntegration:
         assert "final_loss" in comparison_data["metric_columns"]
         assert "best_epoch" in comparison_data["metric_columns"]
 
-        # Check row data format
+        # Check row data format (now uses meta: prefix for metadata columns)
         rows = comparison_data["rows"]
-        exp1_row = next(row for row in rows if row["id"] == "exp001")
-        exp2_row = next(row for row in rows if row["id"] == "exp002")
+        exp1_row = next(row for row in rows if row["meta:id"] == "exp001")
+        exp2_row = next(row for row in rows if row["meta:id"] == "exp002")
 
-        # Verify basic columns
-        assert exp1_row["name"] == "baseline-model"
-        assert exp1_row["status"] == "completed"
-        assert exp1_row["tags"] == [
+        # Verify metadata columns (use meta: prefix)
+        assert exp1_row["meta:name"] == "baseline-model"
+        assert exp1_row["meta:status"] == "completed"
+        assert exp1_row["meta:tags"] == [
             "baseline",
             "training",
         ]  # Kept as list for formatter
         # Duration is computed by formatter from started_at/ended_at
-        assert "started_at" in exp1_row
-        assert "ended_at" in exp1_row
+        assert "meta:started_at" in exp1_row
+        assert "meta:ended_at" in exp1_row
 
         # Verify parameter columns
         assert exp1_row["param:learning_rate"] == "0.001"
@@ -472,8 +475,8 @@ class TestCompareCommandIntegration:
         assert exp2_row["metric:final_accuracy"] == "0.9245"
         assert exp2_row["metric:final_loss"] == "0.1432"
 
-    def test_compare_only_different_filtering_integration(self, tmp_path):
-        """Test --only-different filtering with real data."""
+    def test_compare_auto_filtering_integration(self, tmp_path):
+        """Test params='auto' filtering with real data (shows only differing columns)."""
         experiments_dir = tmp_path / "experiments"
         experiments_dir.mkdir()
 
@@ -513,10 +516,10 @@ class TestCompareCommandIntegration:
             experiments_dir / "exp002", exp2_metadata, exp2_config, exp2_results
         )
 
-        # Test with only_different=True
+        # Test with params="auto" (default, shows only different values)
         comparison = ExperimentComparisonData(ExperimentManager(experiments_dir))
         comparison_data = comparison.get_comparison_data(
-            ["exp001", "exp002"], only_different=True
+            ["exp001", "exp002"], params="auto", metrics="auto"
         )
 
         # Should only include parameters/metrics with different values
@@ -581,16 +584,20 @@ class TestCompareCommandIntegration:
         )
 
         comparison = ExperimentComparisonData(ExperimentManager(experiments_dir))
-        comparison_data = comparison.get_comparison_data(["exp001"])
+        # Use params="all" and metrics="all" since with only 1 experiment,
+        # "auto" mode would return no columns (nothing to differ from)
+        comparison_data = comparison.get_comparison_data(
+            ["exp001"], params="all", metrics="all"
+        )
 
         column_types = comparison_data["column_types"]
 
-        # Check fixed column types (using field names matching experiment metadata)
-        assert column_types["id"] == "string"
-        assert column_types["name"] == "string"
-        assert column_types["started_at"] == "datetime"
-        assert column_types["status"] == "string"
-        assert column_types["tags"] == "string"
+        # Check fixed column types (using meta: prefix for metadata columns)
+        assert column_types["meta:id"] == "string"
+        assert column_types["meta:name"] == "string"
+        assert column_types["meta:started_at"] == "datetime"
+        assert column_types["meta:status"] == "string"
+        assert column_types["meta:tags"] == "string"
 
         # Check inferred parameter types
         for param_col, expected_type in expected_param_types.items():

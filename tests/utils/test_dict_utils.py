@@ -1,6 +1,6 @@
 """Tests for dictionary utility functions."""
 
-from yanex.utils.dict_utils import flatten_dict, unflatten_dict
+from yanex.utils.dict_utils import deep_merge, flatten_dict, unflatten_dict
 
 
 class TestFlattenDict:
@@ -149,3 +149,99 @@ class TestRoundTrip:
         flattened = flatten_dict(original)
         unflattened = unflatten_dict(flattened)
         assert unflattened == original
+
+
+class TestDeepMerge:
+    """Test cases for deep_merge function."""
+
+    def test_merge_simple_dicts(self):
+        """Test merging simple flat dictionaries."""
+        base = {"a": 1, "b": 2}
+        override = {"b": 3, "c": 4}
+        result = deep_merge(base, override)
+        assert result == {"a": 1, "b": 3, "c": 4}
+
+    def test_merge_nested_dicts(self):
+        """Test merging nested dictionaries."""
+        base = {"a": {"b": 1, "c": 2}, "d": 3}
+        override = {"a": {"b": 10}, "e": 5}
+        result = deep_merge(base, override)
+        assert result == {"a": {"b": 10, "c": 2}, "d": 3, "e": 5}
+
+    def test_merge_deeply_nested_dicts(self):
+        """Test merging deeply nested dictionaries."""
+        base = {"a": {"b": {"c": 1, "d": 2}}, "e": 3}
+        override = {"a": {"b": {"c": 10, "f": 4}}}
+        result = deep_merge(base, override)
+        assert result == {"a": {"b": {"c": 10, "d": 2, "f": 4}}, "e": 3}
+
+    def test_merge_empty_base(self):
+        """Test merging with empty base dictionary."""
+        base = {}
+        override = {"a": 1, "b": {"c": 2}}
+        result = deep_merge(base, override)
+        assert result == {"a": 1, "b": {"c": 2}}
+
+    def test_merge_empty_override(self):
+        """Test merging with empty override dictionary."""
+        base = {"a": 1, "b": {"c": 2}}
+        override = {}
+        result = deep_merge(base, override)
+        assert result == {"a": 1, "b": {"c": 2}}
+
+    def test_merge_both_empty(self):
+        """Test merging two empty dictionaries."""
+        result = deep_merge({}, {})
+        assert result == {}
+
+    def test_merge_does_not_modify_inputs(self):
+        """Test that deep_merge does not modify input dictionaries."""
+        base = {"a": {"b": 1}}
+        override = {"a": {"c": 2}}
+        base_copy = {"a": {"b": 1}}
+        override_copy = {"a": {"c": 2}}
+
+        deep_merge(base, override)
+
+        assert base == base_copy
+        assert override == override_copy
+
+    def test_merge_override_replaces_non_dict_with_dict(self):
+        """Test that override dict replaces base non-dict value."""
+        base = {"a": 1}
+        override = {"a": {"b": 2}}
+        result = deep_merge(base, override)
+        assert result == {"a": {"b": 2}}
+
+    def test_merge_override_replaces_dict_with_non_dict(self):
+        """Test that override non-dict replaces base dict value."""
+        base = {"a": {"b": 2}}
+        override = {"a": 1}
+        result = deep_merge(base, override)
+        assert result == {"a": 1}
+
+    def test_merge_config_example(self):
+        """Test merging realistic configuration dictionaries."""
+        # Dependency params
+        dep_config = {
+            "model": {"lr": 0.001, "layers": 3, "n_embd": 128},
+            "training": {"epochs": 10},
+        }
+        # Local params (override lr but keep layers and n_embd from dep)
+        local_config = {
+            "model": {"lr": 0.01},
+            "training": {"epochs": 20, "batch_size": 32},
+        }
+        result = deep_merge(dep_config, local_config)
+        expected = {
+            "model": {"lr": 0.01, "layers": 3, "n_embd": 128},
+            "training": {"epochs": 20, "batch_size": 32},
+        }
+        assert result == expected
+
+    def test_merge_with_list_values(self):
+        """Test that lists are replaced (not merged element-wise)."""
+        base = {"a": [1, 2, 3]}
+        override = {"a": [4, 5]}
+        result = deep_merge(base, override)
+        assert result == {"a": [4, 5]}

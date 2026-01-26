@@ -307,3 +307,183 @@ class TrackedDict(dict):
         """Clear all tracked accesses (useful for testing)."""
         with self._lock:
             self._accessed_paths.clear()
+
+    def pop(self, key: str, *args: Any) -> Any:
+        """Remove and return value for key, marking as accessed.
+
+        Args:
+            key: Dictionary key to remove
+            *args: Optional default value if key doesn't exist
+
+        Returns:
+            Value associated with key, or default if provided and key doesn't exist
+
+        Raises:
+            KeyError: If key doesn't exist and no default provided
+            ParameterConflictError: If value conflicts with dependency values
+        """
+        # Build full path for this access
+        full_path = f"{self._path}.{key}" if self._path else key
+
+        # Check if key exists before we try to access it
+        if key in self:
+            # Thread-safe tracking
+            with self._lock:
+                self._accessed_paths.add(full_path)
+
+            # Get the value (triggers conflict check for leaf values)
+            value = super().__getitem__(key)
+
+            # For leaf values, check for conflicts with dependencies
+            if not isinstance(value, dict) and self._dependencies:
+                self._check_for_conflicts(full_path, value)
+
+            # Remove and return
+            super().__delitem__(key)
+            return value
+        elif args:
+            # Key doesn't exist, return default
+            return args[0]
+        else:
+            # Key doesn't exist, no default - raise KeyError
+            raise KeyError(key)
+
+    def popitem(self) -> tuple[str, Any]:
+        """Remove and return arbitrary (key, value) pair, marking key as accessed.
+
+        Returns:
+            Tuple of (key, value)
+
+        Raises:
+            KeyError: If dictionary is empty
+            ParameterConflictError: If value conflicts with dependency values
+        """
+        if not self:
+            raise KeyError("dictionary is empty")
+
+        # Get an arbitrary key (last inserted in Python 3.7+)
+        key = next(reversed(self))
+
+        # Build full path for this access
+        full_path = f"{self._path}.{key}" if self._path else key
+
+        # Thread-safe tracking
+        with self._lock:
+            self._accessed_paths.add(full_path)
+
+        # Get the value
+        value = super().__getitem__(key)
+
+        # For leaf values, check for conflicts with dependencies
+        if not isinstance(value, dict) and self._dependencies:
+            self._check_for_conflicts(full_path, value)
+
+        # Remove and return
+        super().__delitem__(key)
+        return (key, value)
+
+    def setdefault(self, key: str, default: Any = None) -> Any:
+        """Return value for key, setting default if not present. Marks as accessed.
+
+        Args:
+            key: Dictionary key to access
+            default: Value to set if key doesn't exist
+
+        Returns:
+            Value associated with key (existing or newly set default)
+
+        Raises:
+            ParameterConflictError: If existing value conflicts with dependency values
+        """
+        # Build full path for this access
+        full_path = f"{self._path}.{key}" if self._path else key
+
+        # Thread-safe tracking (we're accessing this key either way)
+        with self._lock:
+            self._accessed_paths.add(full_path)
+
+        if key in self:
+            # Key exists - get and return value (with conflict check)
+            value = super().__getitem__(key)
+
+            # Wrap nested dicts recursively for continued tracking
+            if isinstance(value, dict) and not isinstance(value, TrackedDict):
+                tracked_value = TrackedDict(
+                    value,
+                    path=full_path,
+                    _shared_paths=self._accessed_paths,
+                    _shared_lock=self._lock,
+                    _shared_deps=self._dependencies,
+                )
+                super().__setitem__(key, tracked_value)
+                return tracked_value
+
+            # For leaf values, check for conflicts with dependencies
+            if not isinstance(value, dict) and self._dependencies:
+                self._check_for_conflicts(full_path, value)
+
+            return value
+        else:
+            # Key doesn't exist - set default and return it
+            super().__setitem__(key, default)
+            return default
+
+    def copy(self) -> "TrackedDict":
+        """Return a shallow copy that shares tracking state with the original.
+
+        The copy shares the same _accessed_paths set, so accesses on the copy
+        are tracked in the original's accessed paths. This is consistent with
+        how nested TrackedDicts work.
+
+        Returns:
+            TrackedDict with same data and shared tracking state
+        """
+        # Create new TrackedDict with shared state
+        # Manually copy data using dict's methods to avoid triggering our tracking
+        new_tracked = TrackedDict(
+            path=self._path,
+            _shared_paths=self._accessed_paths,
+            _shared_lock=self._lock,
+            _shared_deps=self._dependencies,
+        )
+        # Use dict's __setitem__ and keys() directly to copy without triggering tracking
+        for key in dict.keys(self):
+            dict.__setitem__(new_tracked, key, dict.__getitem__(self, key))
+        return new_tracked
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Control pickling to avoid triggering access tracking.
+
+        The default dict pickle behavior iterates over items() which triggers
+        our tracking. We override to use direct dict access instead.
+
+        Returns:
+            Tuple for pickle protocol: (callable, args, state)
+        """
+        # Get dict data without triggering tracking
+        data = {k: dict.__getitem__(self, k) for k in dict.keys(self)}
+        state = {
+            "data": data,
+            "path": self._path,
+            "accessed_paths": self._accessed_paths.copy(),  # Copy to avoid mutation
+            "dependencies": self._dependencies,
+        }
+        # Return (class, args_for_new, state_for_setstate)
+        return (self.__class__, (), state)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore state after unpickling, recreating the threading.Lock.
+
+        Args:
+            state: Dictionary of state from __getstate__
+        """
+        # Restore dict data using dict.update to avoid triggering tracking
+        dict.update(self, state["data"])
+
+        # Restore tracking state
+        self._path = state["path"]
+        self._accessed_paths = state["accessed_paths"]
+        self._dependencies = state["dependencies"]
+
+        # Recreate the lock (cannot be pickled)
+        self._lock = threading.Lock()

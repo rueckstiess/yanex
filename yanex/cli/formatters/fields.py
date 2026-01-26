@@ -8,6 +8,7 @@ all yanex commands when using the default output format.
 """
 
 from datetime import UTC
+from typing import Any
 
 from rich.text import Text
 
@@ -37,6 +38,31 @@ from .theme import (
     WARNING_STYLE,
     WARNING_SYMBOL,
 )
+
+# =============================================================================
+# Internal Helpers
+# =============================================================================
+
+
+def _get_exp_value(exp: dict, key: str, default: Any = None) -> Any:
+    """Get a value from experiment dict, handling both prefixed and unprefixed keys.
+
+    Comparison data uses prefixed keys (meta:id, meta:status), while list data
+    uses unprefixed keys (id, status). This helper checks both formats.
+
+    Args:
+        exp: Experiment data dictionary.
+        key: Key name without prefix (e.g., "id", "status", "started_at").
+        default: Default value if key not found.
+
+    Returns:
+        Value from experiment dict or default.
+    """
+    prefixed_key = f"meta:{key}"
+    if prefixed_key in exp:
+        return exp[prefixed_key]
+    return exp.get(key, default)
+
 
 # =============================================================================
 # Text Utilities
@@ -228,6 +254,8 @@ def format_experiment_duration(experiment: dict) -> Text:
     (ended_at, completed_at, failed_at, cancelled_at) and colors
     based on status.
 
+    Supports both prefixed (meta:started_at) and unprefixed (started_at) keys.
+
     Args:
         experiment: Experiment metadata dictionary with started_at, status,
                    and optional end time fields.
@@ -237,15 +265,15 @@ def format_experiment_duration(experiment: dict) -> Text:
     """
     from datetime import datetime
 
-    started_at = experiment.get("started_at")
-    status = experiment.get("status", "")
+    started_at = _get_exp_value(experiment, "started_at")
+    status = _get_exp_value(experiment, "status", "")
 
-    # Try different possible end time fields
+    # Try different possible end time fields (check both prefixed and unprefixed)
     ended_at = (
-        experiment.get("ended_at")
-        or experiment.get("completed_at")
-        or experiment.get("failed_at")
-        or experiment.get("cancelled_at")
+        _get_exp_value(experiment, "ended_at")
+        or _get_exp_value(experiment, "completed_at")
+        or _get_exp_value(experiment, "failed_at")
+        or _get_exp_value(experiment, "cancelled_at")
     )
 
     if not started_at:

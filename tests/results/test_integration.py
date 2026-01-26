@@ -384,18 +384,22 @@ class TestResultsAPIIntegration:
             assert isinstance(df, pd.DataFrame)
             assert len(df) == 3  # Three training experiments
 
-            # Test hierarchical columns
-            assert isinstance(df.columns, pd.MultiIndex)
+            # Test flat column format (not MultiIndex)
+            assert not isinstance(df.columns, pd.MultiIndex)
 
-            # Test parameter access
-            learning_rates = df[("param", "learning_rate")]
+            # Test parameter access with group:path format
+            learning_rates = df["param:learning_rate"]
             assert len(learning_rates) == 3
             assert all(lr > 0 for lr in learning_rates if pd.notna(lr))
 
-            # Test metric access
-            accuracies = df[("metric", "accuracy")]
+            # Test metric access with group:path format
+            accuracies = df["metric:accuracy"]
             assert len(accuracies) == 3
             assert all(0 <= acc <= 1 for acc in accuracies if pd.notna(acc))
+
+            # Test metadata columns exist
+            assert "meta:name" in df.columns
+            assert "meta:status" in df.columns
 
             # Test filtering with comparison
             completed_df = yr.compare(
@@ -512,12 +516,12 @@ class TestResultsAPIIntegration:
             assert len(df_loss) == 4  # 2 experiments × 2 steps
             assert set(df_loss["metric_name"].unique()) == {"train_loss"}
 
-            # Test include_params modes
-            df_all = yr.get_metrics(tags=["api-test"], include_params="all")
+            # Test params modes
+            df_all = yr.get_metrics(tags=["api-test"], params="all")
             assert "lr" in df_all.columns
             assert "epochs" in df_all.columns
 
-            df_none = yr.get_metrics(tags=["api-test"], include_params="none")
+            df_none = yr.get_metrics(tags=["api-test"], params="none")
             assert "lr" not in df_none.columns
             assert "epochs" not in df_none.columns
 
