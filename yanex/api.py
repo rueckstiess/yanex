@@ -1112,7 +1112,8 @@ def execute_bash_script(
     try:
         # Execute command
         if stream_output:
-            # Stream output in real-time
+            # Stream output in real-time using threads (one per pipe)
+            # to avoid deadlocks from alternating blocking reads.
             process = subprocess.Popen(
                 command,
                 shell=True,
@@ -1121,28 +1122,29 @@ def execute_bash_script(
                 text=True,
                 cwd=working_dir,
                 env=env,
-                bufsize=1,
-                universal_newlines=True,
             )
 
-            # Read output line by line and print
-            while True:
-                stdout_line = process.stdout.readline()
-                stderr_line = process.stderr.readline()
+            def _stream_pipe(pipe, capture_list, output_stream):
+                for line in iter(pipe.readline, ""):
+                    output_stream.write(line)
+                    output_stream.flush()
+                    capture_list.append(line.rstrip())
+                pipe.close()
 
-                if stdout_line:
-                    print(stdout_line.rstrip())
-                    stdout_lines.append(stdout_line.rstrip())
+            stdout_thread = threading.Thread(
+                target=_stream_pipe,
+                args=(process.stdout, stdout_lines, sys.stdout),
+            )
+            stderr_thread = threading.Thread(
+                target=_stream_pipe,
+                args=(process.stderr, stderr_lines, sys.stderr),
+            )
+            stdout_thread.start()
+            stderr_thread.start()
 
-                if stderr_line:
-                    print(stderr_line.rstrip(), file=__import__("sys").stderr)
-                    stderr_lines.append(stderr_line.rstrip())
-
-                if not stdout_line and not stderr_line and process.poll() is not None:
-                    break
-
-            # Wait for process to complete
             exit_code = process.wait(timeout=timeout)
+            stdout_thread.join()
+            stderr_thread.join()
         else:
             # Capture all output at once
             result = subprocess.run(
