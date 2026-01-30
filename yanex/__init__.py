@@ -60,7 +60,7 @@ from .results.experiment import Experiment
 # Exceptions
 from .utils.exceptions import ParameterConflictError
 
-__version__ = "0.6.0a1"
+__version__ = "0.6.0a2"
 __author__ = "Thomas"
 
 __all__ = [
