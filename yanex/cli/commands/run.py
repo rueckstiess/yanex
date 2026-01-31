@@ -72,6 +72,12 @@ from ...core.script_executor import ScriptExecutor
     help="Execute staged experiments",
 )
 @click.option(
+    "--id",
+    "experiment_id",
+    type=str,
+    help="Execute a single staged experiment by ID",
+)
+@click.option(
     "--parallel",
     "-j",
     type=int,
@@ -93,6 +99,7 @@ def run(
     ignore_dirty: bool,
     stage: bool,
     staged: bool,
+    experiment_id: str | None,
     parallel: int | None,
 ) -> None:
     """
@@ -206,8 +213,10 @@ def run(
     }
 
     # Handle mutually exclusive flags
-    if stage and staged:
-        click.echo("Error: Cannot use both --stage and --staged flags", err=True)
+    if sum([stage, staged, experiment_id is not None]) > 1:
+        click.echo(
+            "Error: --stage, --staged, and --id are mutually exclusive", err=True
+        )
         raise click.Abort()
 
     # Validate parallel flag
@@ -223,6 +232,11 @@ def run(
             err=True,
         )
         raise click.Abort()
+
+    if experiment_id is not None:
+        # Execute a single staged experiment by ID
+        _execute_single_staged(experiment_id, verbose, console)
+        return
 
     if staged:
         # Execute staged experiments
@@ -853,6 +867,45 @@ def _stage_experiment(
         click.echo("  Use 'yanex run --staged' to execute staged experiments")
 
 
+def _execute_single_staged(
+    experiment_id: str,
+    verbose: bool = False,
+    console: Console | None = None,
+) -> None:
+    """Execute a single staged experiment by ID."""
+    if console is None:
+        console = Console()
+
+    manager = ExperimentManager()
+
+    metadata = manager.storage.load_metadata(experiment_id)
+    config = manager.storage.load_config(experiment_id)
+    script_path = Path(metadata["script_path"])
+
+    manager.execute_staged_experiment(experiment_id)
+
+    if verbose:
+        console.print(format_verbose(f"Executing experiment: {experiment_id}"))
+
+    try:
+        _execute_staged_script(
+            experiment_id=experiment_id,
+            script_path=script_path,
+            config=config,
+            manager=manager,
+            verbose=verbose,
+        )
+    except Exception as e:
+        console.print(
+            format_error_message(f"Failed to execute experiment {experiment_id}: {e}")
+        )
+        try:
+            manager.fail_experiment(experiment_id, f"Execution failed: {str(e)}")
+        except Exception:
+            pass
+        raise click.Abort()
+
+
 def _execute_staged_experiments(
     verbose: bool = False,
     console: Console = None,
@@ -1140,6 +1193,32 @@ def _execute_single_experiment_worker(
         return "failed"
 
 
+def _resolve_script_path(script_path: Path, metadata: dict[str, Any]) -> Path:
+    """Resolve script path, falling back to repo-relative path if absolute path doesn't exist.
+
+    This enables remote execution where the original absolute path from the staging
+    machine doesn't exist, but the script is available relative to the repo root
+    (e.g., via SkyPilot workdir sync).
+    """
+    if script_path.exists():
+        return script_path
+
+    repo_path = metadata.get("git", {}).get("repository", {}).get(
+        "repo_path"
+    ) or metadata.get("environment", {}).get("git", {}).get("repository", {}).get(
+        "repo_path"
+    )
+    if repo_path:
+        import os
+
+        relative = os.path.relpath(str(script_path), repo_path)
+        candidate = Path(relative)
+        if candidate.exists():
+            return candidate
+
+    return script_path
+
+
 def _execute_staged_script(
     experiment_id: str,
     script_path: Path,
@@ -1152,6 +1231,9 @@ def _execute_staged_script(
     # Load script_args from metadata (if present)
     metadata = manager.storage.load_metadata(experiment_id)
     script_args = metadata.get("script_args", [])
+
+    # Resolve script path (handles remote execution where absolute path doesn't exist)
+    script_path = _resolve_script_path(script_path, metadata)
 
     # Execute script using ScriptExecutor
     executor = ScriptExecutor(manager)

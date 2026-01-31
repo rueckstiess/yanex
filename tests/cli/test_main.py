@@ -224,7 +224,7 @@ class TestCLIMain:
             ],
         )
         assert result.exit_code != 0
-        assert "Cannot use both --stage and --staged flags" in result.output
+        assert "--stage, --staged, and --id are mutually exclusive" in result.output
 
     def test_run_staged_flag_no_script(self, tmp_path):
         """Test run with --staged flag doesn't require script argument."""
