@@ -15,7 +15,7 @@ from .api import router as api_router
 app = FastAPI(
     title="Yanex Web UI",
     description="Web interface for yanex experiment tracking",
-    version="0.6.0a2",
+    version="0.6.0a3",
 )
 
 # Include API routes first (highest priority)
