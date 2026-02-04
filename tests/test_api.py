@@ -750,8 +750,7 @@ class TestExecuteBashScript:
         # Clean API state before test
         if hasattr(yanex.api._local, "experiment_id"):
             del yanex.api._local.experiment_id
-        yanex.api._tracked_params = None
-        yanex.api._atexit_registered = False
+        yanex.api._cached_params = None
 
         self.manager = create_isolated_manager()
         self.experiment_id = "script01"
@@ -782,8 +781,7 @@ class TestExecuteBashScript:
         # Clean API state after test
         if hasattr(yanex.api._local, "experiment_id"):
             del yanex.api._local.experiment_id
-        yanex.api._tracked_params = None
-        yanex.api._atexit_registered = False
+        yanex.api._cached_params = None
 
     def test_execute_bash_script_standalone_mode_works(self):
         """Test that execute_bash_script works in standalone mode."""
@@ -1186,8 +1184,7 @@ class TestListArtifactsTransitive:
         # Clean API state before test
         if hasattr(yanex.api._local, "experiment_id"):
             del yanex.api._local.experiment_id
-        yanex.api._tracked_params = None
-        yanex.api._atexit_registered = False
+        yanex.api._cached_params = None
 
     def teardown_method(self):
         """Clean up after test."""
@@ -1195,8 +1192,7 @@ class TestListArtifactsTransitive:
         # Clean API state after test
         if hasattr(yanex.api._local, "experiment_id"):
             del yanex.api._local.experiment_id
-        yanex.api._tracked_params = None
-        yanex.api._atexit_registered = False
+        yanex.api._cached_params = None
 
     def test_list_artifacts_default_unchanged(self, tmp_path):
         """Test that list_artifacts() without args still returns list."""

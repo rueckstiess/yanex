@@ -221,10 +221,8 @@ def sample_experiment_metadata():
 def clean_api_state():
     """Clean up yanex API global state before and after each test.
 
-    This fixture ensures that the API's cached TrackedDict and atexit handler
-    registration are cleared between tests to prevent state leakage. It also
-    disables atexit parameter saving after tests to prevent warnings when temp
-    directories are cleaned up before Python exits.
+    This fixture ensures that the API's cached params are cleared between
+    tests to prevent state leakage.
 
     Use this fixture for any test that calls yanex.get_params() or yanex.get_param()
     to ensure test isolation.
@@ -240,15 +238,11 @@ def clean_api_state():
     # Clean before test
     if hasattr(yanex.api._local, "experiment_id"):
         del yanex.api._local.experiment_id
-    yanex.api._tracked_params = None
-    yanex.api._atexit_registered = False
-    yanex.api._should_save_on_exit = True  # Enable saving for test
+    yanex.api._cached_params = None
 
     yield
 
-    # Clean after test and disable atexit saving to prevent warnings
-    yanex.api._should_save_on_exit = False  # Disable to prevent atexit errors
+    # Clean after test
     if hasattr(yanex.api._local, "experiment_id"):
         del yanex.api._local.experiment_id
-    yanex.api._tracked_params = None
-    yanex.api._atexit_registered = False
+    yanex.api._cached_params = None

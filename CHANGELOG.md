@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0] - 2025-12-05
 
-This beta release includes significant new features: a comprehensive dependency tracking system for multi-stage workflows, an AI-friendly `yanex get` command with lineage visualization, a completely redesigned artifact API, and parameter access tracking.
+This beta release includes significant new features: a comprehensive dependency tracking system for multi-stage workflows, an AI-friendly `yanex get` command with lineage visualization, and a completely redesigned artifact API.
 
 ### Breaking Changes
 
@@ -67,11 +67,6 @@ This beta release includes significant new features: a comprehensive dependency 
   - Multi-experiment support: filter multiple experiments to visualize connected/disconnected graphs
   - `--depth N` option to limit traversal depth
   - `-F sweep` format for scripting with comma-separated IDs
-
-- **Parameter Access Tracking**: Store only parameters actually used by scripts
-  - `TrackedDict` wrapper monitors parameter access patterns
-  - Two-phase save: full config at creation, accessed params at exit
-  - `params.yaml` contains only parameters accessed via `get_param()`
 
 - **Metrics Visualization API**: Multi-experiment time-series analysis with pandas
   - `yr.get_metrics()` returns long-format DataFrame for matplotlib groupby patterns

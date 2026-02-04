@@ -5,7 +5,6 @@ This module provides the main interface for experiment tracking using context ma
 and thread-local storage for safe concurrent usage.
 """
 
-import atexit
 import os
 import subprocess
 import sys
@@ -16,24 +15,19 @@ from pathlib import Path
 from typing import Any
 
 from .core.manager import ExperimentManager
-from .core.param_tracking import save_accessed_params
-from .core.tracked_dict import TrackedDict
 from .results.experiment import Experiment
 from .utils.dict_utils import get_nested_value
 from .utils.exceptions import (
     AmbiguousArtifactError,
     ExperimentContextError,
     ExperimentNotFoundError,
-    StorageError,
 )
 
 # Thread-local storage for current experiment context
 _local = threading.local()
 
-# Global tracking state for parameters
-_tracked_params: TrackedDict | None = None
-_atexit_registered = False
-_should_save_on_exit = True  # Flag to control atexit handler execution
+# Cached parameters (loaded once per process)
+_cached_params: dict[str, Any] | None = None
 
 
 def _get_current_experiment_id() -> str | None:
@@ -93,67 +87,30 @@ def has_context() -> bool:
     return _get_current_experiment_id() is not None
 
 
-def _atexit_handler_wrapper(experiment_id: str, tracked_dict: TrackedDict) -> None:
-    """Wrapper for atexit handler that checks if saving is enabled.
-
-    This wrapper allows tests to disable parameter saving on exit by setting
-    _should_save_on_exit = False, preventing errors when storage is cleaned up
-    before the atexit handler runs.
-
-    Args:
-        experiment_id: ID of the experiment
-        tracked_dict: TrackedDict instance with tracked accesses
-
-    Raises:
-        Exception: Re-raises any exception from save_accessed_params EXCEPT
-                  StorageError (which indicates the experiment directory was
-                  already cleaned up, e.g., during test teardown).
-    """
-    global _should_save_on_exit
-    if _should_save_on_exit:
-        try:
-            save_accessed_params(experiment_id, tracked_dict)
-        except StorageError:
-            # Experiment directory was already cleaned up (e.g., test teardown)
-            # This is expected in test environments - skip silently
-            pass
-
-
 def get_params() -> dict[str, Any]:
-    """Get experiment parameters with access tracking and conflict detection.
-
-    Returns TrackedDict in experiment mode to monitor which parameters are
-    actually used. At script end, only accessed parameters are saved.
-
-    When dependencies exist, accessing a leaf parameter will check for conflicts
-    between the local config and all transitive dependencies. If conflicting
-    values are found, ParameterConflictError is raised.
+    """Get experiment parameters.
 
     Returns:
-        TrackedDict of experiment parameters (empty dict in standalone mode)
-
-    Raises:
-        ParameterConflictError: When accessing a parameter that has different
-            values in local config vs dependencies
+        dict of experiment parameters (empty dict in standalone mode)
     """
-    global _tracked_params, _atexit_registered
+    global _cached_params
 
     experiment_id = _get_current_experiment_id()
     if experiment_id is None:
         return {}
 
-    # Return cached tracked params if already initialized
-    if _tracked_params is not None:
-        return _tracked_params
+    # Return cached params if already loaded
+    if _cached_params is not None:
+        return _cached_params
 
     # Load raw params based on mode
     manager = _get_experiment_manager()
     if hasattr(_local, "experiment_id"):
         # Direct API usage - read from storage
-        raw_params = manager.storage.load_config(experiment_id)
+        _cached_params = manager.storage.load_config(experiment_id)
     else:
         # CLI subprocess mode - read from environment variables
-        raw_params = {}
+        _cached_params = {}
         for key, value in os.environ.items():
             if key.startswith("YANEX_PARAM_"):
                 param_key = key[12:]  # Remove "YANEX_PARAM_" prefix
@@ -161,129 +118,33 @@ def get_params() -> dict[str, Any]:
                 try:
                     import json
 
-                    raw_params[param_key] = json.loads(value)
+                    _cached_params[param_key] = json.loads(value)
                 except (json.JSONDecodeError, ValueError):
-                    raw_params[param_key] = value
+                    _cached_params[param_key] = value
 
-    # Load transitive dependencies for conflict checking
-    dependencies = _load_dependencies_for_conflict_check(manager, experiment_id)
-
-    # Wrap in TrackedDict for access tracking and conflict detection
-    _tracked_params = TrackedDict(raw_params, dependencies=dependencies)
-
-    # Register atexit handler to save accessed params (once per process)
-    if not _atexit_registered:
-        atexit.register(_atexit_handler_wrapper, experiment_id, _tracked_params)
-        _atexit_registered = True
-
-    return _tracked_params
-
-
-def _load_dependencies_for_conflict_check(
-    manager: ExperimentManager, experiment_id: str
-) -> dict[str, Experiment]:
-    """Load transitive dependencies as Experiment objects for conflict checking.
-
-    Args:
-        manager: ExperimentManager instance
-        experiment_id: Current experiment ID
-
-    Returns:
-        Dict mapping slot names to Experiment objects. For transitive deps
-        that aren't direct dependencies, uses 'transitive_{exp_id}' as slot name.
-    """
-    from .core.dependencies import DependencyResolver
-
-    try:
-        resolver = DependencyResolver(manager)
-
-        # Get direct dependencies with slot names
-        dep_data = manager.storage.dependency_storage.load_dependencies(
-            experiment_id, include_archived=True
-        )
-        direct_deps = dep_data.get("dependencies", {})
-
-        result: dict[str, Experiment] = {}
-
-        # Add direct dependencies
-        for slot, dep_id in direct_deps.items():
-            try:
-                result[slot] = Experiment(dep_id, manager)
-            except Exception:
-                continue
-
-        # Get transitive dependencies (those not directly referenced)
-        all_transitive = resolver.get_transitive_dependencies(
-            experiment_id, include_self=False, include_archived=True
-        )
-
-        # Add transitive deps that aren't direct deps
-        direct_ids = set(direct_deps.values())
-        for dep_id in all_transitive:
-            if dep_id not in direct_ids:
-                try:
-                    result[f"transitive_{dep_id}"] = Experiment(dep_id, manager)
-                except Exception:
-                    continue
-
-        return result
-    except Exception:
-        # If dependency loading fails, return empty dict (no conflict checking)
-        return {}
+    return _cached_params
 
 
 def get_param(
     key: str,
     default: Any = None,
-    *,
-    from_dependency: str | None = None,
-    ignore_dependencies: bool = False,
 ) -> Any:
     """Get a specific experiment parameter with support for dot notation.
-
-    Access is tracked for later extraction of only used parameters.
-
-    When dependencies exist, accessing a parameter will check for conflicts
-    between the local config and all transitive dependencies. Use escape
-    hatches to bypass conflict detection when needed.
 
     Args:
         key: Parameter key to retrieve. Supports dot notation (e.g., "model.learning_rate")
         default: Default value if key not found
-        from_dependency: If specified, get value from this dependency slot only,
-            bypassing conflict detection. Useful when you explicitly want a
-            specific dependency's value.
-        ignore_dependencies: If True, skip conflict checking and use only the
-            local config value. Useful for deliberate parameter mismatches.
 
     Returns:
         Parameter value or default (default is returned in standalone mode)
 
-    Raises:
-        ParameterConflictError: If conflicting values exist and no escape hatch used
-        ValueError: If both from_dependency and ignore_dependencies are specified
-
     Examples:
-        # Normal usage - raises ParameterConflictError if conflict exists
         lr = yanex.get_param("learning_rate")
 
-        # Use value from specific dependency
-        lr = yanex.get_param("learning_rate", from_dependency="model")
-
-        # Use local config only (deliberate mismatch)
-        lr = yanex.get_param("learning_rate", ignore_dependencies=True)
+        # To get a dependency's parameter, use get_dependency() explicitly:
+        dep = yanex.get_dependency("model")
+        lr = dep.get_param("learning_rate") if dep else default_lr
     """
-    if from_dependency is not None and ignore_dependencies:
-        raise ValueError("Cannot specify both from_dependency and ignore_dependencies")
-
-    # Handle escape hatches
-    if from_dependency is not None:
-        return _get_param_from_dependency(key, from_dependency, default)
-
-    if ignore_dependencies:
-        return _get_local_param(key, default)
-
-    # Normal path - uses TrackedDict which performs conflict detection
     params = get_params()
 
     # Use a sentinel to distinguish "not found" from "found but None"
@@ -298,66 +159,6 @@ def get_param(
         return default
 
     return value
-
-
-def _get_local_param(key: str, default: Any = None) -> Any:
-    """Get parameter from local config only, bypassing conflict detection.
-
-    Still uses TrackedDict to track access (for param filtering at exit),
-    but temporarily disables conflict detection by clearing dependencies.
-
-    Args:
-        key: Parameter key (supports dot notation)
-        default: Default value if not found
-
-    Returns:
-        Local parameter value or default
-    """
-    # Use get_params() to ensure TrackedDict is initialized and atexit is registered
-    params = get_params()
-
-    if not params:
-        return default
-
-    # Track the access by navigating through the TrackedDict,
-    # but temporarily disable conflict detection by clearing dependencies
-    if isinstance(params, TrackedDict):
-        # Save and clear dependencies to bypass conflict detection
-        original_deps = params._dependencies
-        params._dependencies = {}
-        try:
-            _sentinel = object()
-            value = get_nested_value(params, key, default=_sentinel)
-            if value is _sentinel:
-                return default
-            return value
-        finally:
-            # Restore dependencies
-            params._dependencies = original_deps
-    else:
-        # Fallback for non-TrackedDict (shouldn't happen in experiment mode)
-        return get_nested_value(params, key, default=default)
-
-
-def _get_param_from_dependency(key: str, slot: str, default: Any = None) -> Any:
-    """Get parameter from a specific dependency, bypassing conflict detection.
-
-    Args:
-        key: Parameter key (supports dot notation)
-        slot: Dependency slot name
-        default: Default value if not found
-
-    Returns:
-        Parameter value from the specified dependency, or default
-    """
-    dep = get_dependency(slot)
-    if dep is None:
-        print(
-            f"Warning: Dependency slot '{slot}' not found. Using default value: {default}"
-        )
-        return default
-
-    return dep.get_param(key, default=default)
 
 
 def get_cli_args() -> dict[str, Any]:

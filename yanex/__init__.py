@@ -57,9 +57,6 @@ from .core.artifact_formats import register_format
 from .executor import ExperimentResult, ExperimentSpec, run_multiple
 from .results.experiment import Experiment
 
-# Exceptions
-from .utils.exceptions import ParameterConflictError
-
 __version__ = "0.6.0a3"
 __author__ = "Thomas"
 
@@ -106,8 +103,6 @@ __all__ = [
     "ExperimentSpec",
     "ExperimentResult",
     "run_multiple",
-    # Exceptions
-    "ParameterConflictError",
     # Internal functions (for testing)
     "_clear_current_experiment_id",
     "_ExperimentCancelledException",

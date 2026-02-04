@@ -112,53 +112,6 @@ class AmbiguousArtifactError(ExperimentError):
         self.experiment_ids = experiment_ids
 
 
-class ParameterConflictError(ExperimentError):
-    """Raised when a parameter has conflicting values across dependencies.
-
-    This error is raised when yanex.get_param() detects that a parameter
-    has different values in the current experiment's config vs its dependencies.
-    This prevents silent parameter mismatches in experiment pipelines.
-    """
-
-    def __init__(
-        self,
-        param_key: str,
-        conflicts: dict,
-    ) -> None:
-        """Initialize ParameterConflictError.
-
-        Args:
-            param_key: The conflicting parameter key (e.g., "lr" or "model.lr")
-            conflicts: Dict mapping values to list of (source, experiment_id) tuples.
-                      source is "config" for local config or slot name for dependencies.
-                      experiment_id is None for local config.
-        """
-        lines = [f"Parameter '{param_key}' has conflicting values:\n"]
-
-        for value, sources in conflicts.items():
-            lines.append(f"  Value: {value!r}")
-            for source, exp_id in sources:
-                if exp_id is None:
-                    lines.append(f"    - {source}")
-                else:
-                    lines.append(f"    - dependency '{source}' ({exp_id})")
-            lines.append("")
-
-        lines.append("To resolve:")
-        lines.append(
-            f'  - Use specific dependency:  yanex.get_param("{param_key}", '
-            'from_dependency="<slot>")'
-        )
-        lines.append(
-            f'  - Use config only:          yanex.get_param("{param_key}", '
-            "ignore_dependencies=True)"
-        )
-
-        super().__init__("\n".join(lines))
-        self.param_key = param_key
-        self.conflicts = conflicts
-
-
 class AmbiguousKeyError(YanexError):
     """Raised when a key matches multiple canonical keys during resolution."""
 

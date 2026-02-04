@@ -4,6 +4,8 @@ Tests for dependency tracking API functions.
 Tests yanex.get_dependencies() and yanex.load_artifact() with dependency search.
 """
 
+from pathlib import Path
+
 import pytest
 
 import yanex
@@ -571,3 +573,72 @@ class TestAssertDependency:
             yanex.assert_dependency("prepare_data.py")
         finally:
             yanex._clear_current_experiment_id()
+
+
+class TestGetDependencyParam:
+    """Test getting parameters from dependencies via get_dependency().get_param()."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, per_test_experiments_dir, git_repo):
+        """Set up test fixtures."""
+        self.experiments_dir = per_test_experiments_dir
+        self.git_repo = git_repo
+        self.manager = ExperimentManager(per_test_experiments_dir)
+
+        self.script_path = Path(git_repo.working_dir) / "train.py"
+        self.script_path.write_text("print('training')")
+
+    def test_get_dependency_invalid_slot(self):
+        """Test get_dependency with non-existent slot returns None."""
+        exp_id = self.manager.create_experiment(
+            script_path=self.script_path,
+            config={"lr": 0.01},
+        )
+
+        yanex._set_current_experiment_id(exp_id)
+        try:
+            dep = yanex.get_dependency("nonexistent")
+            assert dep is None
+        finally:
+            yanex._clear_current_experiment_id()
+            yanex.api._cached_params = None
+
+    def test_get_dependency_correct_slot(self):
+        """Test get_dependency().get_param() gets correct dependency by slot."""
+        # Create two dependencies with different values
+        exp1_id = self.manager.create_experiment(
+            script_path=self.script_path,
+            config={"lr": 0.001},
+        )
+        self.manager.complete_experiment(exp1_id)
+
+        exp2_id = self.manager.create_experiment(
+            script_path=self.script_path,
+            config={"lr": 0.01},
+        )
+        self.manager.complete_experiment(exp2_id)
+
+        # Create experiment depending on both
+        exp3_id = self.manager.create_experiment(
+            script_path=self.script_path,
+            config={"lr": 0.1},
+            dependencies={"model_a": exp1_id, "model_b": exp2_id},
+        )
+
+        yanex._set_current_experiment_id(exp3_id)
+        try:
+            # Get from specific slots via explicit get_dependency()
+            dep_a = yanex.get_dependency("model_a")
+            dep_b = yanex.get_dependency("model_b")
+
+            assert dep_a is not None
+            assert dep_b is not None
+
+            lr_a = dep_a.get_param("lr")
+            lr_b = dep_b.get_param("lr")
+
+            assert lr_a == 0.001
+            assert lr_b == 0.01
+        finally:
+            yanex._clear_current_experiment_id()
+            yanex.api._cached_params = None

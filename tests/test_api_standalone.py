@@ -362,7 +362,7 @@ class TestModeTransition:
 
                 yanex._clear_current_experiment_id()
                 # Clear cached params between context switches
-                yanex.api._tracked_params = None
+                yanex.api._cached_params = None
 
                 # Should be back in standalone after clearing
                 assert yanex.is_standalone()
