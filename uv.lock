@@ -1606,7 +1606,7 @@ wheels = [
 
 [[package]]
 name = "yanex"
-version = "0.6.0a3"
+version = "0.6.0a4"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
