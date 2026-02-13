@@ -7,11 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Removed TrackedDict and parameter access tracking**: `get_params()` now returns a plain dict. `params.yaml` is written once at experiment creation and never overwritten. Removed `TrackedDict`, atexit handler, `ParameterConflictError`, `from_dependency` parameter (~3200 lines removed)
+- **Storage version bumped to v2**: New `project` field in experiment metadata. Run `yanex migrate --all` to update existing experiments
+
+### Added
+
+- **Project-Scoped Experiments**: Experiments are automatically associated with a project derived from the git repo name
+  - Filter commands (`list`, `delete`, `archive`, etc.) default to current project's experiments
+  - `--project/-p` flag to filter by a specific project name
+  - `--global/-g` flag to show experiments from all projects
+  - `--project ""` to filter experiments with no project
+  - `yanex run --project` to set project explicitly (also via `yanex.project` config key)
+  - `yanex update --set-project` to change an experiment's project
+  - Project column in `yanex list` table and `yanex show` detail view
+  - `meta:project` accessible via `yanex get`
+  - v1→v2 migration backfills project from stored git repository path
+  - Results API and Web API support `project=` filter
+
+- **ExperimentGraph**: First-class abstraction for navigating connected experiment pipelines
+  - `yr.get_graph(id)` / `exp.get_graph()` / `yanex.get_graph()` entry points
+  - Default: causal lineage (upstream + downstream); `weakly_connected=True` for sibling branches
+  - Navigation: `.roots`, `.leaves`, `.experiments`, `.filter()`
+  - Graph-level search: `get_param()`, `get_metric()`, `get_params()`, `load_artifact()` with strict error handling
+  - Pipeline comparison: `graph.compare()`, `graph.get_metrics()` scoped to graph experiments
+  - `include_dep_params` support for upstream parameter enrichment in fan-out pipelines
+
+- **Unified Key Syntax and AccessResolver**: Canonical `param:`, `metric:`, `meta:` prefixes for key access
+  - Sub-path resolution: `lr` resolves to `param:advisor.lr` if unambiguous
+  - Pattern matching in compare/show: `*.lr` matches all keys ending in `.lr`
+  - Scoped access from CLI flags: `--params lr` searches only params scope
+  - Clear `AmbiguousKeyError` and `KeyNotFoundError` exceptions
+
+- **`--id` flag for `yanex run`**: Execute a single staged experiment by ID for distributed execution (e.g., SkyPilot)
+  - Repo-relative script path resolution for remote execution environments
+
+- **`--ids/-i` filter option**: Filter experiments by comma-separated IDs across all commands
+  - Enables workflows like `yanex list --ids $(yanex get upstream abc123 -F sweep)`
+
 ### Changed
 
 - **Minimum Python version increased to 3.11** (dropped Python 3.10 support)
 - Added Python 3.12 to officially supported versions
 - Added README badges for PyPI version, Python versions, and license
+- SPDX license string in `pyproject.toml`
+
+### Fixed
+
+- **Streaming deadlock in `execute_bash_script()`**: Replaced alternating blocking readline loop with separate threads for stdout and stderr to prevent deadlocks when one pipe fills its buffer
 
 ## [0.5.0] - 2025-12-05
 

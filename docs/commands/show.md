@@ -19,7 +19,7 @@ yanex show a1b2c3d4 --show-metric "accuracy,loss"
 
 The `yanex show` command displays detailed information about a single experiment, including:
 
-- **Metadata**: Name, status, timestamps, duration, tags, description
+- **Metadata**: Name, project, status, timestamps, duration, tags, description
 - **Configuration**: All parameters used for the experiment
 - **Results**: Logged metrics and values from the experiment execution
 - **Artifacts**: Files created during the experiment (models, logs, plots)
@@ -77,7 +77,7 @@ Searches for experiments in both active and archived directories. By default, on
 
 The show command displays information in several organized sections:
 
-1. **Header**: Experiment name, ID, status, directory path, and timing information
+1. **Header**: Experiment name, ID, project, status, directory path, and timing information
 2. **Experiment Info**: Tags and description (if present)
 3. **Configuration**: All parameters and their values
 4. **Results**: Logged metrics in a table format (last 10 entries)

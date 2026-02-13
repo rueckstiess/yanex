@@ -6,7 +6,7 @@ import click
 
 from ..error_handling import CLIErrorHandler
 from ..filters import ExperimentFilter
-from ..filters.arguments import experiment_filter_options
+from ..filters.arguments import experiment_filter_options, resolve_project_filter
 from ..formatters import (
     ExperimentTableFormatter,
     OutputFormat,
@@ -19,11 +19,21 @@ from ..formatters import (
 )
 
 # Standard columns for list output
-LIST_COLUMNS = ["id", "name", "status", "script_path", "tags", "created_at", "duration"]
+LIST_COLUMNS = [
+    "id",
+    "project",
+    "name",
+    "status",
+    "script_path",
+    "tags",
+    "created_at",
+    "duration",
+]
 
 # Human-readable headers for CSV/markdown output
 LIST_HEADERS = {
     "id": "ID",
+    "project": "Project",
     "name": "Name",
     "status": "Status",
     "script_path": "Script",
@@ -62,6 +72,8 @@ def list_experiments(
     ended_after: str | None,
     ended_before: str | None,
     archived: bool,
+    project: str | None,
+    global_scope: bool,
 ) -> None:
     """
     List experiments with filtering options.
@@ -149,6 +161,9 @@ def list_experiments(
             if ended_before:
                 click.echo(f"  Ended before: {ended_before}")
 
+        # Resolve project filter
+        resolved_project = resolve_project_filter(project, global_scope)
+
         # Create filter and apply criteria
         experiment_filter = ExperimentFilter()
 
@@ -169,6 +184,7 @@ def list_experiments(
             limit=None if force_all else limit,
             include_all=force_all,
             archived=archived,
+            project=resolved_project,
         )
 
         # Filter experiments based on archived flag
@@ -197,7 +213,13 @@ def list_experiments(
             elif fmt == OutputFormat.MARKDOWN:
                 click.echo("_No experiments found_")
             else:
-                click.echo("No experiments found.")
+                if resolved_project:
+                    click.echo(
+                        f"No experiments found in project '{resolved_project}'. "
+                        "Use --global to see all experiments."
+                    )
+                else:
+                    click.echo("No experiments found.")
                 _show_filter_suggestions(
                     status,
                     name_pattern,

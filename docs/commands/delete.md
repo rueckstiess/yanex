@@ -40,6 +40,8 @@ Unlike archiving, deleted experiments cannot be recovered. Use this command only
 - `--status`, `-s STATUS`: Delete experiments with specific status (completed, failed, cancelled, running, staged)
 - `--name`, `-n PATTERN`: Delete experiments matching name pattern (supports glob syntax like `*test*`)
 - `--tag`, `-t TAG`: Delete experiments with ALL specified tags (repeatable)
+- `--project`, `-p PROJECT`: Delete experiments from a specific project (default: auto-detected from git repo)
+- `--global`, `-g`: Delete experiments from all projects (ignore project auto-detection)
 - `--started-after DATE`: Delete experiments started after date/time
 - `--started-before DATE`: Delete experiments started before date/time
 - `--ended-after DATE`: Delete experiments ended after date/time
@@ -80,6 +82,14 @@ yanex delete -a --ended-before "6 months ago"
 ```
 
 Permanently removes archived experiments older than 6 months to free up storage space.
+
+### Delete from a Specific Project
+
+```bash
+yanex delete -s failed -p other-project
+```
+
+Deletes all failed experiments from a specific project.
 
 ## Safety Features
 

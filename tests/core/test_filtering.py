@@ -499,3 +499,51 @@ class TestExperimentFilter:
 
         # Clean up
         manager.storage.delete_experiment(exp_id)
+
+
+class TestProjectFilter:
+    """Tests for project filtering logic."""
+
+    def test_apply_project_filter_matches_exact_project(self):
+        """Filter by project name matches only that project."""
+        experiments = [
+            {"id": "1", "project": "alpha"},
+            {"id": "2", "project": "beta"},
+            {"id": "3", "project": "alpha"},
+        ]
+        filt = ExperimentFilter.__new__(ExperimentFilter)
+        result = filt._apply_all_filters(experiments, {"project": "alpha"})
+        assert [e["id"] for e in result] == ["1", "3"]
+
+    def test_apply_project_filter_empty_matches_none(self):
+        """Empty project filter matches experiments with None or empty project."""
+        experiments = [
+            {"id": "1", "project": None},
+            {"id": "2", "project": "beta"},
+            {"id": "3", "project": ""},
+            {"id": "4"},  # no project key at all
+        ]
+        filt = ExperimentFilter.__new__(ExperimentFilter)
+        result = filt._apply_all_filters(experiments, {"project": ""})
+        assert [e["id"] for e in result] == ["1", "3", "4"]
+
+    def test_apply_project_filter_no_match(self):
+        """Filter returns empty when no experiments match project."""
+        experiments = [
+            {"id": "1", "project": "alpha"},
+            {"id": "2", "project": "beta"},
+        ]
+        filt = ExperimentFilter.__new__(ExperimentFilter)
+        result = filt._apply_all_filters(experiments, {"project": "gamma"})
+        assert result == []
+
+    def test_no_project_filter_returns_all(self):
+        """Without project filter, all experiments are returned."""
+        experiments = [
+            {"id": "1", "project": "alpha"},
+            {"id": "2", "project": None},
+            {"id": "3"},
+        ]
+        filt = ExperimentFilter.__new__(ExperimentFilter)
+        result = filt._apply_all_filters(experiments, {})
+        assert len(result) == 3

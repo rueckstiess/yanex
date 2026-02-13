@@ -84,6 +84,11 @@ from ...core.script_executor import ScriptExecutor
     metavar="N",
     help="Execute N experiments in parallel (only valid with --staged). Use 0 for auto (number of CPUs).",
 )
+@click.option(
+    "--project",
+    type=str,
+    help="Project name for this experiment (default: auto-detected from git repo)",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -101,6 +106,7 @@ def run(
     staged: bool,
     experiment_id: str | None,
     parallel: int | None,
+    project: str | None,
 ) -> None:
     """
     Run a script as a tracked experiment.
@@ -210,6 +216,7 @@ def run(
         "stage": stage,
         "staged": staged,
         "parallel": parallel,
+        "project": project,
     }
 
     # Handle mutually exclusive flags
@@ -281,6 +288,14 @@ def run(
         resolved_dry_run = dry_run or cli_defaults.get("dry_run", False)
         resolved_stage = stage or cli_defaults.get("stage", False)
 
+        # Resolve project: CLI flag > config > auto-detect from git
+        from ...core.project import resolve_project_for_run
+
+        resolved_project = resolve_project_for_run(
+            cli_project=project,
+            config_project=cli_defaults.get("project"),
+        )
+
         if verbose:
             console.print(
                 format_verbose(f"Experiment configuration: {experiment_config}")
@@ -335,6 +350,7 @@ def run(
                 verbose=verbose,
                 script_args=script_args,
                 cli_args=cli_args,
+                project=resolved_project,
             )
         elif has_any_sweep:
             # Execute any type of sweep using unified executor
@@ -349,6 +365,7 @@ def run(
                 max_workers=parallel,
                 script_args=script_args,
                 cli_args=cli_args,
+                project=resolved_project,
             )
         else:
             # Single experiment execution
@@ -362,6 +379,7 @@ def run(
                 verbose=verbose,
                 script_args=script_args,
                 cli_args=cli_args,
+                project=resolved_project,
             )
 
     except Exception as e:
@@ -379,6 +397,7 @@ def _execute_experiment(
     verbose: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
+    project: str | None = None,
 ) -> None:
     """Execute script as an experiment with proper lifecycle management."""
     console = Console()  # Use stdout with colors
@@ -405,6 +424,7 @@ def _execute_experiment(
         dependencies=dependencies,
         script_args=script_args,
         cli_args=cli_args,
+        project=project,
     )
 
     if verbose:
@@ -784,6 +804,7 @@ def _stage_experiment(
     verbose: bool = False,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
+    project: str | None = None,
 ) -> None:
     """Stage experiment(s) for later execution, expanding all sweep types."""
 
@@ -827,6 +848,7 @@ def _stage_experiment(
                 stage_only=True,
                 script_args=spec.script_args,
                 cli_args=spec.cli_args,
+                project=project,
             )
 
             experiment_ids.append(experiment_id)
@@ -856,6 +878,7 @@ def _stage_experiment(
             stage_only=True,
             script_args=script_args,
             cli_args=cli_args,
+            project=project,
         )
 
         if verbose:
@@ -1251,6 +1274,7 @@ def _execute_sweep(
     max_workers: int | None = None,
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
+    project: str | None = None,
 ) -> None:
     """Execute any type of sweep directly using unified spec builder.
 
@@ -1290,6 +1314,10 @@ def _execute_sweep(
         script_args=script_args,
         cli_args=cli_args,
     )
+
+    # Set project on all specs
+    for spec in sweep_specs:
+        spec.project = project
 
     # Print generic sweep message
     click.echo(f"✓ Sweep detected: running {len(sweep_specs)} experiments")

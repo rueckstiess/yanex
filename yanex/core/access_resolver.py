@@ -23,6 +23,7 @@ GROUPS = ("param", "metric", "meta")
 META_FIELDS = {
     "id",
     "name",
+    "project",
     "status",
     "description",
     "tags",

@@ -9,7 +9,7 @@ from ..error_handling import (
     CLIErrorHandler,
 )
 from ..filters import ExperimentFilter
-from ..filters.arguments import experiment_filter_options
+from ..filters.arguments import experiment_filter_options, resolve_project_filter
 from ..formatters import (
     echo_format_info,
     format_options,
@@ -48,6 +48,8 @@ def delete_experiments(
     ended_before: str | None,
     archived: bool,
     force: bool,
+    project: str | None,
+    global_scope: bool,
 ):
     """
     Permanently delete experiments.
@@ -103,6 +105,9 @@ def delete_experiments(
         list(experiment_identifiers), has_filters, "delete"
     )
 
+    # Resolve project filter
+    resolved_project = resolve_project_filter(project, global_scope)
+
     # Parse time specifications
     started_after_dt, started_before_dt, ended_after_dt, ended_before_dt = (
         CLIErrorHandler.parse_time_filters(
@@ -130,6 +135,7 @@ def delete_experiments(
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
             archived=archived,
+            project=resolved_project,
         )
 
     # Filter experiments based on archived flag

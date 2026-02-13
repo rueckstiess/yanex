@@ -56,6 +56,18 @@ yanex list -n "model-v*"
 yanex list -n "*-prod"
 ```
 
+### By Project
+
+By default, `yanex list` auto-detects the current project from the git repository and only shows experiments belonging to that project.
+
+```bash
+# Show experiments from a specific project
+yanex list -p other-project
+
+# Show experiments from all projects
+yanex list --global
+```
+
 ### By Tags
 
 Filter using `--tag` or `-t`:
@@ -128,6 +140,19 @@ yanex list -s completed --started-after "3 days ago"
 yanex list -s failed --started-after "1 week ago"
 ```
 
+### Cross-Project Queries
+
+```bash
+# List experiments from all projects
+yanex list --global
+
+# List experiments from a different project
+yanex list -p other-project
+
+# Combine with other filters
+yanex list --global -s completed --started-after "1 week ago"
+```
+
 ### Project Management
 
 ```bash
@@ -168,6 +193,8 @@ yanex list -F markdown
 | `csv` | Comma-separated values with headers |
 | `markdown` | GitHub-flavored markdown table |
 
+When using `--global`, a **Project** column is included in the output to distinguish experiments from different projects.
+
 ## Short Aliases
 
 All options have convenient short aliases:
@@ -176,6 +203,8 @@ All options have convenient short aliases:
 - `-s` for `--status`
 - `-n` for `--name`
 - `-t` for `--tag`
+- `-p` for `--project`
+- `-g` for `--global`
 - `-a` for `--archived`
 - `-l` for `--limit`
 - `-F` for `--format`

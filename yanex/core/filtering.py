@@ -47,6 +47,7 @@ class ExperimentFilter:
         ended_after: str | datetime | None = None,
         ended_before: str | datetime | None = None,
         archived: bool | None = None,
+        project: str | None = None,
         limit: int | None = None,
         sort_by: str = "created_at",
         sort_desc: bool = True,
@@ -89,6 +90,7 @@ class ExperimentFilter:
             ended_after=ended_after,
             ended_before=ended_before,
             archived=archived,
+            project=project,
         )
 
         # Load all experiments (including archived based on filter)
@@ -122,6 +124,7 @@ class ExperimentFilter:
         ended_after: str | datetime | None,
         ended_before: str | datetime | None,
         archived: bool | None,
+        project: str | None = None,
     ) -> dict[str, Any]:
         """Validate and normalize all filter inputs."""
         normalized = {}
@@ -194,6 +197,12 @@ class ExperimentFilter:
                     normalized[dt_field] = dt_value
                 else:
                     raise ValueError(f"{dt_field} must be a string or datetime object")
+
+        # Normalize project
+        if project is not None:
+            if not isinstance(project, str):
+                raise ValueError("project must be a string")
+            normalized["project"] = project
 
         # Normalize archived flag
         if archived is not None:
@@ -269,6 +278,17 @@ class ExperimentFilter:
                 for exp in filtered
                 if self._ended_before(exp, filters["ended_before"])
             ]
+
+        # Apply project filter
+        if "project" in filters:
+            project_filter = filters["project"]
+            if not project_filter:
+                # Empty string matches experiments with no project (None or "")
+                filtered = [exp for exp in filtered if not exp.get("project")]
+            else:
+                filtered = [
+                    exp for exp in filtered if exp.get("project") == project_filter
+                ]
 
         # Apply archived filter
         if "archived" in filters:

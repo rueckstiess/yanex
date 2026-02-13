@@ -283,6 +283,46 @@ class DependencyGraph:
                 # Experiment was deleted or doesn't exist
                 graph.nodes[node].update({"name": "[deleted]", "status": "deleted"})
 
+    def get_connected_component(self, exp_id: str) -> nx.DiGraph:
+        """Get the weakly connected component containing an experiment.
+
+        Returns a DiGraph with edges in data-flow direction (dependency -> dependent),
+        including all experiments reachable in either direction from exp_id.
+
+        Args:
+            exp_id: Experiment ID to find the connected component for.
+
+        Returns:
+            NetworkX DiGraph with edges in dependency->dependent direction.
+            Nodes have 'name', 'status', and 'script' attributes.
+        """
+        # Check if experiment has any dependency relationships
+        in_forward = exp_id in self._forward
+        in_reverse = exp_id in self._reverse
+
+        if not in_forward and not in_reverse:
+            # Isolated experiment — single-node graph
+            graph = nx.DiGraph()
+            graph.add_node(exp_id)
+            self._add_node_metadata(graph)
+            return graph
+
+        # Find all nodes in the weakly connected component
+        source = self._forward if in_forward else self._reverse
+        undirected = source.to_undirected(as_view=True)
+        component_nodes = nx.node_connected_component(undirected, exp_id)
+
+        # Build subgraph with data-flow direction edges (from _reverse)
+        subgraph = nx.DiGraph()
+        for node in component_nodes:
+            subgraph.add_node(node)
+        for u, v, data in self._reverse.edges(data=True):
+            if u in component_nodes and v in component_nodes:
+                subgraph.add_edge(u, v, **data)
+
+        self._add_node_metadata(subgraph)
+        return subgraph
+
     def get_metadata(self, exp_id: str) -> dict[str, str]:
         """Get cached metadata for an experiment.
 

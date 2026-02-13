@@ -5,6 +5,8 @@ This module provides the Experiment class for working with individual experiment
 including metadata access, data retrieval, and metadata updates.
 """
 
+from __future__ import annotations
+
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,6 +18,9 @@ else:
     class pd:
         DataFrame = "pd.DataFrame"
 
+
+if TYPE_CHECKING:
+    from .graph import ExperimentGraph
 
 from ..core.manager import ExperimentManager
 from ..utils.datetime_utils import parse_iso_timestamp
@@ -66,6 +71,12 @@ class Experiment:
         """Get experiment name."""
         metadata = self._load_metadata()
         return metadata.get("name")
+
+    @property
+    def project(self) -> str | None:
+        """Get experiment project name."""
+        metadata = self._load_metadata()
+        return metadata.get("project")
 
     @property
     def description(self) -> str | None:
@@ -249,7 +260,7 @@ class Experiment:
 
     def get_metrics(
         self, step: int | None = None, as_dataframe: bool = True
-    ) -> "list[dict[str, Any]] | dict[str, Any] | pd.DataFrame":
+    ) -> list[dict[str, Any]] | dict[str, Any] | pd.DataFrame:
         """
         Get experiment metrics.
 
@@ -519,7 +530,7 @@ class Experiment:
         """
         return len(self.dependencies) > 0
 
-    def get_dependency(self, slot: str) -> "Experiment | None":
+    def get_dependency(self, slot: str) -> Experiment | None:
         """
         Get dependency experiment for a specific slot.
 
@@ -546,7 +557,7 @@ class Experiment:
 
     def get_dependencies(
         self, transitive: bool = False, include_self: bool = False
-    ) -> "dict[str, Experiment] | list[Experiment]":
+    ) -> dict[str, Experiment] | list[Experiment]:
         """
         Get experiment dependencies as Experiment objects.
 
@@ -603,6 +614,32 @@ class Experiment:
                     continue
 
             return dependencies
+
+    def get_graph(self, *, weakly_connected: bool = False) -> ExperimentGraph:
+        """Get the dependency graph containing this experiment.
+
+        By default, returns only upstream and downstream experiments (the
+        causal lineage). With ``weakly_connected=True``, returns the full
+        weakly connected component including sibling branches.
+
+        Args:
+            weakly_connected: If True, include all experiments in the weakly
+                connected component (including siblings). Default: False.
+
+        Returns:
+            ExperimentGraph containing the selected experiments.
+
+        Examples:
+            >>> exp = yr.get_experiment("abc123")
+            >>> graph = exp.get_graph()
+            >>> graph.load_artifact("dataset.json")  # search entire pipeline
+            >>> graph.filter(script_pattern="train.py")
+        """
+        from .graph import ExperimentGraph
+
+        return ExperimentGraph.build(
+            self._manager, self._experiment_id, weakly_connected=weakly_connected
+        )
 
     def get_script_runs(self) -> list[dict[str, Any]]:
         """
@@ -737,6 +774,7 @@ class Experiment:
         return {
             "id": self.id,
             "name": self.name,
+            "project": self.project,
             "description": self.description,
             "status": self.status,
             "tags": self.tags,

@@ -333,8 +333,30 @@ The `yanex` section supports these `yanex run` parameters:
 - `description`: Experiment description
 - `dry_run`: Dry run mode (boolean)
 - `stage`: Stage changes before run (boolean)
+- `project`: Project name (overrides auto-detection from git repo name)
 
 **Note:** This feature only works with the `yanex run` command - other commands like `list`, `show`, etc. are not affected.
+
+### Project Name
+
+Yanex automatically detects the project name from your git repository name and stores it in experiment metadata. You can override this with the `yanex.project` key in your config file:
+
+```yaml
+# config.yaml
+learning_rate: 0.001
+batch_size: 32
+
+yanex:
+  project: my-custom-name
+```
+
+Or via the CLI:
+
+```bash
+yanex run train.py --project my-custom-name
+```
+
+The project name is used for filtering experiments. By default, `yanex list` and other query commands only show experiments from the current project. Use `--global` to see all experiments across projects.
 
 ### Git Integration
 

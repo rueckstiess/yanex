@@ -218,6 +218,73 @@ print(f"\nComparison DataFrame shape: {df.shape}")
 print(df.head())
 ```
 
+## Experiment Graphs
+
+Use `ExperimentGraph` for pipeline-level analysis across connected experiments.
+
+### Getting a Graph
+```python
+# From experiment ID (upstream + downstream lineage)
+graph = yr.get_graph("abc12345")
+
+# Include sibling branches (full weakly connected component)
+graph = yr.get_graph("abc12345", weakly_connected=True)
+
+# From Experiment object
+graph = exp.get_graph()
+```
+
+### Navigation
+```python
+graph.experiments      # list[Experiment] — all experiments
+graph.roots            # list[Experiment] — no dependencies
+graph.leaves           # list[Experiment] — no dependents
+graph["abc12345"]      # Experiment by ID
+len(graph)             # number of experiments
+"abc12345" in graph    # membership check
+graph.digraph          # nx.DiGraph escape hatch
+```
+
+### Filtering (same kwargs as get_experiments)
+```python
+train_runs = graph.filter(script_pattern="train.py")
+completed = graph.filter(status="completed")
+tagged = graph.filter(tags=["sweep"])
+combined = graph.filter(status="completed", script_pattern="evaluate*")
+```
+
+### Graph-Level Data Access
+```python
+# Strict errors — raises KeyNotFoundError if missing, ValueError if conflicting
+dataset = graph.load_artifact("dataset.json")   # AmbiguousArtifactError if multiple
+lr = graph.get_param("lr")                      # sub-path resolution via AccessResolver
+params = graph.get_params()                     # merged nested dict, ValueError if conflicts
+acc = graph.get_metric("accuracy")              # KeyNotFoundError if missing
+```
+
+### Comparison and Metrics
+```python
+# Compare experiments in graph (same kwargs as yr.compare)
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+
+# Time-series metrics (same format as yr.get_metrics)
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"])
+```
+
+### Fan-Out Pattern (HPO, K-Fold)
+```python
+# When multiple experiments have same artifact name, use filter + per-experiment
+for run in graph.filter(script_pattern="train.py"):
+    print(run.get_param("learning_rate"), run.get_metric("accuracy"))
+
+# Find best
+best = max(
+    graph.filter(script_pattern="train.py"),
+    key=lambda e: e.get_metric("accuracy")
+)
+model = best.load_artifact("model.pt")
+```
+
 ## Utility Functions
 
 ```python

@@ -46,6 +46,7 @@ async def list_experiments(
     sort_order: str = Query("desc", description="Sort order: 'asc' or 'desc'"),
     page: int = Query(1, description="Page number for pagination"),
     archived: bool = Query(False, description="Include archived experiments"),
+    project: str | None = Query(None, description="Filter by project name"),
 ) -> dict[str, Any]:
     """List experiments with filtering options."""
     try:
@@ -99,6 +100,7 @@ async def list_experiments(
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
             archived=archived,  # Changed from include_archived - now handles filtering internally
+            project=project,
             limit=None,  # Get all experiments
             include_all=True,
         )

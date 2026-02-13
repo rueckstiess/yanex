@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Yanex** (Yet Another Experiment Tracker) is a lightweight, Git-aware experiment tracking system for Python designed for machine learning and research reproducibility. It's currently in beta (v0.5.0) and provides CLI, Python API, and web UI interfaces.
+**Yanex** (Yet Another Experiment Tracker) is a lightweight, Git-aware experiment tracking system for Python designed for machine learning and research reproducibility. It's currently in alpha (v0.6.0a4) and provides CLI, Python API, and web UI interfaces.
 
 ## Essential Commands
 
@@ -219,6 +219,42 @@ The codebase has undergone significant refactoring to:
 - Configuration supports YAML files with CLI parameter overrides
 - Experiment lifecycle: `created` → `running` → `completed`/`failed`/`cancelled`
 - Default storage location: `~/.yanex/experiments/` (configurable via `YANEX_EXPERIMENTS_DIR`)
+
+### Project Scoping
+Experiments are automatically scoped to "projects" — identified by the git repository name (last path component of the repo root, e.g., `/Users/thomas/code/myproject` → `myproject`).
+
+**Key behavior:**
+- `yanex run` auto-detects project from CWD's git repo and stores it in metadata
+- `yanex list` and other filter commands default to showing only the current project's experiments
+- `--global` / `-g` flag shows experiments across all projects
+- `--project` / `-p` flag explicitly filters by project name
+- `--project ""` filters experiments with no project (similar to `--name ""` for unnamed experiments)
+- Outside a git repo, commands fall back to showing all experiments (global behavior)
+- Direct ID lookups (`yanex show <id>`, `yanex get <field> <id>`) always work globally
+- Auto-detected project does NOT suppress bulk operation confirmation prompts
+
+**Config file support:**
+```yaml
+yanex:
+  project: my-custom-name   # Override auto-detected project name
+```
+
+**CLI commands:**
+```bash
+yanex list                          # Show current project's experiments only
+yanex list --global                 # Show all experiments across projects
+yanex list --project other-project  # Show specific project's experiments
+yanex update --set-project newname <exp_id>  # Change experiment's project
+yanex get meta:project <exp_id>     # Get experiment's project name
+```
+
+**Implementation files:**
+- `yanex/core/project.py` — `detect_project_from_cwd()`, `derive_project_from_metadata()`, `resolve_project_for_run()`
+- `yanex/cli/filters/arguments.py` — `--project/-p`, `--global/-g` options, `resolve_project_filter()`
+- `yanex/core/filtering.py` — project filter in `filter_experiments()`
+- `yanex/core/migrations.py` — v1→v2 migration backfills project from git metadata (storage version 2)
+- `yanex/cli/formatters/console.py` — Project column in list table
+- `yanex/cli/formatters/theme.py` — `PROJECT_STYLE = "magenta"`
 
 ### Two Execution Patterns
 **1. CLI-First (Recommended):**
@@ -493,6 +529,49 @@ best = yr.get_best('accuracy', minimize=False, status='completed')
 **Key API Differences**:
 - `yr.compare()`: Wide format with prefixed column names (`meta:id`, `param:lr`, `metric:accuracy`)
 - `yr.get_metrics()`: Long format with bare column names (`experiment_id`, `lr`, `accuracy`) - optimized for plotting
+
+**ExperimentGraph** (`yanex/results/graph.py`):
+Pipeline-level analysis of connected experiments. By default returns the causal lineage
+(upstream dependencies + downstream dependents). With `weakly_connected=True`, includes
+sibling branches that share a common ancestor.
+
+```python
+import yanex.results as yr
+
+# Get graph from any experiment (upstream + downstream lineage)
+graph = yr.get_graph("abc123")   # or exp.get_graph()
+
+# Include siblings (full weakly connected component)
+graph = yr.get_graph("abc123", weakly_connected=True)
+
+# Navigation
+graph.experiments                # all experiments in pipeline
+graph.roots                      # no dependencies (pipeline entry points)
+graph.leaves                     # no dependents (pipeline endpoints)
+
+# Filtering (same kwargs as yr.get_experiments)
+train_runs = graph.filter(script_pattern="train.py")
+
+# Graph-level search — strict errors for missing/ambiguous keys
+data = graph.load_artifact("dataset.json")   # AmbiguousArtifactError if multiple
+lr = graph.get_param("lr")                   # sub-path resolution via AccessResolver
+params = graph.get_params()                  # merged nested dict, ValueError if conflicts
+acc = graph.get_metric("accuracy")           # KeyNotFoundError if missing
+
+# Comparison and metrics (same as yr.compare/yr.get_metrics, scoped to graph)
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"])
+
+# During experiment execution (Run API):
+import yanex
+graph = yanex.get_graph()        # raises ExperimentContextError if standalone
+```
+
+Key implementation files:
+- `yanex/results/graph.py` - `ExperimentGraph` class
+- `yanex/core/dependency_graph.py` - `DependencyGraph.get_connected_component()` and `get_lineage()` for graph building
+- `yanex/results/experiment.py` - `Experiment.get_graph()` convenience method
+- `yanex/api.py` - `yanex.get_graph()` Run API function
 
 ### Unified Key Syntax
 

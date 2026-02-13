@@ -36,6 +36,7 @@ Updates can be applied to single experiments or in bulk using filter criteria.
 
 - `--set-name NAME`: Set experiment name (use empty string to clear)
 - `--set-description DESC`: Set experiment description (use empty string to clear)
+- `--set-project PROJECT`: Set experiment project
 - `--set-status STATUS`: Set experiment status (completed, failed, cancelled, running, staged)
 - `--add-tag TAG`: Add tag to experiment(s) (repeatable)
 - `--remove-tag TAG`: Remove tag from experiment(s) (repeatable)
@@ -45,6 +46,8 @@ Updates can be applied to single experiments or in bulk using filter criteria.
 - `--status`, `-s STATUS`: Filter experiments by status
 - `--name`, `-n PATTERN`: Filter experiments by name pattern (supports glob syntax)
 - `--tag`, `-t TAG`: Filter experiments with ALL specified tags (repeatable)
+- `--project`, `-p PROJECT`: Filter by project name (default: auto-detected from git repo)
+- `--global`, `-g`: Show experiments from all projects (ignore project filter)
 - `--started-after DATE`: Filter experiments started after date/time
 - `--started-before DATE`: Filter experiments started before date/time
 - `--ended-after DATE`: Filter experiments ended after date/time
@@ -75,6 +78,14 @@ yanex update exp-name --add-tag production --add-tag validated --remove-tag test
 ```
 
 Adds "production" and "validated" tags while removing the "testing" tag.
+
+### Change Project
+
+```bash
+yanex update --set-project newname abc12345
+```
+
+Moves an experiment to a different project.
 
 ### Bulk Updates
 

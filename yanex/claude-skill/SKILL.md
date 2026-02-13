@@ -240,6 +240,50 @@ df = yr.compare(tags=["sweep"], params=["lr"], metrics=["loss", "accuracy"])
 df = yr.get_metrics(name="yelp-*", metrics="train_loss")
 ```
 
+### Experiment Graphs
+
+Use `ExperimentGraph` for pipeline-level analysis — navigate, filter, and search across connected experiments.
+
+```python
+import yanex.results as yr
+
+# Get the graph containing an experiment (upstream + downstream lineage)
+graph = yr.get_graph("abc12345")
+# Include sibling branches (full weakly connected component):
+graph = yr.get_graph("abc12345", weakly_connected=True)
+# Or from an Experiment object:
+graph = exp.get_graph()
+
+# Navigate
+graph.experiments      # all experiments in the pipeline
+graph.roots            # experiments with no dependencies
+graph.leaves           # experiments with no dependents
+
+# Filter (same kwargs as yr.get_experiments)
+train_runs = graph.filter(script_pattern="train.py")
+completed = graph.filter(status="completed", tags=["sweep"])
+
+# Graph-level data access (strict — raises on missing/ambiguous)
+dataset = graph.load_artifact("dataset.json")   # AmbiguousArtifactError if multiple
+lr = graph.get_param("lr")                      # sub-path resolution, KeyNotFoundError if missing
+params = graph.get_params()                     # merged nested dict, ValueError if conflicts
+acc = graph.get_metric("accuracy")              # KeyNotFoundError if missing
+
+# Compare and metrics (same as yr.compare/yr.get_metrics, scoped to graph)
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"])
+
+# Fan-out pattern: filter → per-experiment access
+for t in graph.filter(script_pattern="train.py"):
+    print(t.get_param("learning_rate"), t.get_metric("accuracy"))
+```
+
+During experiment execution (Run API):
+```python
+import yanex
+graph = yanex.get_graph()  # graph of current experiment's pipeline
+```
+
 ## User Naming Conventions
 
 Many users follow prefix-based naming: `{project}-{iteration}-{stage}`

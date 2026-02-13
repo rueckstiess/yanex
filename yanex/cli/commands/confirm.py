@@ -244,6 +244,7 @@ def find_experiments_by_filters(
     ended_after=None,
     ended_before=None,
     archived: bool = False,
+    project: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Find experiments using filter criteria.
@@ -260,6 +261,7 @@ def find_experiments_by_filters(
         ended_after: Filter by end time
         ended_before: Filter by end time
         archived: Whether to search archived experiments
+        project: Filter by project name
 
     Returns:
         List of found experiments
@@ -276,4 +278,5 @@ def find_experiments_by_filters(
         ended_before=ended_before,
         include_all=True,  # Get all matching experiments for bulk operations
         archived=archived,
+        project=project,
     )

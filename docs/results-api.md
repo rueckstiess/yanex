@@ -104,6 +104,9 @@ experiments = yr.get_experiments(
 
 # Find by IDs
 experiments = yr.get_experiments(ids=["abc123", "def456"])
+
+# Find by project
+experiments = yr.get_experiments(project="myproject", status="completed")
 ```
 
 **Supported Filters:**
@@ -111,6 +114,7 @@ experiments = yr.get_experiments(ids=["abc123", "def456"])
 - `status`: str | list[str] - Match any of these statuses (OR logic)
 - `name`: str - Glob pattern matching
 - `tags`: list[str] - Must have ALL these tags (AND logic)
+- `project`: str - Filter by project name
 - `started_after`: str | datetime - Started >= this time
 - `started_before`: str | datetime - Started <= this time
 - `ended_after`: str | datetime - Ended >= this time
@@ -462,6 +466,285 @@ Refresh cached data by reloading from storage.
 
 ```python
 exp.refresh()  # Reload all data from disk
+```
+
+---
+
+## Experiment Graphs
+
+The `ExperimentGraph` class represents a connected pipeline of experiments, providing graph-level navigation, filtering, artifact loading, and parameter/metric access.
+
+### Getting a Graph
+
+#### `yanex.results.get_graph(experiment_id, *, weakly_connected=False)`
+
+Get the dependency graph containing an experiment.
+
+By default, returns only upstream (dependencies) and downstream (dependents) experiments — the causal lineage. With `weakly_connected=True`, returns the full weakly connected component including sibling branches.
+
+```python
+import yanex.results as yr
+
+# Upstream + downstream only (default)
+graph = yr.get_graph("abc12345")
+
+# Full connected component including siblings
+graph = yr.get_graph("abc12345", weakly_connected=True)
+```
+
+**Parameters:**
+- `experiment_id` (str): Any experiment ID in the pipeline
+- `weakly_connected` (bool): If True, include all experiments in the weakly connected component (including siblings). Default: False.
+
+**Returns:**
+- `ExperimentGraph`: Graph containing the selected experiments
+
+**Raises:**
+- `ExperimentNotFoundError`: If experiment doesn't exist
+
+#### `Experiment.get_graph(*, weakly_connected=False)`
+
+Get the graph from an existing Experiment object:
+
+```python
+exp = yr.get_experiment("abc12345")
+graph = exp.get_graph()
+graph = exp.get_graph(weakly_connected=True)  # include siblings
+```
+
+### ExperimentGraph Properties
+
+```python
+graph = yr.get_graph("abc12345")
+
+# All experiments in the graph
+graph.experiments      # list[Experiment]
+
+# Experiments with no dependencies (in-degree 0)
+graph.roots            # list[Experiment]
+
+# Experiments with no dependents (out-degree 0)
+graph.leaves           # list[Experiment]
+
+# Underlying NetworkX DiGraph (edges in data-flow direction)
+graph.digraph          # nx.DiGraph
+```
+
+### Container Protocol
+
+```python
+graph["abc12345"]      # Get experiment by ID (raises KeyError if not found)
+len(graph)             # Number of experiments
+"abc12345" in graph    # Membership check
+for exp in graph: ...  # Iterate over Experiment objects
+```
+
+### Filtering
+
+#### `ExperimentGraph.filter(**filters)`
+
+Filter experiments within the graph. Accepts the same filter kwargs as `yr.get_experiments()` — `status`, `tags`, `name`, `script_pattern`, time ranges, etc.
+
+```python
+# Filter by script pattern
+train_runs = graph.filter(script_pattern="train.py")
+
+# Filter by status
+completed = graph.filter(status="completed")
+
+# Filter by tags
+tagged = graph.filter(tags=["sweep"])
+
+# Combine filters
+results = graph.filter(status="completed", script_pattern="evaluate*")
+```
+
+**Parameters:**
+- `**filters`: Same filter arguments as `yr.get_experiments()`
+
+**Returns:**
+- `list[Experiment]`: Matching experiments from this graph
+
+### Graph-Level Data Access
+
+#### `ExperimentGraph.load_artifact(filename, loader=None, format=None)`
+
+Load an artifact, searching all experiments in the graph. Returns None if not found.
+
+```python
+# Found in exactly one experiment — loaded
+dataset = graph.load_artifact("dataset.json")
+
+# Found in multiple experiments — raises error
+model = graph.load_artifact("model.pt")  # AmbiguousArtifactError
+```
+
+**Parameters:**
+- `filename` (str): Name of artifact to load
+- `loader` (callable, optional): Custom loader function `(path) -> object`
+- `format` (str, optional): Format name for explicit format selection
+
+**Returns:**
+- Loaded object, or None if not found
+
+**Raises:**
+- `AmbiguousArtifactError`: If artifact found in multiple experiments
+
+#### `ExperimentGraph.get_params()`
+
+Get all parameters merged across all experiments in the graph. Returns a nested dict.
+Raises ValueError if any key has conflicting values across experiments.
+
+```python
+# Linear pipeline: merged config from all stages
+params = graph.get_params()
+# {"dataset": "mnist", "samples": 1000, "learning_rate": 0.01, "epochs": 100}
+
+# Fan-out: conflicts raise ValueError
+# ValueError: Parameter 'lr' has conflicting values: abc=0.01, def=0.1
+```
+
+**Returns:**
+- `dict[str, Any]`: Nested dict of merged parameters
+
+**Raises:**
+- `ValueError`: If any parameter key has conflicting values across experiments
+
+#### `ExperimentGraph.get_param(key)`
+
+Get a parameter value, searching all experiments. Uses AccessResolver for sub-path
+resolution (e.g., `"lr"` resolves to `"model.lr"` if unambiguous).
+
+```python
+graph.get_param("learning_rate")    # exact match
+graph.get_param("lr")               # resolves to "model.lr" if unambiguous
+graph.get_param("model.lr")         # dot notation
+```
+
+**Parameters:**
+- `key` (str): Parameter key (supports dot notation, sub-path shorthand, canonical form)
+
+**Returns:**
+- Parameter value
+
+**Raises:**
+- `KeyNotFoundError`: If key not found in any experiment
+- `AmbiguousKeyError`: If key matches multiple parameter paths
+- `ValueError`: If parameter found in multiple experiments with different values
+
+#### `ExperimentGraph.get_metric(name)`
+
+Get a metric's final value, searching all experiments. Same strict semantics as `get_param()`.
+
+```python
+acc = graph.get_metric("accuracy")
+```
+
+**Parameters:**
+- `name` (str): Metric name
+
+**Returns:**
+- Metric value
+
+**Raises:**
+- `KeyNotFoundError`: If metric not found in any experiment
+- `ValueError`: If metric found in multiple experiments with different values
+
+### Comparison and Metrics
+
+#### `ExperimentGraph.compare(**filters)`
+
+Compare experiments in the graph as a pandas DataFrame. Accepts the same kwargs as
+`yr.compare()`, scoped to experiments in this graph.
+
+```python
+# Compare all experiments in the graph
+df = graph.compare()
+
+# Filter to eval experiments, include upstream params (e.g., train hyperparams)
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+
+# Specific columns
+df = graph.compare(params=["lr", "batch_size"], metrics=["accuracy"], status="completed")
+```
+
+**Parameters:**
+- `params` (str | list): Parameter columns — "auto", "all", "none", or list of names
+- `metrics` (str | list): Metric columns — "auto", "all", "none", or list of names
+- `meta` (str | list): Metadata columns — "auto", "all", "none", or list of names
+- `include_dep_params` (bool): If True, include upstream dependency params. Default: False.
+- `**filters`: Additional filter kwargs (script_pattern, status, tags, etc.)
+
+**Returns:**
+- `pd.DataFrame`: Wide-format DataFrame with `param:`, `metric:`, `meta:` columns
+
+#### `ExperimentGraph.get_metrics(**filters)`
+
+Get time-series metrics from experiments in the graph as a long-format DataFrame.
+Identical format to `yr.get_metrics()` but scoped to this graph.
+
+```python
+# All metrics from all experiments
+df = graph.get_metrics()
+
+# Filter + include upstream params
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"], include_dep_params=True)
+```
+
+**Parameters:**
+- `metrics` (str | list | None): Which metrics — None (all), str, or list of names
+- `params` (list | str): Which param columns — "auto", "all", "none", or list
+- `meta` (list | None): Metadata columns for faceting
+- `include_dep_params` (bool): If True, include upstream dependency params. Default: False.
+- `**filters`: Additional filter kwargs
+
+**Returns:**
+- `pd.DataFrame`: Long-format DataFrame with columns `[experiment_id, step, metric_name, value, <params>, <meta>]`
+
+### Common Patterns
+
+#### Linear Pipeline Analysis
+
+```python
+graph = yr.get_graph("eval_id")
+
+# Navigate the pipeline
+print(f"Roots: {[e.name for e in graph.roots]}")   # preprocessing
+print(f"Leaves: {[e.name for e in graph.leaves]}")  # evaluation
+
+# Get full pipeline config (no conflicts in linear chain)
+params = graph.get_params()
+
+# Load unique artifacts
+data = graph.load_artifact("processed_data.pkl")
+accuracy = graph.get_metric("test_accuracy")
+```
+
+#### Fan-Out / HPO Results Collection
+
+When multiple experiments produce artifacts with the same name, use `filter()` + per-experiment access:
+
+```python
+graph = yr.get_graph("any_experiment_in_pipeline", weakly_connected=True)
+
+# Compare eval experiments with upstream hyperparams
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+
+# Time-series training curves
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"])
+
+# Per-experiment collection
+for run in graph.filter(script_pattern="train.py"):
+    lr = run.get_param("learning_rate")
+    acc = run.get_metric("accuracy")
+    print(f"lr={lr}: accuracy={acc}")
+
+# Find and load best model
+best_run = max(
+    graph.filter(script_pattern="train.py"),
+    key=lambda e: e.get_metric("accuracy")
+)
+model = best_run.load_artifact("model.pt")
 ```
 
 ---

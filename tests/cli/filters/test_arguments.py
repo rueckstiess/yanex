@@ -124,57 +124,57 @@ class TestValidateFilterArguments:
 
     def test_validate_empty_arguments(self):
         """Test validation with no arguments."""
-        result = validate_filter_arguments()
+        result = validate_filter_arguments(global_scope=True)
         assert result == {}
 
     def test_validate_parses_single_id(self):
         """Test that a single ID string is parsed to a list."""
-        result = validate_filter_arguments(ids="exp1")
+        result = validate_filter_arguments(ids="exp1", global_scope=True)
         assert result == {"ids": ["exp1"]}
 
     def test_validate_parses_comma_separated_ids(self):
         """Test that comma-separated IDs are parsed to a list."""
-        result = validate_filter_arguments(ids="exp1,exp2,exp3")
+        result = validate_filter_arguments(ids="exp1,exp2,exp3", global_scope=True)
         assert result == {"ids": ["exp1", "exp2", "exp3"]}
 
     def test_validate_parses_comma_separated_ids_with_spaces(self):
         """Test that comma-separated IDs with spaces are parsed correctly."""
-        result = validate_filter_arguments(ids="exp1, exp2 , exp3")
+        result = validate_filter_arguments(ids="exp1, exp2 , exp3", global_scope=True)
         assert result == {"ids": ["exp1", "exp2", "exp3"]}
 
     def test_validate_ignores_empty_ids_string(self):
         """Test that empty IDs string is ignored."""
-        result = validate_filter_arguments(ids="")
+        result = validate_filter_arguments(ids="", global_scope=True)
         assert result == {}
 
     def test_validate_ignores_none_ids(self):
         """Test that None IDs is ignored."""
-        result = validate_filter_arguments(ids=None)
+        result = validate_filter_arguments(ids=None, global_scope=True)
         assert result == {}
 
     def test_validate_preserves_status(self):
         """Test that status is preserved."""
-        result = validate_filter_arguments(status="completed")
+        result = validate_filter_arguments(status="completed", global_scope=True)
         assert result == {"status": "completed"}
 
     def test_validate_preserves_name_pattern(self):
         """Test that name pattern is preserved."""
-        result = validate_filter_arguments(name_pattern="test-*")
+        result = validate_filter_arguments(name_pattern="test-*", global_scope=True)
         assert result == {"name_pattern": "test-*"}
 
     def test_validate_preserves_empty_name_pattern(self):
         """Test that empty string name pattern is preserved."""
-        result = validate_filter_arguments(name_pattern="")
+        result = validate_filter_arguments(name_pattern="", global_scope=True)
         assert result == {"name_pattern": ""}
 
     def test_validate_converts_tags_tuple_to_list(self):
         """Test that tags tuple is converted to list."""
-        result = validate_filter_arguments(tags=("tag1", "tag2"))
+        result = validate_filter_arguments(tags=("tag1", "tag2"), global_scope=True)
         assert result == {"tags": ["tag1", "tag2"]}
 
     def test_validate_ignores_empty_tags_tuple(self):
         """Test that empty tags tuple is ignored."""
-        result = validate_filter_arguments(tags=())
+        result = validate_filter_arguments(tags=(), global_scope=True)
         assert result == {}
 
     def test_validate_preserves_time_filters(self):
@@ -184,6 +184,7 @@ class TestValidateFilterArguments:
             started_before="2025-12-31",
             ended_after="2025-06-01",
             ended_before="2025-06-30",
+            global_scope=True,
         )
         assert result == {
             "started_after": "2025-01-01",
@@ -194,21 +195,21 @@ class TestValidateFilterArguments:
 
     def test_validate_preserves_archived_flag(self):
         """Test that archived flag is preserved."""
-        result = validate_filter_arguments(archived=True)
+        result = validate_filter_arguments(archived=True, global_scope=True)
         assert result == {"archived": True}
 
-        result = validate_filter_arguments(archived=False)
+        result = validate_filter_arguments(archived=False, global_scope=True)
         assert result == {"archived": False}
 
     def test_validate_ignores_none_archived(self):
         """Test that None archived value is ignored."""
-        result = validate_filter_arguments(archived=None)
+        result = validate_filter_arguments(archived=None, global_scope=True)
         assert result == {}
 
     def test_validate_passes_through_additional_kwargs(self):
         """Test that additional kwargs are passed through."""
         result = validate_filter_arguments(
-            script_pattern="train.py", limit=10, custom_field="value"
+            script_pattern="train.py", limit=10, custom_field="value", global_scope=True
         )
         assert result["script_pattern"] == "train.py"
         assert result["limit"] == 10
@@ -217,7 +218,9 @@ class TestValidateFilterArguments:
     @patch("click.echo")
     def test_validate_warns_on_script_pattern_with_path_separator(self, mock_echo):
         """Test warning when script_pattern contains path separators."""
-        result = validate_filter_arguments(script_pattern="path/to/script.py")
+        result = validate_filter_arguments(
+            script_pattern="path/to/script.py", global_scope=True
+        )
 
         # Should still include the pattern
         assert result["script_pattern"] == "path/to/script.py"
@@ -237,6 +240,7 @@ class TestValidateFilterArguments:
             tags=("ml", "training"),
             started_after="2025-01-01",
             archived=True,
+            global_scope=True,
         )
 
         assert result == {
@@ -247,6 +251,30 @@ class TestValidateFilterArguments:
             "started_after": "2025-01-01",
             "archived": True,
         }
+
+    def test_validate_auto_detects_project_when_not_global(self):
+        """Test that project is auto-detected from CWD when not global."""
+        with patch(
+            "yanex.core.project.detect_project_from_cwd",
+            return_value="myproject",
+        ):
+            result = validate_filter_arguments(global_scope=False)
+            assert result["project"] == "myproject"
+            assert result["_project_auto_detected"] is True
+
+    def test_validate_uses_explicit_project(self):
+        """Test that explicit project overrides auto-detection."""
+        result = validate_filter_arguments(
+            project="explicit-project", global_scope=False
+        )
+        assert result["project"] == "explicit-project"
+        assert "_project_auto_detected" not in result
+
+    def test_validate_no_project_when_global(self):
+        """Test that --global suppresses project auto-detection."""
+        result = validate_filter_arguments(global_scope=True)
+        assert "project" not in result
+        assert "_project_auto_detected" not in result
 
 
 class TestRequireFiltersOrConfirmation:
@@ -285,6 +313,13 @@ class TestRequireFiltersOrConfirmation:
         """Test that non-meaningful filters don't bypass confirmation."""
         # limit, sort_by, etc. should not count as meaningful filters
         filter_args = {"limit": 10, "sort_by": "created_at"}
+
+        with patch("click.confirm", return_value=True):
+            require_filters_or_confirmation(filter_args, "delete", force=False)
+
+    def test_require_filters_ignores_auto_detected_project(self):
+        """Test that auto-detected project doesn't count as a meaningful filter."""
+        filter_args = {"project": "myproject", "_project_auto_detected": True}
 
         with patch("click.confirm", return_value=True):
             require_filters_or_confirmation(filter_args, "delete", force=False)
@@ -375,6 +410,11 @@ class TestFormatFilterSummary:
         assert "Tags: ml" in result
         assert "non-archived only" in result
         assert "Filters:" in result
+
+    def test_format_with_project(self):
+        """Test formatting with project filter."""
+        result = format_filter_summary({"project": "myproject"})
+        assert "Project: myproject" in result
 
 
 class TestParseCliTimeFilters:

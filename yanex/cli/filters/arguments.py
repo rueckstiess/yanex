@@ -35,6 +35,23 @@ def experiment_filter_options(
     def decorator(func: Callable) -> Callable:
         # Apply options in reverse order (Click applies them bottom-up)
 
+        # Project filtering options (applied before time filters)
+        func = click.option(
+            "--global",
+            "-g",
+            "global_scope",
+            is_flag=True,
+            help="Show experiments from all projects (ignore project filter)",
+        )(func)
+
+        func = click.option(
+            "--project",
+            "-p",
+            "project",
+            type=str,
+            help="Filter by project name (default: auto-detected from git repo)",
+        )(func)
+
         # Time filtering options
         func = click.option(
             "--ended-before",
@@ -124,6 +141,8 @@ def validate_filter_arguments(
     ended_after: str | None = None,
     ended_before: str | None = None,
     archived: bool | None = None,
+    project: str | None = None,
+    global_scope: bool = False,
     **kwargs,
 ) -> dict[str, Any]:
     """
@@ -179,6 +198,19 @@ def validate_filter_arguments(
     if archived is not None:
         normalized["archived"] = archived
 
+    # Handle project filter
+    if not global_scope:
+        if project is not None:
+            normalized["project"] = project
+        else:
+            # Auto-detect project from CWD
+            from ...core.project import detect_project_from_cwd
+
+            detected_project = detect_project_from_cwd()
+            if detected_project is not None:
+                normalized["project"] = detected_project
+                normalized["_project_auto_detected"] = True
+
     # Pass through any additional keyword arguments
     for key, value in kwargs.items():
         if value is not None:
@@ -215,8 +247,19 @@ def require_filters_or_confirmation(
     meaningful_filters = {
         k: v
         for k, v in filter_args.items()
-        if k not in ["limit", "sort_by", "sort_desc", "include_all"] and v is not None
+        if k
+        not in [
+            "limit",
+            "sort_by",
+            "sort_desc",
+            "include_all",
+            "_project_auto_detected",
+        ]
+        and v is not None
     }
+    # Don't count auto-detected project as a meaningful filter for bulk safety
+    if filter_args.get("_project_auto_detected"):
+        meaningful_filters.pop("project", None)
 
     if not meaningful_filters:
         if force:
@@ -245,6 +288,9 @@ def format_filter_summary(filter_args: dict[str, Any]) -> str:
         return "No filters applied"
 
     parts = []
+
+    if "project" in filter_args:
+        parts.append(f"Project: {filter_args['project']}")
 
     if "ids" in filter_args:
         ids_str = ", ".join(filter_args["ids"][:3])
@@ -287,6 +333,29 @@ def format_filter_summary(filter_args: dict[str, Any]) -> str:
         parts.append(f"Archive status: {archived_text}")
 
     return "Filters: " + "; ".join(parts) if parts else "No filters applied"
+
+
+def resolve_project_filter(project: str | None, global_scope: bool) -> str | None:
+    """Resolve project filter from CLI options.
+
+    When global_scope is True, returns None (no project filter).
+    When project is explicitly provided, uses that.
+    Otherwise, auto-detects from CWD's git repo.
+
+    Args:
+        project: Explicit project from --project flag
+        global_scope: Whether --global flag was set
+
+    Returns:
+        Resolved project name, or None for no project filter
+    """
+    if global_scope:
+        return None
+    if project is not None:
+        return project
+    from ...core.project import detect_project_from_cwd
+
+    return detect_project_from_cwd()
 
 
 def parse_cli_time_filters(

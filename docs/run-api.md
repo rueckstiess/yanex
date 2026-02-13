@@ -649,6 +649,45 @@ Current dependencies are from: other_script.py
 
 **See Also:** [Dependencies Guide](dependencies.md) for complete usage patterns and examples.
 
+#### `yanex.get_graph(*, weakly_connected=False)`
+
+Get the experiment graph for the current experiment's pipeline.
+
+By default, returns only upstream (dependencies) and downstream (dependents) experiments — the causal lineage. With `weakly_connected=True`, returns the full weakly connected component including sibling branches.
+
+```python
+import yanex
+
+# Get lineage (upstream + downstream)
+graph = yanex.get_graph()
+
+# Include sibling branches too
+graph = yanex.get_graph(weakly_connected=True)
+
+# Navigate the pipeline
+print(f"Pipeline has {len(graph)} experiments")
+print(f"Root experiments: {[e.name for e in graph.roots]}")
+
+# Search for artifacts across all experiments
+dataset = graph.load_artifact("dataset.json")
+
+# Filter experiments in the pipeline
+train_runs = graph.filter(script_pattern="train.py")
+for run in train_runs:
+    print(f"{run.name}: accuracy={run.get_metric('accuracy')}")
+```
+
+**Parameters:**
+- `weakly_connected` (bool): If True, include all experiments in the weakly connected component (including siblings). Default: False.
+
+**Returns:**
+- `ExperimentGraph`: Graph containing the selected experiments
+
+**Raises:**
+- `ExperimentContextError`: If no active experiment context (standalone mode)
+
+**See Also:** [Dependencies Guide](dependencies.md#experiment-graphs) for graph navigation patterns, [Results API](results-api.md#experiment-graphs) for the full `ExperimentGraph` API.
+
 ---
 
 ## Advanced API
@@ -723,7 +762,8 @@ spec = yanex.ExperimentSpec(
     script_args=["--data-exp", "abc123"],      # Optional: script arguments
     name="experiment-1",                        # Optional: experiment name
     tags=["ml", "training"],                    # Optional: tags
-    description="Training run 1"                # Optional: description
+    description="Training run 1",               # Optional: description
+    project="my-custom-name"                    # Optional: project name (default: auto-detected)
 )
 ```
 
@@ -734,6 +774,7 @@ spec = yanex.ExperimentSpec(
 - `name` (str, optional): Experiment name
 - `tags` (list[str]): List of tags for organization
 - `description` (str, optional): Experiment description
+- `project` (str, optional): Project name (overrides auto-detection from git repo name)
 - `function` (Callable, optional): **Not yet supported** - reserved for future inline function execution
 
 **Validation:**

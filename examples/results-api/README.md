@@ -42,6 +42,33 @@ Advanced querying and side-by-side experiment comparison with pandas DataFrames.
 
 ---
 
+### [03: Metrics Visualization](03_metrics_visualization.ipynb)
+Visualize time-series metrics across experiments.
+
+**Concepts:**
+- `get_metrics()` - Long-format DataFrame for visualization
+- Grouping by parameters for training curve comparison
+- Subplots for multiple metrics
+
+**Prerequisites:** Notebook 01, 02
+
+---
+
+### [04: Experiment Graphs](04_experiment_graphs.ipynb)
+Pipeline-level analysis using `ExperimentGraph`.
+
+**Concepts:**
+- `get_graph()` - Get the connected component of experiments
+- Graph navigation: `roots`, `leaves`, `experiments`
+- Filtering within a graph: `graph.filter(script_pattern=...)`
+- Graph-level artifact/param/metric search
+- Fan-out/collect pattern for HPO and k-fold results
+- NetworkX escape hatch for advanced analysis
+
+**Prerequisites:** Dependency pipeline experiments (see notebook instructions)
+
+---
+
 ## Prerequisites
 
 **Important:** These notebooks analyze existing experiment data. Before starting, you need to create sample experiments.
@@ -92,7 +119,7 @@ This will open Jupyter in your browser. Click on any notebook to open it.
 
 ### Running in Order
 
-For the best learning experience, **run the notebooks in order (01 → 02)**. Notebook 02 builds on concepts from notebook 01.
+For the best learning experience, **run the notebooks in order (01 → 02 → 03 → 04)**. Later notebooks build on concepts from earlier ones. Notebook 04 requires experiments with dependencies (see its setup instructions).
 
 ## Relationship to Other Examples
 

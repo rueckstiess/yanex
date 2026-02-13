@@ -66,6 +66,8 @@ def migrate_experiments(
     ended_after: str | None,
     ended_before: str | None,
     archived: bool,
+    project: str | None,
+    global_scope: bool,
     migrate_all: bool,
     force: bool,
     dry_run: bool,

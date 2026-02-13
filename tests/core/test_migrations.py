@@ -11,6 +11,7 @@ from yanex.core.migrations import (
     get_storage_version,
     migrate_experiment,
     migrate_v0_to_v1,
+    migrate_v1_to_v2,
     needs_migration,
 )
 
@@ -34,19 +35,25 @@ class TestGetStorageVersion:
 class TestGetPendingMigrations:
     """Tests for get_pending_migrations function."""
 
-    def test_legacy_to_current_returns_migrations(self):
+    def test_legacy_to_current_returns_all_migrations(self):
         pending = get_pending_migrations(None)
-        assert len(pending) >= 1
+        assert len(pending) == 2
         assert pending[0].from_version is None
         assert pending[0].to_version == 1
+        assert pending[1].from_version == 1
+        assert pending[1].to_version == 2
+
+    def test_v1_to_current_returns_remaining(self):
+        pending = get_pending_migrations(1)
+        assert len(pending) == 1
+        assert pending[0].from_version == 1
+        assert pending[0].to_version == 2
 
     def test_current_version_returns_empty(self):
         pending = get_pending_migrations(CURRENT_VERSION)
         assert len(pending) == 0
 
-    def test_intermediate_version_returns_remaining(self):
-        # If we add more migrations in the future, this test would verify
-        # that only remaining migrations are returned
+    def test_unknown_version_returns_empty(self):
         pending = get_pending_migrations(0)
         # Version 0 doesn't exist in our migrations, so nothing pending
         assert len(pending) == 0
@@ -300,4 +307,119 @@ class TestMigration:
 
         assert migration.from_version is None
         assert migration.to_version == 1
-        assert migration.description == "Test migration"
+
+
+class TestMigrateV1ToV2:
+    """Tests for v1 to v2 migration (add project field)."""
+
+    def test_adds_project_from_git_repo_path(self, tmp_path):
+        """Migration derives project from git repo path in metadata."""
+        exp_dir = tmp_path / "abc12345"
+        exp_dir.mkdir()
+
+        metadata = {
+            "id": "abc12345",
+            "status": "completed",
+            "storage_version": 1,
+            "environment": {
+                "git": {
+                    "repository": {
+                        "repo_path": "/Users/thomas/code/myproject",
+                        "branch": "main",
+                    }
+                }
+            },
+        }
+        (exp_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        result = migrate_v1_to_v2(exp_dir, dry_run=False)
+
+        assert result.applied is True
+        assert any("project: myproject" in c for c in result.changes)
+
+        updated = json.loads((exp_dir / "metadata.json").read_text())
+        assert updated["project"] == "myproject"
+        assert updated["storage_version"] == 2
+
+    def test_sets_null_project_when_no_git_info(self, tmp_path):
+        """Migration sets project to null when no git repo path exists."""
+        exp_dir = tmp_path / "abc12345"
+        exp_dir.mkdir()
+
+        metadata = {
+            "id": "abc12345",
+            "status": "completed",
+            "storage_version": 1,
+        }
+        (exp_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        result = migrate_v1_to_v2(exp_dir, dry_run=False)
+
+        assert result.applied is True
+        assert any("null" in c for c in result.changes)
+
+        updated = json.loads((exp_dir / "metadata.json").read_text())
+        assert updated["project"] is None
+        assert updated["storage_version"] == 2
+
+    def test_dry_run_reports_without_applying(self, tmp_path):
+        """Dry run shows changes without modifying files."""
+        exp_dir = tmp_path / "abc12345"
+        exp_dir.mkdir()
+
+        metadata = {
+            "id": "abc12345",
+            "status": "completed",
+            "storage_version": 1,
+            "environment": {"git": {"repository": {"repo_path": "/path/to/repo"}}},
+        }
+        (exp_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        result = migrate_v1_to_v2(exp_dir, dry_run=True)
+
+        assert result.applied is False
+        assert len(result.changes) == 2  # project + version bump
+
+        unchanged = json.loads((exp_dir / "metadata.json").read_text())
+        assert "project" not in unchanged
+        assert unchanged["storage_version"] == 1
+
+    def test_idempotent_already_at_v2(self, tmp_path):
+        """Migration is idempotent for experiments already at v2."""
+        exp_dir = tmp_path / "abc12345"
+        exp_dir.mkdir()
+
+        metadata = {
+            "id": "abc12345",
+            "status": "completed",
+            "storage_version": 2,
+            "project": "existing-project",
+        }
+        (exp_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        result = migrate_v1_to_v2(exp_dir, dry_run=False)
+
+        assert result.applied is False
+        assert result.description == "Already at v2"
+
+    def test_chained_migration_v0_to_v2(self, tmp_path):
+        """Full migration chain from legacy (no version) to v2."""
+        exp_dir = tmp_path / "abc12345"
+        exp_dir.mkdir()
+
+        metadata = {
+            "id": "abc12345",
+            "status": "completed",
+            "environment": {"git": {"repository": {"repo_path": "/path/to/myproject"}}},
+        }
+        (exp_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        results = migrate_experiment(exp_dir, dry_run=False)
+
+        assert len(results) == 2  # v0→v1 + v1→v2
+        assert results[0].applied is True
+        assert results[1].applied is True
+
+        final = json.loads((exp_dir / "metadata.json").read_text())
+        assert final["storage_version"] == 2
+        assert final["project"] == "myproject"

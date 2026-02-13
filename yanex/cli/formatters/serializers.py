@@ -53,6 +53,7 @@ def experiment_to_dict(
     # Define the standard fields we want to include by default
     standard_fields = [
         "id",
+        "project",
         "name",
         "status",
         "script_path",
@@ -121,6 +122,7 @@ def experiment_to_flat_dict(
     # Core fields
     core_fields = [
         "id",
+        "project",
         "name",
         "status",
         "script_path",

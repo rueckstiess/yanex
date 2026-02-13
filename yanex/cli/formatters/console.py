@@ -23,6 +23,7 @@ from .theme import (
     ID_STYLE,
     METRICS_STYLE,
     PARAMS_STYLE,
+    PROJECT_STYLE,
     SCRIPT_STYLE,
     TABLE_HEADER_STYLE,
     TAGS_STYLE,
@@ -39,7 +40,16 @@ class ExperimentTableFormatter:
     """
 
     # Standard columns available for experiment tables
-    STANDARD_COLUMNS = ["id", "script", "name", "status", "duration", "tags", "started"]
+    STANDARD_COLUMNS = [
+        "id",
+        "project",
+        "script",
+        "name",
+        "status",
+        "duration",
+        "tags",
+        "started",
+    ]
 
     # Maximum width for param/metric column headers before middle truncation
     MAX_COLUMN_HEADER_WIDTH = 12
@@ -119,6 +129,8 @@ class ExperimentTableFormatter:
         # Add standard columns with theme-consistent styles (unless excluded)
         if "id" not in exclude_set:
             table.add_column("ID", style=ID_STYLE, width=8)
+        if "project" not in exclude_set:
+            table.add_column("Project", style=PROJECT_STYLE, min_width=8, max_width=25)
         if "script" not in exclude_set:
             table.add_column("Script", style=SCRIPT_STYLE, width=script_width)
         if "name" not in exclude_set:
@@ -154,6 +166,14 @@ class ExperimentTableFormatter:
             # Use _get_meta_value to handle both prefixed (meta:key) and unprefixed keys
             if "id" not in exclude_set:
                 row_values.append(self._format_id(self._get_meta_value(exp, "id", "")))
+            if "project" not in exclude_set:
+                project_val = self._get_meta_value(exp, "project")
+                row_values.append(
+                    Text(
+                        project_val or "-",
+                        style="dim" if not project_val else PROJECT_STYLE,
+                    )
+                )
             if "script" not in exclude_set:
                 row_values.append(
                     format_script(self._get_meta_value(exp, "script_path"))
@@ -196,7 +216,10 @@ class ExperimentTableFormatter:
         return Text(str(value))
 
     def print_experiments_table(
-        self, experiments: list[dict[str, Any]], title: str = None
+        self,
+        experiments: list[dict[str, Any]],
+        title: str = None,
+        exclude_columns: list[str] | None = None,
     ) -> None:
         """
         Print experiments table to console.
@@ -204,12 +227,15 @@ class ExperimentTableFormatter:
         Args:
             experiments: List of experiment metadata dictionaries
             title: Optional table title
+            exclude_columns: Optional list of standard columns to exclude
         """
         if not experiments:
             self.console.print("No experiments found.", style="dim")
             return
 
-        table = self.format_experiments_table(experiments)
+        table = self.format_experiments_table(
+            experiments, exclude_columns=exclude_columns
+        )
 
         if title:
             table.title = title

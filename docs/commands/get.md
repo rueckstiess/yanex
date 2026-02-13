@@ -60,6 +60,7 @@ Filter options work the same as [`yanex list`](list.md). See that documentation 
 | `name` | Scalar | Experiment name | `baseline-v2` |
 | `status` | Scalar | Current status | `completed` |
 | `description` | Scalar | Experiment description | `Training run with...` |
+| `project` | Scalar | Project name | `my-project` |
 | `tags` | List | Experiment tags | `baseline, validated` |
 | `script_path` | Scalar | Path to experiment script | `/path/to/train.py` |
 | `created_at` | Scalar | Creation timestamp | `2024-01-15T10:30:00` |
@@ -404,6 +405,8 @@ Same as [`yanex list`](list.md):
 - `--status`, `-s STATUS`: Filter by status
 - `--name`, `-n PATTERN`: Filter by name pattern (glob syntax)
 - `--tag`, `-t TAG`: Filter by tag (repeatable)
+- `--project`, `-p PROJECT`: Filter by project (default: auto-detected from git repo)
+- `--global`, `-g`: Show experiments from all projects
 - `--started-after DATE`: Filter by start time
 - `--started-before DATE`: Filter by start time
 - `--ended-after DATE`: Filter by end time
