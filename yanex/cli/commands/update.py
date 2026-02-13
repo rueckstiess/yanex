@@ -10,7 +10,7 @@ from ..error_handling import (
     CLIErrorHandler,
 )
 from ..filters import ExperimentFilter
-from ..filters.arguments import experiment_filter_options
+from ..filters.arguments import experiment_filter_options, resolve_project_filter
 from ..formatters import (
     echo_format_info,
     format_options,
@@ -51,6 +51,7 @@ from .confirm import (
     multiple=True,
     help="Remove tag from experiment(s) (repeatable)",
 )
+@click.option("--set-project", "new_project", help="Set experiment project")
 @click.option(
     "--force", is_flag=True, help="Skip confirmation prompt for bulk operations"
 )
@@ -76,9 +77,12 @@ def update_experiments(
     ended_after: str | None,
     ended_before: str | None,
     archived: bool,
+    project: str | None,
+    global_scope: bool,
     new_name: str | None,
     new_description: str | None,
     new_status: str | None,
+    new_project: str | None,
     add_tags: tuple,
     remove_tags: tuple,
     force: bool,
@@ -130,13 +134,14 @@ def update_experiments(
         [
             new_name is not None,
             new_description is not None,
+            new_project is not None,
             new_status,
             add_tags,
             remove_tags,
         ]
     ):
         raise click.ClickException(
-            "Must specify at least one update option (--set-name, --set-description, --set-status, --add-tag, --remove-tag)"
+            "Must specify at least one update option (--set-name, --set-description, --set-project, --set-status, --add-tag, --remove-tag)"
         )
 
     # Validate mutually exclusive targeting
@@ -158,6 +163,9 @@ def update_experiments(
     CLIErrorHandler.validate_targeting_options(
         list(experiment_identifiers), has_filters, "update"
     )
+
+    # Resolve project filter
+    resolved_project = resolve_project_filter(project, global_scope)
 
     # Parse time specifications
     started_after_dt, started_before_dt, ended_after_dt, ended_before_dt = (
@@ -186,6 +194,7 @@ def update_experiments(
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
             archived=archived,
+            project=resolved_project,
         )
 
     # Filter based on archived flag
@@ -213,6 +222,8 @@ def update_experiments(
         updates["name"] = new_name
     if new_description is not None:
         updates["description"] = new_description
+    if new_project is not None:
+        updates["project"] = new_project
     if new_status:
         updates["status"] = new_status
     if add_tags:

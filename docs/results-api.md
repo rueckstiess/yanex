@@ -104,6 +104,9 @@ experiments = yr.get_experiments(
 
 # Find by IDs
 experiments = yr.get_experiments(ids=["abc123", "def456"])
+
+# Find by project
+experiments = yr.get_experiments(project="myproject", status="completed")
 ```
 
 **Supported Filters:**
@@ -111,6 +114,7 @@ experiments = yr.get_experiments(ids=["abc123", "def456"])
 - `status`: str | list[str] - Match any of these statuses (OR logic)
 - `name`: str - Glob pattern matching
 - `tags`: list[str] - Must have ALL these tags (AND logic)
+- `project`: str - Filter by project name
 - `started_after`: str | datetime - Started >= this time
 - `started_before`: str | datetime - Started <= this time
 - `ended_after`: str | datetime - Ended >= this time

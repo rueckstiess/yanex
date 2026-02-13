@@ -122,6 +122,7 @@ def find(**filters) -> list[dict[str, Any]]:
             - started_before: str | datetime - Started <= this time
             - ended_after: str | datetime - Ended >= this time
             - ended_before: str | datetime - Ended <= this time
+            - project: str - Filter by project name
             - archived: bool - True/False/None (both)
             - limit: int - Maximum number of results
 

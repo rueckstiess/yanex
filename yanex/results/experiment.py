@@ -73,6 +73,12 @@ class Experiment:
         return metadata.get("name")
 
     @property
+    def project(self) -> str | None:
+        """Get experiment project name."""
+        metadata = self._load_metadata()
+        return metadata.get("project")
+
+    @property
     def description(self) -> str | None:
         """Get experiment description."""
         metadata = self._load_metadata()
@@ -768,6 +774,7 @@ class Experiment:
         return {
             "id": self.id,
             "name": self.name,
+            "project": self.project,
             "description": self.description,
             "status": self.status,
             "tags": self.tags,

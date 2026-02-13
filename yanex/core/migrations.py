@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 
 @dataclass
@@ -129,6 +129,56 @@ def migrate_v0_to_v1(exp_dir: Path, dry_run: bool) -> MigrationResult:
     )
 
 
+def migrate_v1_to_v2(exp_dir: Path, dry_run: bool) -> MigrationResult:
+    """Migrate from v1 to v2: Add project field derived from git repo path.
+
+    Changes:
+    - Derive project name from environment.git.repository.repo_path
+    - Add project field to metadata.json
+    - Bump storage_version to 2
+
+    Args:
+        exp_dir: Path to experiment directory
+        dry_run: If True, report changes without applying
+
+    Returns:
+        MigrationResult with details of changes
+    """
+    changes = []
+    metadata_path = exp_dir / "metadata.json"
+
+    with open(metadata_path) as f:
+        metadata = json.load(f)
+
+    # Idempotency check
+    if metadata.get("storage_version") == 2:
+        return MigrationResult(applied=False, description="Already at v2", changes=[])
+
+    # Derive project from git repo path
+    from .project import derive_project_from_metadata
+
+    project = derive_project_from_metadata(metadata)
+
+    if project:
+        changes.append(f"metadata.json: Add project: {project}")
+    else:
+        changes.append("metadata.json: No git repo path found, project set to null")
+
+    changes.append("metadata.json: Update storage_version: 1 -> 2")
+
+    if not dry_run:
+        metadata["project"] = project
+        metadata["storage_version"] = 2
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2, sort_keys=True)
+
+    return MigrationResult(
+        applied=not dry_run,
+        description="Add project field from git repository path",
+        changes=changes,
+    )
+
+
 # Migration registry - ordered list
 MIGRATIONS: list[Migration] = [
     Migration(
@@ -136,6 +186,12 @@ MIGRATIONS: list[Migration] = [
         to_version=1,
         description="Add storage versioning and convert dependencies to named slots",
         migrate_fn=migrate_v0_to_v1,
+    ),
+    Migration(
+        from_version=1,
+        to_version=2,
+        description="Add project field derived from git repository path",
+        migrate_fn=migrate_v1_to_v2,
     ),
 ]
 

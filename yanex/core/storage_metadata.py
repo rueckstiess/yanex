@@ -121,7 +121,7 @@ class FileSystemMetadataStorage(MetadataStorage):
             if key in ["add_tags", "remove_tags"]:
                 # Skip these as they're handled above
                 continue
-            elif key in ["name", "description", "status"]:
+            elif key in ["name", "description", "status", "project"]:
                 # Direct field updates
                 if value == "":
                     # Empty string means clear the field

@@ -394,6 +394,7 @@ class ExperimentManager:
         script_args: list[str] | None = None,
         cli_args: dict[str, Any] | None = None,
         dependencies: dict[str, str] | None = None,
+        project: str | None = None,
     ) -> str:
         """Create new experiment with metadata.
 
@@ -407,6 +408,7 @@ class ExperimentManager:
             script_args: Arguments to pass through to the script via sys.argv
             cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
             dependencies: Dict mapping slot names to experiment IDs this depends on
+            project: Optional project name for this experiment
 
         Returns:
             Experiment ID
@@ -490,6 +492,7 @@ class ExperimentManager:
             stage_only,
             script_args,
             cli_args,
+            project,
         )
         self.storage.save_metadata(experiment_id, metadata)
 
@@ -514,6 +517,7 @@ class ExperimentManager:
         stage_only: bool = False,
         script_args: list[str] | None = None,
         cli_args: dict[str, Any] | None = None,
+        project: str | None = None,
     ) -> dict[str, Any]:
         """Build complete experiment metadata.
 
@@ -526,6 +530,7 @@ class ExperimentManager:
             stage_only: If True, create with "staged" status
             script_args: Arguments to pass through to the script via sys.argv
             cli_args: Parsed CLI arguments dictionary (yanex flags only, not script_args)
+            project: Optional project name
 
         Returns:
             Complete metadata dictionary
@@ -618,6 +623,7 @@ class ExperimentManager:
         metadata = {
             "id": experiment_id,
             "name": name,
+            "project": project,
             "script_path": str(script_path.resolve()),
             "tags": tags,
             "description": description,

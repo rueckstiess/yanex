@@ -36,6 +36,9 @@ def isolate_experiments_directory():
     # Set environment variable for entire test session
     os.environ["YANEX_EXPERIMENTS_DIR"] = test_experiments_dir
 
+    # Set wide terminal for Rich table rendering in tests (default 80 drops columns)
+    os.environ.setdefault("COLUMNS", "200")
+
     try:
         yield test_experiments_dir
     finally:

@@ -53,8 +53,9 @@ This ensures reproducibility and easy comparison of results.
 
 #### Metadata
 - `--name NAME`: Set experiment name
-- `--description DESC`: Set experiment description  
+- `--description DESC`: Set experiment description
 - `--tag TAG`: Add tag (can be used multiple times)
+- `--project PROJECT`: Set project name (default: auto-detected from git repo name; can also be set via `yanex.project` in config)
 
 #### Git Options
 - `--ignore-dirty`: *(Deprecated)* This flag is no longer needed and will be removed in a future version

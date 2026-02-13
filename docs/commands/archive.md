@@ -38,6 +38,8 @@ This is useful for managing completed experiments that you want to keep for refe
 - `--status`, `-s STATUS`: Archive experiments with specific status (completed, failed, cancelled, running, staged)
 - `--name`, `-n PATTERN`: Archive experiments matching name pattern (supports glob syntax like `*training*`)
 - `--tag`, `-t TAG`: Archive experiments with ALL specified tags (repeatable)
+- `--project`, `-p PROJECT`: Archive experiments from a specific project (default: auto-detected from git repo)
+- `--global`, `-g`: Archive experiments from all projects (ignore project auto-detection)
 - `--started-after DATE`: Archive experiments started after date/time
 - `--started-before DATE`: Archive experiments started before date/time
 - `--ended-after DATE`: Archive experiments ended after date/time

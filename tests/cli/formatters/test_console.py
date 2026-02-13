@@ -112,12 +112,12 @@ class TestExperimentTableFormatter:
 
         table = formatter.format_experiments_table(experiments)
 
-        # Check that Script column exists (2nd column after ID)
+        # Check that Script column exists (3rd column after ID and Project)
         assert (
-            len(table.columns) == 7
-        )  # ID, Script, Name, Status, Duration, Tags, Started
-        assert table.columns[1].header == "Script"
-        assert table.columns[1].style == SCRIPT_STYLE
+            len(table.columns) == 8
+        )  # ID, Project, Script, Name, Status, Duration, Tags, Started
+        assert table.columns[2].header == "Script"
+        assert table.columns[2].style == SCRIPT_STYLE
         # Note: width is set internally but not exposed as a public attribute
 
     def test_format_experiments_table_with_missing_script(self, formatter):
@@ -137,7 +137,7 @@ class TestExperimentTableFormatter:
         table = formatter.format_experiments_table(experiments)
 
         # Should handle missing script_path gracefully
-        assert len(table.columns) == 7
+        assert len(table.columns) == 8
         # The table should still render without errors
         assert table is not None
 
@@ -148,12 +148,13 @@ class TestExperimentTableFormatter:
         # Verify column order
         column_headers = [col.header for col in table.columns]
         assert column_headers[0] == "ID"
-        assert column_headers[1] == "Script"
-        assert column_headers[2] == "Name"
-        assert column_headers[3] == "Status"
-        assert column_headers[4] == "Duration"
-        assert column_headers[5] == "Tags"
-        assert column_headers[6] == "Started"
+        assert column_headers[1] == "Project"
+        assert column_headers[2] == "Script"
+        assert column_headers[3] == "Name"
+        assert column_headers[4] == "Status"
+        assert column_headers[5] == "Duration"
+        assert column_headers[6] == "Tags"
+        assert column_headers[7] == "Started"
 
     def test_calculate_column_width(self, formatter):
         """Test that column width is calculated based on longest value."""

@@ -220,6 +220,42 @@ The codebase has undergone significant refactoring to:
 - Experiment lifecycle: `created` → `running` → `completed`/`failed`/`cancelled`
 - Default storage location: `~/.yanex/experiments/` (configurable via `YANEX_EXPERIMENTS_DIR`)
 
+### Project Scoping
+Experiments are automatically scoped to "projects" — identified by the git repository name (last path component of the repo root, e.g., `/Users/thomas/code/myproject` → `myproject`).
+
+**Key behavior:**
+- `yanex run` auto-detects project from CWD's git repo and stores it in metadata
+- `yanex list` and other filter commands default to showing only the current project's experiments
+- `--global` / `-g` flag shows experiments across all projects
+- `--project` / `-p` flag explicitly filters by project name
+- `--project ""` filters experiments with no project (similar to `--name ""` for unnamed experiments)
+- Outside a git repo, commands fall back to showing all experiments (global behavior)
+- Direct ID lookups (`yanex show <id>`, `yanex get <field> <id>`) always work globally
+- Auto-detected project does NOT suppress bulk operation confirmation prompts
+
+**Config file support:**
+```yaml
+yanex:
+  project: my-custom-name   # Override auto-detected project name
+```
+
+**CLI commands:**
+```bash
+yanex list                          # Show current project's experiments only
+yanex list --global                 # Show all experiments across projects
+yanex list --project other-project  # Show specific project's experiments
+yanex update --set-project newname <exp_id>  # Change experiment's project
+yanex get meta:project <exp_id>     # Get experiment's project name
+```
+
+**Implementation files:**
+- `yanex/core/project.py` — `detect_project_from_cwd()`, `derive_project_from_metadata()`, `resolve_project_for_run()`
+- `yanex/cli/filters/arguments.py` — `--project/-p`, `--global/-g` options, `resolve_project_filter()`
+- `yanex/core/filtering.py` — project filter in `filter_experiments()`
+- `yanex/core/migrations.py` — v1→v2 migration backfills project from git metadata (storage version 2)
+- `yanex/cli/formatters/console.py` — Project column in list table
+- `yanex/cli/formatters/theme.py` — `PROJECT_STYLE = "magenta"`
+
 ### Two Execution Patterns
 **1. CLI-First (Recommended):**
 - Run via `yanex run script.py --param key=value`

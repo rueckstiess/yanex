@@ -52,6 +52,7 @@ class ExperimentSpec:
     description: str | None = None
     dependencies: dict[str, str] = field(default_factory=dict)
     cli_args: dict[str, Any] = field(default_factory=dict)
+    project: str | None = None
 
     def validate(self) -> None:
         """Validate that exactly one execution mode is specified.
@@ -192,6 +193,7 @@ def _run_sequential(
                 dependencies=spec.dependencies,
                 script_args=spec.script_args,
                 cli_args=spec.cli_args,
+                project=spec.project,
             )
 
             # Start experiment
@@ -499,6 +501,7 @@ def _execute_single_experiment(
             dependencies=spec.dependencies,
             script_args=spec.script_args,
             cli_args=spec.cli_args,
+            project=spec.project,
         )
 
         # Start experiment

@@ -762,7 +762,8 @@ spec = yanex.ExperimentSpec(
     script_args=["--data-exp", "abc123"],      # Optional: script arguments
     name="experiment-1",                        # Optional: experiment name
     tags=["ml", "training"],                    # Optional: tags
-    description="Training run 1"                # Optional: description
+    description="Training run 1",               # Optional: description
+    project="my-custom-name"                    # Optional: project name (default: auto-detected)
 )
 ```
 
@@ -773,6 +774,7 @@ spec = yanex.ExperimentSpec(
 - `name` (str, optional): Experiment name
 - `tags` (list[str]): List of tags for organization
 - `description` (str, optional): Experiment description
+- `project` (str, optional): Project name (overrides auto-detection from git repo name)
 - `function` (Callable, optional): **Not yet supported** - reserved for future inline function execution
 
 **Validation:**

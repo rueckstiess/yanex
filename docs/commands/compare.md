@@ -121,6 +121,18 @@ yanex compare --started-after "2023-12-01" --started-before "2023-12-31"
 yanex compare --ended-after "yesterday"
 ```
 
+### By Project
+
+By default, `yanex compare` auto-detects the current project from the git repository.
+
+```bash
+# Compare experiments from a specific project
+yanex compare -p other-project
+
+# Compare experiments across all projects
+yanex compare --global
+```
+
 ### Include Archived
 
 Use `--archived` or `-a`:
@@ -265,6 +277,8 @@ All options have convenient short aliases:
 - `-s` for `--status`
 - `-n` for `--name`
 - `-t` for `--tag`
+- `-p` for `--project`
+- `-g` for `--global`
 - `-a` for `--archived`
 - `-F` for `--format`
 

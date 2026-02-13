@@ -39,6 +39,9 @@ yanex run train.py --param "lr=logspace(-4, -1, 10)" --parallel 4
 
 # Add metadata
 yanex run train.py --name "baseline-v1" --tag production --description "Initial baseline"
+
+# Override auto-detected project name
+yanex run train.py --project my-custom-name
 ```
 
 See [run command documentation](commands/run.md) for complete details.
@@ -217,6 +220,14 @@ All list-based commands (`list`, `compare`, `archive`, `delete`, `update`) suppo
 --ids abc123,def456    # Multiple IDs (comma-separated)
 --ids $(yanex get upstream d7742130 -F sweep)  # Dynamic from other commands
 ```
+
+**By Project:**
+```bash
+--project myproject  # or: -p myproject (filter by project name)
+--global             # or: -g (show experiments from all projects)
+```
+
+By default, commands filter to the current project (auto-detected from git repo name). Use `--global` to see all experiments regardless of project.
 
 **By Status:**
 ```bash

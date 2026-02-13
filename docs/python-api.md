@@ -47,7 +47,7 @@ exp = yr.get_experiment("abc12345")
 print(f"{exp.name}: {exp.status}")
 
 # Find and compare experiments
-experiments = yr.find(status="completed", tags=["training"])
+experiments = yr.find(status="completed", tags=["training"], project="myproject")
 df = yr.compare(params=["learning_rate"], metrics=["accuracy"])
 
 # Get best experiment

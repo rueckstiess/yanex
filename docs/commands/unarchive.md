@@ -37,6 +37,8 @@ Unarchived experiments retain all their original data including:
 - `--status`, `-s STATUS`: Unarchive experiments with specific status (completed, failed, cancelled, running, staged)
 - `--name`, `-n PATTERN`: Unarchive experiments matching name pattern (supports glob syntax like `*training*`)
 - `--tag`, `-t TAG`: Unarchive experiments with ALL specified tags (repeatable)
+- `--project`, `-p PROJECT`: Unarchive experiments from a specific project (default: auto-detected from git repo)
+- `--global`, `-g`: Unarchive experiments from all projects (ignore project auto-detection)
 - `--started-after DATE`: Unarchive experiments started after date/time
 - `--started-before DATE`: Unarchive experiments started before date/time
 - `--ended-after DATE`: Unarchive experiments ended after date/time

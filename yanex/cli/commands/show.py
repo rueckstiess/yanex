@@ -14,6 +14,7 @@ from yanex.cli.formatters import (
     METRICS_STYLE,
     NAME_STYLE,
     PARAMS_STYLE,
+    PROJECT_STYLE,
     SCRIPT_STYLE,
     STATUS_COLORS,
     STATUS_SYMBOLS,
@@ -257,6 +258,11 @@ def display_experiment_details(
 
     # Status
     print_field("Status", f"{status_emoji} {status}", f"bold {status_color}")
+
+    # Project
+    project = experiment.get("project")
+    if project:
+        print_field("Project", project, PROJECT_STYLE)
 
     # Directory path
     try:

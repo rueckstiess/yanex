@@ -15,7 +15,10 @@ import click
 import yanex.results as yr
 from yanex.cli.error_handling import CLIErrorHandler
 from yanex.cli.filters import ExperimentFilter
-from yanex.cli.filters.arguments import experiment_filter_options
+from yanex.cli.filters.arguments import (
+    experiment_filter_options,
+    resolve_project_filter,
+)
 from yanex.cli.formatters import (
     GETTER_TYPES,
     GetterOutput,
@@ -851,6 +854,8 @@ def get_field(
     ended_before: str | None,
     archived: bool,
     limit: int | None,
+    project: str | None,
+    global_scope: bool,
     # Output format options
     output_format: str | None,
     json_flag: bool,
@@ -1108,6 +1113,9 @@ def get_field(
         return
 
     # Multi-experiment mode with filters
+    # Resolve project filter
+    resolved_project = resolve_project_filter(project, global_scope)
+
     # Build filter kwargs
     filter_kwargs = {}
     if ids_list:
@@ -1132,6 +1140,8 @@ def get_field(
         filter_kwargs["archived"] = archived
     if limit:
         filter_kwargs["limit"] = limit
+    if resolved_project:
+        filter_kwargs["project"] = resolved_project
 
     # Get experiments using Results API
     experiments = yr.get_experiments(**filter_kwargs)

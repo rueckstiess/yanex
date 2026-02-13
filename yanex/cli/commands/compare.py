@@ -9,7 +9,7 @@ from ...core.comparison import ExperimentComparisonData
 from ...ui.compare_table import run_comparison_table
 from ...utils.exceptions import AmbiguousKeyError, KeyNotFoundError
 from ..filters import ExperimentFilter, parse_time_spec
-from ..filters.arguments import experiment_filter_options
+from ..filters.arguments import experiment_filter_options, resolve_project_filter
 from ..formatters import (
     OutputFormat,
     echo_format_info,
@@ -214,6 +214,8 @@ def compare_experiments(
     include_dep_params: bool,
     no_interactive: bool,
     max_rows: int | None,
+    project: str | None,
+    global_scope: bool,
 ):
     """
     Compare experiments in an interactive table showing parameters and metrics.
@@ -290,6 +292,9 @@ def compare_experiments(
             # No filters specified - use all experiments
             pass
 
+        # Resolve project filter
+        resolved_project = resolve_project_filter(project, global_scope)
+
         # Parse time specifications
         started_after_dt = parse_time_spec(started_after) if started_after else None
         started_before_dt = parse_time_spec(started_before) if started_before else None
@@ -316,6 +321,7 @@ def compare_experiments(
                 ended_after=ended_after_dt,
                 ended_before=ended_before_dt,
                 archived=archived,
+                project=resolved_project,
             )
 
         if not experiments:

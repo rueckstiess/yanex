@@ -9,7 +9,7 @@ from ..error_handling import (
     CLIErrorHandler,
 )
 from ..filters import ExperimentFilter
-from ..filters.arguments import experiment_filter_options
+from ..filters.arguments import experiment_filter_options, resolve_project_filter
 from ..formatters import (
     echo_format_info,
     format_options,
@@ -49,6 +49,8 @@ def unarchive_experiments(
     ended_after: str | None,
     ended_before: str | None,
     force: bool,
+    project: str | None,
+    global_scope: bool,
 ):
     """
     Unarchive experiments by moving them back to experiments directory.
@@ -101,6 +103,9 @@ def unarchive_experiments(
         list(experiment_identifiers), has_filters, "unarchive"
     )
 
+    # Resolve project filter
+    resolved_project = resolve_project_filter(project, global_scope)
+
     # Parse time specifications
     started_after_dt, started_before_dt, ended_after_dt, ended_before_dt = (
         CLIErrorHandler.parse_time_filters(
@@ -130,6 +135,7 @@ def unarchive_experiments(
             ended_after=ended_after_dt,
             ended_before=ended_before_dt,
             archived=True,  # Only search archived experiments
+            project=resolved_project,
         )
 
     # Filter to only archived experiments

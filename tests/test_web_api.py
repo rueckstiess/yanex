@@ -162,6 +162,7 @@ class TestListExperiments(TestWebAPIBase):
             ended_after=None,
             ended_before=None,
             archived=False,  # Changed from include_archived
+            project=None,
             limit=None,
             include_all=True,
         )

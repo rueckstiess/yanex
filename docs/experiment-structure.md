@@ -34,9 +34,10 @@ Contains experiment metadata, status information, timing, and environment detail
 {
   "id": "a1b2c3d4",
   "name": "baseline-model",
+  "project": "myproject",
   "status": "completed",
   "created_at": "2023-12-01T10:00:00Z",
-  "started_at": "2023-12-01T10:00:01Z", 
+  "started_at": "2023-12-01T10:00:01Z",
   "completed_at": "2023-12-01T10:05:30Z",
   "duration": 329.5,
   "script_path": "/path/to/train.py",
