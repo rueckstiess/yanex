@@ -586,47 +586,116 @@ model = graph.load_artifact("model.pt")  # AmbiguousArtifactError
 **Raises:**
 - `AmbiguousArtifactError`: If artifact found in multiple experiments
 
-#### `ExperimentGraph.get_param(key, default=None)`
+#### `ExperimentGraph.get_params()`
 
-Get a parameter value, searching all experiments. Returns the value if found in exactly one experiment (or all matching experiments have the same value).
+Get all parameters merged across all experiments in the graph. Returns a nested dict.
+Raises ValueError if any key has conflicting values across experiments.
 
 ```python
-# Unique value — returned
-lr = graph.get_param("learning_rate")
+# Linear pipeline: merged config from all stages
+params = graph.get_params()
+# {"dataset": "mnist", "samples": 1000, "learning_rate": 0.01, "epochs": 100}
 
-# Same value across all experiments — returned (not ambiguous)
-batch_size = graph.get_param("batch_size")
+# Fan-out: conflicts raise ValueError
+# ValueError: Parameter 'lr' has conflicting values: abc=0.01, def=0.1
+```
 
-# Different values — raises error
-lr = graph.get_param("learning_rate")  # ValueError if experiments disagree
+**Returns:**
+- `dict[str, Any]`: Nested dict of merged parameters
+
+**Raises:**
+- `ValueError`: If any parameter key has conflicting values across experiments
+
+#### `ExperimentGraph.get_param(key)`
+
+Get a parameter value, searching all experiments. Uses AccessResolver for sub-path
+resolution (e.g., `"lr"` resolves to `"model.lr"` if unambiguous).
+
+```python
+graph.get_param("learning_rate")    # exact match
+graph.get_param("lr")               # resolves to "model.lr" if unambiguous
+graph.get_param("model.lr")         # dot notation
 ```
 
 **Parameters:**
-- `key` (str): Parameter key (supports dot notation like `"model.lr"`)
-- `default` (any): Default value if key not found in any experiment
+- `key` (str): Parameter key (supports dot notation, sub-path shorthand, canonical form)
 
 **Returns:**
-- Parameter value, or default if not found
+- Parameter value
 
 **Raises:**
+- `KeyNotFoundError`: If key not found in any experiment
+- `AmbiguousKeyError`: If key matches multiple parameter paths
 - `ValueError`: If parameter found in multiple experiments with different values
 
 #### `ExperimentGraph.get_metric(name)`
 
-Get a metric's final value, searching all experiments. Same ambiguity semantics as `get_param()`.
+Get a metric's final value, searching all experiments. Same strict semantics as `get_param()`.
 
 ```python
-acc = graph.get_metric("accuracy")  # value if unique, ValueError if ambiguous
+acc = graph.get_metric("accuracy")
 ```
 
 **Parameters:**
 - `name` (str): Metric name
 
 **Returns:**
-- Metric value, or None if not found
+- Metric value
 
 **Raises:**
+- `KeyNotFoundError`: If metric not found in any experiment
 - `ValueError`: If metric found in multiple experiments with different values
+
+### Comparison and Metrics
+
+#### `ExperimentGraph.compare(**filters)`
+
+Compare experiments in the graph as a pandas DataFrame. Accepts the same kwargs as
+`yr.compare()`, scoped to experiments in this graph.
+
+```python
+# Compare all experiments in the graph
+df = graph.compare()
+
+# Filter to eval experiments, include upstream params (e.g., train hyperparams)
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+
+# Specific columns
+df = graph.compare(params=["lr", "batch_size"], metrics=["accuracy"], status="completed")
+```
+
+**Parameters:**
+- `params` (str | list): Parameter columns — "auto", "all", "none", or list of names
+- `metrics` (str | list): Metric columns — "auto", "all", "none", or list of names
+- `meta` (str | list): Metadata columns — "auto", "all", "none", or list of names
+- `include_dep_params` (bool): If True, include upstream dependency params. Default: False.
+- `**filters`: Additional filter kwargs (script_pattern, status, tags, etc.)
+
+**Returns:**
+- `pd.DataFrame`: Wide-format DataFrame with `param:`, `metric:`, `meta:` columns
+
+#### `ExperimentGraph.get_metrics(**filters)`
+
+Get time-series metrics from experiments in the graph as a long-format DataFrame.
+Identical format to `yr.get_metrics()` but scoped to this graph.
+
+```python
+# All metrics from all experiments
+df = graph.get_metrics()
+
+# Filter + include upstream params
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"], include_dep_params=True)
+```
+
+**Parameters:**
+- `metrics` (str | list | None): Which metrics — None (all), str, or list of names
+- `params` (list | str): Which param columns — "auto", "all", "none", or list
+- `meta` (list | None): Metadata columns for faceting
+- `include_dep_params` (bool): If True, include upstream dependency params. Default: False.
+- `**filters`: Additional filter kwargs
+
+**Returns:**
+- `pd.DataFrame`: Long-format DataFrame with columns `[experiment_id, step, metric_name, value, <params>, <meta>]`
 
 ### Common Patterns
 
@@ -639,6 +708,9 @@ graph = yr.get_graph("eval_id")
 print(f"Roots: {[e.name for e in graph.roots]}")   # preprocessing
 print(f"Leaves: {[e.name for e in graph.leaves]}")  # evaluation
 
+# Get full pipeline config (no conflicts in linear chain)
+params = graph.get_params()
+
 # Load unique artifacts
 data = graph.load_artifact("processed_data.pkl")
 accuracy = graph.get_metric("test_accuracy")
@@ -649,15 +721,21 @@ accuracy = graph.get_metric("test_accuracy")
 When multiple experiments produce artifacts with the same name, use `filter()` + per-experiment access:
 
 ```python
-graph = yr.get_graph("any_experiment_in_pipeline")
+graph = yr.get_graph("any_experiment_in_pipeline", weakly_connected=True)
 
-# Collect results from all training runs
+# Compare eval experiments with upstream hyperparams
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+
+# Time-series training curves
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"])
+
+# Per-experiment collection
 for run in graph.filter(script_pattern="train.py"):
     lr = run.get_param("learning_rate")
     acc = run.get_metric("accuracy")
     print(f"lr={lr}: accuracy={acc}")
 
-# Load models from specific experiments
+# Find and load best model
 best_run = max(
     graph.filter(script_pattern="train.py"),
     key=lambda e: e.get_metric("accuracy")

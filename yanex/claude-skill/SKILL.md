@@ -263,10 +263,15 @@ graph.leaves           # experiments with no dependents
 train_runs = graph.filter(script_pattern="train.py")
 completed = graph.filter(status="completed", tags=["sweep"])
 
-# Search for unique artifacts/params/metrics across the graph
-dataset = graph.load_artifact("dataset.json")   # unique → loaded, multiple → AmbiguousArtifactError
-lr = graph.get_param("learning_rate")            # unique → value, conflicting → ValueError
-acc = graph.get_metric("accuracy")               # same semantics
+# Graph-level data access (strict — raises on missing/ambiguous)
+dataset = graph.load_artifact("dataset.json")   # AmbiguousArtifactError if multiple
+lr = graph.get_param("lr")                      # sub-path resolution, KeyNotFoundError if missing
+params = graph.get_params()                     # merged nested dict, ValueError if conflicts
+acc = graph.get_metric("accuracy")              # KeyNotFoundError if missing
+
+# Compare and metrics (same as yr.compare/yr.get_metrics, scoped to graph)
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"])
 
 # Fan-out pattern: filter → per-experiment access
 for t in graph.filter(script_pattern="train.py"):

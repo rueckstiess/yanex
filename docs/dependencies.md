@@ -500,17 +500,30 @@ named = graph.filter(name="fold-*")
 
 ### Graph-Level Data Access
 
-Search all experiments in the graph. Raises an error if found in multiple experiments with different values (ambiguity = "be more specific"):
+Search all experiments in the graph. Strict error handling — raises on missing or ambiguous data:
 
 ```python
 # Artifacts — unique → loaded, multiple → AmbiguousArtifactError
 dataset = graph.load_artifact("dataset.json")
 
-# Params — unique → value, conflicting → ValueError
+# Params — sub-path resolution via AccessResolver, raises KeyNotFoundError/ValueError
 lr = graph.get_param("learning_rate")
 
-# Metrics — same semantics as params
+# Metrics — same strict semantics as params
 acc = graph.get_metric("accuracy")
+
+# Merge all params into one nested dict (linear pipelines; errors on conflicts)
+params = graph.get_params()
+```
+
+### Comparing Experiments in a Graph
+
+```python
+# Wide-format comparison DataFrame (same as yr.compare, scoped to graph)
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+
+# Time-series metrics for plotting (same as yr.get_metrics, scoped to graph)
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"])
 ```
 
 ### Fan-Out Pattern (HPO, K-Fold)

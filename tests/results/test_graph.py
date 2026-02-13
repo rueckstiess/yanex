@@ -6,7 +6,12 @@ import pytest
 
 from yanex.core.manager import ExperimentManager
 from yanex.results.graph import ExperimentGraph
-from yanex.utils.exceptions import AmbiguousArtifactError, ExperimentNotFoundError
+from yanex.utils.exceptions import (
+    AmbiguousArtifactError,
+    AmbiguousKeyError,
+    ExperimentNotFoundError,
+    KeyNotFoundError,
+)
 
 
 def _create_experiment(manager, temp_dir, name, script_name="test.py", config=None):
@@ -472,14 +477,15 @@ class TestExperimentGraphGetParam:
         assert graph.get_param("learning_rate") == 0.01
         assert graph.get_param("dataset_path") == "/data/train.csv"
 
-    def test_get_param_not_found(self, temp_dir):
+    def test_get_param_not_found_raises(self, temp_dir):
+        """Missing param raises KeyNotFoundError."""
         manager = ExperimentManager(temp_dir / "experiments")
         exp_id = _create_experiment(manager, temp_dir, "test", config={"lr": 0.01})
 
         graph = ExperimentGraph.build(manager, exp_id)
 
-        assert graph.get_param("nonexistent") is None
-        assert graph.get_param("nonexistent", default=42) == 42
+        with pytest.raises(KeyNotFoundError):
+            graph.get_param("nonexistent")
 
     def test_get_param_same_value_not_ambiguous(self, temp_dir):
         """Same param with same value across experiments is not ambiguous."""
@@ -543,13 +549,15 @@ class TestExperimentGraphGetMetric:
         result = graph.get_metric("accuracy")
         assert result == [0.85, 0.95]
 
-    def test_get_metric_not_found(self, temp_dir):
+    def test_get_metric_not_found_raises(self, temp_dir):
+        """Missing metric raises KeyNotFoundError."""
         manager = ExperimentManager(temp_dir / "experiments")
         exp_id = _create_experiment(manager, temp_dir, "test")
 
         graph = ExperimentGraph.build(manager, exp_id)
 
-        assert graph.get_metric("nonexistent") is None
+        with pytest.raises(KeyNotFoundError):
+            graph.get_metric("nonexistent")
 
     def test_get_metric_different_values_ambiguous(self, temp_dir):
         """Same metric in multiple experiments with different values raises ValueError."""
@@ -606,6 +614,326 @@ class TestExperimentGraphFromResultsManager:
 
         assert len(graph) == 2
         assert a in graph
+
+
+class TestExperimentGraphGetParams:
+    """Tests for graph.get_params()."""
+
+    def test_get_params_linear_chain(self, temp_dir):
+        """Distinct params across experiments returns merged nested dict."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(
+            manager, temp_dir, "dataprep", config={"dataset": "mnist", "samples": 1000}
+        )
+        b = _create_experiment(
+            manager,
+            temp_dir,
+            "train",
+            config={"model": {"lr": 0.01, "layers": 3}},
+        )
+        _add_dependency(manager, b, a, "data")
+
+        graph = ExperimentGraph.build(manager, a)
+        params = graph.get_params()
+
+        # Returns nested structure
+        assert params["dataset"] == "mnist"
+        assert params["samples"] == 1000
+        assert params["model"]["lr"] == 0.01
+        assert params["model"]["layers"] == 3
+
+    def test_get_params_conflict_raises(self, temp_dir):
+        """Same key with different values raises ValueError."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(manager, temp_dir, "root")
+        b1 = _create_experiment(manager, temp_dir, "train-1", config={"lr": 0.01})
+        _add_dependency(manager, b1, a, "data")
+        b2 = _create_experiment(manager, temp_dir, "train-2", config={"lr": 0.1})
+        _add_dependency(manager, b2, a, "data")
+
+        graph = ExperimentGraph.build(manager, a)
+
+        with pytest.raises(ValueError, match="lr"):
+            graph.get_params()
+
+    def test_get_params_same_value_no_conflict(self, temp_dir):
+        """Same key with same value across experiments is OK."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(
+            manager, temp_dir, "a", config={"epochs": 100, "dataset": "mnist"}
+        )
+        b = _create_experiment(
+            manager, temp_dir, "b", config={"epochs": 100, "lr": 0.01}
+        )
+        _add_dependency(manager, b, a, "data")
+
+        graph = ExperimentGraph.build(manager, a)
+        params = graph.get_params()
+
+        assert params["epochs"] == 100
+        assert params["dataset"] == "mnist"
+        assert params["lr"] == 0.01
+
+    def test_get_params_single_experiment(self, temp_dir):
+        """Single-node graph returns that experiment's params."""
+        manager = ExperimentManager(temp_dir / "experiments")
+        exp_id = _create_experiment(
+            manager, temp_dir, "solo", config={"lr": 0.01, "epochs": 50}
+        )
+
+        graph = ExperimentGraph.build(manager, exp_id)
+        params = graph.get_params()
+
+        assert params == {"lr": 0.01, "epochs": 50}
+
+    def test_get_params_empty_config(self, temp_dir):
+        """Experiment with no config contributes nothing."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(manager, temp_dir, "a", config={})
+        b = _create_experiment(manager, temp_dir, "b", config={"lr": 0.01})
+        _add_dependency(manager, b, a, "data")
+
+        graph = ExperimentGraph.build(manager, a)
+        params = graph.get_params()
+
+        assert params == {"lr": 0.01}
+
+
+class TestExperimentGraphAccessResolver:
+    """Tests for get_param() and get_metric() with AccessResolver integration."""
+
+    def test_get_param_subpath_resolution(self, temp_dir):
+        """get_param('lr') resolves to 'model.lr' if unambiguous."""
+        manager = ExperimentManager(temp_dir / "experiments")
+        exp_id = _create_experiment(
+            manager, temp_dir, "test", config={"model": {"lr": 0.001, "layers": 3}}
+        )
+
+        graph = ExperimentGraph.build(manager, exp_id)
+
+        assert graph.get_param("lr") == 0.001
+        assert graph.get_param("layers") == 3
+
+    def test_get_param_exact_match(self, temp_dir):
+        """get_param('model.lr') exact match still works."""
+        manager = ExperimentManager(temp_dir / "experiments")
+        exp_id = _create_experiment(
+            manager, temp_dir, "test", config={"model": {"lr": 0.001}}
+        )
+
+        graph = ExperimentGraph.build(manager, exp_id)
+
+        assert graph.get_param("model.lr") == 0.001
+
+    def test_get_param_ambiguous_subpath_raises(self, temp_dir):
+        """get_param('lr') raises AmbiguousKeyError if it matches multiple paths."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        # Two experiments with different nested paths ending in 'lr'
+        a = _create_experiment(manager, temp_dir, "a", config={"model": {"lr": 0.01}})
+        b = _create_experiment(
+            manager, temp_dir, "b", config={"optimizer": {"lr": 0.001}}
+        )
+        _add_dependency(manager, b, a, "data")
+
+        graph = ExperimentGraph.build(manager, a)
+
+        with pytest.raises(AmbiguousKeyError):
+            graph.get_param("lr")
+
+    def test_get_param_missing_key_raises(self, temp_dir):
+        """get_param() raises KeyNotFoundError for missing key."""
+        manager = ExperimentManager(temp_dir / "experiments")
+        exp_id = _create_experiment(manager, temp_dir, "test", config={"lr": 0.01})
+
+        graph = ExperimentGraph.build(manager, exp_id)
+
+        with pytest.raises(KeyNotFoundError):
+            graph.get_param("nonexistent_param")
+
+    def test_get_param_conflicting_values_raises(self, temp_dir):
+        """Same resolved param with different values raises ValueError."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(manager, temp_dir, "root")
+        b1 = _create_experiment(manager, temp_dir, "train-1", config={"lr": 0.01})
+        _add_dependency(manager, b1, a, "data")
+        b2 = _create_experiment(manager, temp_dir, "train-2", config={"lr": 0.1})
+        _add_dependency(manager, b2, a, "data")
+
+        graph = ExperimentGraph.build(manager, a)
+
+        with pytest.raises(ValueError, match="lr"):
+            graph.get_param("lr")
+
+    def test_get_metric_missing_raises(self, temp_dir):
+        """get_metric() raises KeyNotFoundError for missing metric."""
+        manager = ExperimentManager(temp_dir / "experiments")
+        exp_id = _create_experiment(manager, temp_dir, "test")
+
+        graph = ExperimentGraph.build(manager, exp_id)
+
+        with pytest.raises(KeyNotFoundError):
+            graph.get_metric("nonexistent_metric")
+
+    def test_get_metric_same_value_across_experiments(self, temp_dir):
+        """Metric with same value in multiple experiments returns value."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(manager, temp_dir, "a")
+        _add_metrics(manager, a, [{"step": 1, "loss": 0.5}])
+        b = _create_experiment(manager, temp_dir, "b")
+        _add_dependency(manager, b, a, "data")
+        _add_metrics(manager, b, [{"step": 1, "loss": 0.5}])
+
+        graph = ExperimentGraph.build(manager, a)
+
+        assert graph.get_metric("loss") == 0.5
+
+
+class TestExperimentGraphCompare:
+    """Tests for graph.compare()."""
+
+    def test_compare_returns_dataframe(self, temp_dir):
+        """Basic comparison returns a pandas DataFrame."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(
+            manager, temp_dir, "dataprep", config={"dataset": "mnist"}
+        )
+        b = _create_experiment(manager, temp_dir, "train", config={"lr": 0.01})
+        _add_dependency(manager, b, a, "data")
+        _add_metrics(manager, b, [{"step": 1, "accuracy": 0.95}])
+
+        graph = ExperimentGraph.build(manager, a)
+        df = graph.compare()
+
+        import pandas as pd
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 2  # both experiments
+
+    def test_compare_with_script_filter(self, temp_dir):
+        """compare(script_pattern=...) filters to matching experiments."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(
+            manager, temp_dir, "dataprep", "dataprep.py", config={"dataset": "mnist"}
+        )
+        b = _create_experiment(
+            manager, temp_dir, "train", "train.py", config={"lr": 0.01}
+        )
+        _add_dependency(manager, b, a, "data")
+
+        graph = ExperimentGraph.build(manager, a)
+        df = graph.compare(script_pattern="train.py")
+
+        assert len(df) == 1
+
+    def test_compare_with_include_dep_params(self, temp_dir):
+        """include_dep_params=True pulls upstream params into each row."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(
+            manager, temp_dir, "dataprep", "dataprep.py", config={"dataset": "mnist"}
+        )
+        b = _create_experiment(
+            manager, temp_dir, "train", "train.py", config={"lr": 0.01}
+        )
+        _add_dependency(manager, b, a, "data")
+
+        graph = ExperimentGraph.build(manager, a)
+        df = graph.compare(
+            script_pattern="train.py",
+            include_dep_params=True,
+            params="all",
+        )
+
+        # Train row should have both its own lr AND upstream dataset param
+        assert len(df) == 1
+        assert "param:lr" in df.columns
+        assert "param:dataset" in df.columns
+
+    def test_compare_empty_filter_returns_empty_df(self, temp_dir):
+        """Filter that matches nothing returns empty DataFrame."""
+        manager = ExperimentManager(temp_dir / "experiments")
+        exp_id = _create_experiment(manager, temp_dir, "test")
+
+        graph = ExperimentGraph.build(manager, exp_id)
+        df = graph.compare(status="failed")
+
+        import pandas as pd
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 0
+
+
+class TestExperimentGraphGetMetrics:
+    """Tests for graph.get_metrics()."""
+
+    def test_get_metrics_returns_dataframe(self, temp_dir):
+        """Returns long-format DataFrame with expected columns."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(manager, temp_dir, "train", config={"lr": 0.01})
+        _add_metrics(manager, a, [{"step": 1, "loss": 2.5}, {"step": 2, "loss": 1.5}])
+
+        graph = ExperimentGraph.build(manager, a)
+        df = graph.get_metrics()
+
+        import pandas as pd
+
+        assert isinstance(df, pd.DataFrame)
+        assert "experiment_id" in df.columns
+        assert "step" in df.columns
+        assert "metric_name" in df.columns
+        assert "value" in df.columns
+
+    def test_get_metrics_with_script_filter(self, temp_dir):
+        """Filters to matching experiments."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(
+            manager, temp_dir, "dataprep", "dataprep.py", config={"dataset": "mnist"}
+        )
+        b = _create_experiment(
+            manager, temp_dir, "train", "train.py", config={"lr": 0.01}
+        )
+        _add_dependency(manager, b, a, "data")
+        _add_metrics(manager, b, [{"step": 1, "loss": 2.0}])
+
+        graph = ExperimentGraph.build(manager, a)
+        df = graph.get_metrics(script_pattern="train.py")
+
+        # Only train experiment's metrics
+        assert all(df["experiment_id"] == b)
+
+    def test_get_metrics_with_include_dep_params(self, temp_dir):
+        """include_dep_params=True adds upstream params as columns."""
+        manager = ExperimentManager(temp_dir / "experiments")
+
+        a = _create_experiment(
+            manager, temp_dir, "dataprep", "dataprep.py", config={"dataset": "mnist"}
+        )
+        b = _create_experiment(
+            manager, temp_dir, "train", "train.py", config={"lr": 0.01}
+        )
+        _add_dependency(manager, b, a, "data")
+        _add_metrics(manager, b, [{"step": 1, "loss": 2.0}])
+
+        graph = ExperimentGraph.build(manager, a)
+        df = graph.get_metrics(
+            script_pattern="train.py",
+            include_dep_params=True,
+            params="all",
+        )
+
+        # Should have upstream param as column
+        assert "dataset" in df.columns
 
 
 class TestExperimentGraphModuleAPI:

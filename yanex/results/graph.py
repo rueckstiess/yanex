@@ -3,23 +3,30 @@ Experiment graph for dependency-aware access to experiment pipelines.
 
 This module provides the ExperimentGraph class that represents a connected
 pipeline of experiments, enabling graph-level artifact loading, parameter
-access, and filtering.
+access, comparison, and filtering.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from ..core.manager import ExperimentManager
 
+from ..core.access_resolver import AccessResolver, parse_canonical_key
 from ..core.dependency_graph import DependencyGraph
 from ..core.filtering import ExperimentFilter
-from ..utils.dict_utils import flatten_dict
-from ..utils.exceptions import AmbiguousArtifactError, ExperimentNotFoundError
+from ..utils.dict_utils import deep_merge, flatten_dict
+from ..utils.exceptions import (
+    AmbiguousArtifactError,
+    ExperimentNotFoundError,
+    KeyNotFoundError,
+)
 from .experiment import Experiment
 
 logger = logging.getLogger(__name__)
@@ -33,8 +40,8 @@ class ExperimentGraph:
     all experiments in the weakly connected component (including sibling branches
     that share a common ancestor but are independent of the starting experiment).
 
-    Provides graph-level artifact loading, parameter access, and filtering
-    using the same filter syntax as yr.get_experiments().
+    Provides graph-level artifact loading, parameter access, comparison, and
+    filtering using the same filter syntax as yr.get_experiments().
 
     Examples:
         >>> import yanex.results as yr
@@ -44,6 +51,7 @@ class ExperimentGraph:
         >>> graph.roots                 # experiments with no dependencies
         >>> graph.filter(script_pattern="train.py")  # filter by script
         >>> graph.load_artifact("dataset.json")       # search entire graph
+        >>> graph.compare(script_pattern="eval.py", include_dep_params=True)
     """
 
     def __init__(
@@ -65,6 +73,8 @@ class ExperimentGraph:
         self._experiments = experiments
         self._digraph = digraph
         self._filter = ExperimentFilter(manager=manager)
+        self._resolver: AccessResolver | None = None
+        self._resolver_built = False
 
     @classmethod
     def build(
@@ -178,6 +188,26 @@ class ExperimentGraph:
         edges = self._digraph.number_of_edges()
         return f"ExperimentGraph(experiments={n}, edges={edges})"
 
+    # --- Internal helpers ---
+
+    def _get_resolver(self) -> AccessResolver | None:
+        """Lazily build and cache an AccessResolver from graph experiments."""
+        if not self._resolver_built:
+            from .manager import _build_resolver_from_experiments
+
+            self._resolver = _build_resolver_from_experiments(
+                list(self._experiments.values())
+            )
+            self._resolver_built = True
+        return self._resolver
+
+    def _inject_graph_ids(self, filters: dict) -> dict:
+        """Inject graph experiment IDs into filter kwargs."""
+        filters["ids"] = list(self._experiments.keys())
+        if "include_all" not in filters and "limit" not in filters:
+            filters["include_all"] = True
+        return filters
+
     # --- Filtering ---
 
     def filter(self, **filters) -> list[Experiment]:
@@ -196,11 +226,7 @@ class ExperimentGraph:
             >>> graph.filter(script_pattern="train.py")
             >>> graph.filter(status="completed", tags=["sweep"])
         """
-        # Constrain to experiments in this graph
-        filters["ids"] = list(self._experiments.keys())
-        if "include_all" not in filters and "limit" not in filters:
-            filters["include_all"] = True
-
+        filters = self._inject_graph_ids(filters)
         metadata_list = self._filter.filter_experiments(**filters)
 
         # Return cached Experiment objects
@@ -209,6 +235,91 @@ class ExperimentGraph:
             for m in metadata_list
             if m["id"] in self._experiments
         ]
+
+    # --- Comparison and metrics ---
+
+    def compare(
+        self,
+        params: str | list[str] = "auto",
+        metrics: str | list[str] = "auto",
+        meta: str | list[str] = "auto",
+        include_dep_params: bool = False,
+        **filters,
+    ) -> pd.DataFrame:
+        """Compare experiments in the graph as a pandas DataFrame.
+
+        Accepts the same kwargs as ``yr.compare()``, scoped to experiments in
+        this graph. Additional filter kwargs further narrow the selection.
+
+        Args:
+            params: Parameter columns — "auto", "all", "none", or list of names.
+            metrics: Metric columns — "auto", "all", "none", or list of names.
+            meta: Metadata columns — "auto", "all", "none", or list of names.
+            include_dep_params: If True, include parameters from upstream
+                dependencies (merged with local params, local takes precedence).
+            **filters: Additional filter kwargs (script_pattern, status, etc.).
+
+        Returns:
+            pandas DataFrame with ``param:``, ``metric:``, ``meta:`` columns.
+
+        Examples:
+            >>> graph.compare()
+            >>> graph.compare(script_pattern="eval.py", include_dep_params=True)
+            >>> graph.compare(params=["lr"], metrics=["accuracy"], status="completed")
+        """
+        from .manager import ResultsManager
+
+        rm = ResultsManager(storage_path=self._manager.experiments_dir)
+        filters = self._inject_graph_ids(filters)
+        return rm.compare_experiments(
+            params=params,
+            metrics=metrics,
+            meta=meta,
+            include_dep_params=include_dep_params,
+            **filters,
+        )
+
+    def get_metrics(
+        self,
+        *,
+        metrics: str | list[str] | None = None,
+        params: list[str] | Literal["auto", "all", "none"] = "auto",
+        meta: list[str] | None = None,
+        include_dep_params: bool = False,
+        **filters,
+    ) -> pd.DataFrame:
+        """Get time-series metrics from experiments in the graph.
+
+        Returns long-format (tidy) DataFrame, identical to ``yr.get_metrics()``
+        but scoped to experiments in this graph.
+
+        Args:
+            metrics: Which metrics — None (all), str, or list of names.
+            params: Which param columns — "auto", "all", "none", or list.
+            meta: Metadata columns for faceting (e.g., ["name"]).
+            include_dep_params: If True, include upstream dependency params.
+            **filters: Additional filter kwargs (script_pattern, status, etc.).
+
+        Returns:
+            DataFrame with columns [experiment_id, step, metric_name, value,
+            <params>, <meta>].
+
+        Examples:
+            >>> graph.get_metrics()
+            >>> graph.get_metrics(script_pattern="train.py", metrics=["loss"])
+            >>> graph.get_metrics(include_dep_params=True, params="all")
+        """
+        from .manager import ResultsManager
+
+        rm = ResultsManager(storage_path=self._manager.experiments_dir)
+        filters = self._inject_graph_ids(filters)
+        return rm.get_metrics(
+            metrics=metrics,
+            params=params,
+            meta=meta,
+            include_dep_params=include_dep_params,
+            **filters,
+        )
 
     # --- Graph-level data access ---
 
@@ -250,86 +361,158 @@ class ExperimentGraph:
         else:
             raise AmbiguousArtifactError(filename, found_in)
 
-    def get_param(self, key: str, default: Any = None) -> Any:
-        """Get a parameter value, searching all experiments in the graph.
+    def get_params(self) -> dict[str, Any]:
+        """Get all parameters merged across all experiments in the graph.
 
-        Returns the value if found in exactly one experiment (or if all
-        experiments with the key have the same value). Raises ValueError
-        if found in multiple experiments with different values.
+        Returns a nested dict of all parameters. If the same parameter key
+        exists in multiple experiments with the same value, it appears once.
+        If the same key has different values, raises ValueError.
 
-        Args:
-            key: Parameter key (supports dot notation like "model.lr").
-            default: Default value if key not found in any experiment.
+        Useful for linear pipelines where each experiment has distinct config.
+        For fan-out pipelines, use ``graph.filter()`` + per-experiment access.
 
         Returns:
-            Parameter value, or default if not found.
+            Nested dict of merged parameters.
 
         Raises:
+            ValueError: If any parameter key has conflicting values across
+                experiments.
+
+        Examples:
+            >>> params = graph.get_params()
+            >>> # {"dataset": "mnist", "learning_rate": 0.01, "epochs": 100}
+        """
+        # Pass 1: conflict detection on flattened keys
+        seen: dict[str, tuple[str, Any]] = {}
+        for exp_id, exp in self._experiments.items():
+            for key, value in flatten_dict(exp.get_params()).items():
+                if key in seen:
+                    prev_id, prev_value = seen[key]
+                    if prev_value != value:
+                        raise ValueError(
+                            f"Parameter '{key}' has conflicting values: "
+                            f"{prev_id}={prev_value!r}, {exp_id}={value!r}. "
+                            f"Use graph.filter() to select specific experiments."
+                        )
+                else:
+                    seen[key] = (exp_id, value)
+
+        # Pass 2: deep merge for nested structure (safe — no conflicts)
+        merged: dict[str, Any] = {}
+        for exp in self._experiments.values():
+            merged = deep_merge(merged, exp.get_params())
+        return merged
+
+    def get_param(self, key: str) -> Any:
+        """Get a parameter value, searching all experiments in the graph.
+
+        Uses AccessResolver for sub-path resolution (e.g., ``"lr"`` resolves
+        to ``"model.lr"`` if unambiguous).
+
+        Returns the value if found in exactly one experiment (or if all
+        experiments with the key have the same value).
+
+        Args:
+            key: Parameter key. Supports dot notation (``"model.lr"``),
+                sub-path shorthand (``"lr"``), and canonical form
+                (``"param:model.lr"``).
+
+        Returns:
+            Parameter value.
+
+        Raises:
+            KeyNotFoundError: If key not found in any experiment.
+            AmbiguousKeyError: If key matches multiple parameter paths.
             ValueError: If parameter found in multiple experiments with
                 different values.
+
+        Examples:
+            >>> graph.get_param("learning_rate")
+            0.01
+            >>> graph.get_param("lr")  # resolves to "model.lr" if unambiguous
+            0.001
         """
+        resolver = self._get_resolver()
+        if resolver is None:
+            raise KeyNotFoundError(key, scope="param")
+
+        # Resolve key via AccessResolver — raises KeyNotFoundError or
+        # AmbiguousKeyError if resolution fails
+        canonical = resolver.resolve(key, scope="param")
+        _, resolved_path = parse_canonical_key(canonical)
+
+        # Search all experiments for the resolved key
         found: list[tuple[str, Any]] = []
         for exp_id, exp in self._experiments.items():
             params = flatten_dict(exp.get_params())
-            if key in params:
-                found.append((exp_id, params[key]))
-            elif "." in key:
-                # Try nested access via get_param for dot notation
-                from ..utils.dict_utils import get_nested_value
-
-                value = get_nested_value(exp.get_params(), key)
-                if value is not None:
-                    found.append((exp_id, value))
+            if resolved_path in params:
+                found.append((exp_id, params[resolved_path]))
 
         if not found:
-            return default
+            raise KeyNotFoundError(key, scope="param")
 
-        # Check if all values are the same
         values = [v for _, v in found]
         if all(v == values[0] for v in values):
             return values[0]
 
-        # Multiple different values — ambiguous
         details = ", ".join(f"{eid}={val!r}" for eid, val in found[:5])
         raise ValueError(
-            f"Parameter '{key}' found in {len(found)} experiments with different values: "
-            f"{details}. Use graph.filter() to select specific experiments."
+            f"Parameter '{key}' found in {len(found)} experiments with different "
+            f"values: {details}. Use graph.filter() to select specific experiments."
         )
 
-    def get_metric(self, name: str) -> Any | None:
+    def get_metric(self, name: str) -> Any:
         """Get a metric's final value, searching all experiments in the graph.
 
+        Uses AccessResolver for sub-path resolution.
+
         Returns the value if found in exactly one experiment (or if all
-        experiments with the metric have the same value). Raises ValueError
-        if found in multiple experiments with different values.
+        experiments with the metric have the same value).
 
         Args:
             name: Metric name.
 
         Returns:
-            Metric value, or None if not found in any experiment.
+            Metric value.
 
         Raises:
+            KeyNotFoundError: If metric not found in any experiment.
             ValueError: If metric found in multiple experiments with
                 different values.
+
+        Examples:
+            >>> graph.get_metric("accuracy")
+            0.95
         """
+        resolver = self._get_resolver()
+        if resolver is None:
+            raise KeyNotFoundError(name, scope="metric")
+
+        # Try to resolve via AccessResolver for sub-path resolution
+        try:
+            canonical = resolver.resolve(name, scope="metric")
+            _, resolved_name = parse_canonical_key(canonical)
+        except KeyNotFoundError:
+            # Fall back to direct name — might exist in metrics but not in
+            # the resolver's index (e.g., logged after resolver was built)
+            resolved_name = name
+
+        # Search all experiments for the metric
         found: list[tuple[str, Any]] = []
         for exp_id, exp in self._experiments.items():
-            value = exp.get_metric(name)
+            value = exp.get_metric(resolved_name)
             if value is not None:
                 found.append((exp_id, value))
 
         if not found:
-            return None
+            raise KeyNotFoundError(name, scope="metric")
 
-        # Check if all values are the same
         values = [v for _, v in found]
         if all(v == values[0] for v in values):
             return values[0]
 
-        # Multiple different values — ambiguous
         details = ", ".join(f"{eid}={val!r}" for eid, val in found[:5])
         raise ValueError(
-            f"Metric '{name}' found in {len(found)} experiments with different values: "
-            f"{details}. Use graph.filter() to select specific experiments."
+            f"Metric '{name}' found in {len(found)} experiments with different "
+            f"values: {details}. Use graph.filter() to select specific experiments."
         )

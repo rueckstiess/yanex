@@ -516,10 +516,15 @@ graph.leaves                     # no dependents (pipeline endpoints)
 # Filtering (same kwargs as yr.get_experiments)
 train_runs = graph.filter(script_pattern="train.py")
 
-# Graph-level search — error if ambiguous (found in multiple with different values)
+# Graph-level search — strict errors for missing/ambiguous keys
 data = graph.load_artifact("dataset.json")   # AmbiguousArtifactError if multiple
-lr = graph.get_param("learning_rate")        # ValueError if conflicting
-acc = graph.get_metric("accuracy")           # same semantics
+lr = graph.get_param("lr")                   # sub-path resolution via AccessResolver
+params = graph.get_params()                  # merged nested dict, ValueError if conflicts
+acc = graph.get_metric("accuracy")           # KeyNotFoundError if missing
+
+# Comparison and metrics (same as yr.compare/yr.get_metrics, scoped to graph)
+df = graph.compare(script_pattern="eval.py", include_dep_params=True)
+df = graph.get_metrics(script_pattern="train.py", metrics=["loss"])
 
 # During experiment execution (Run API):
 import yanex
