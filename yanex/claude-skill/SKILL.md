@@ -240,6 +240,45 @@ df = yr.compare(tags=["sweep"], params=["lr"], metrics=["loss", "accuracy"])
 df = yr.get_metrics(name="yelp-*", metrics="train_loss")
 ```
 
+### Experiment Graphs
+
+Use `ExperimentGraph` for pipeline-level analysis — navigate, filter, and search across connected experiments.
+
+```python
+import yanex.results as yr
+
+# Get the graph containing an experiment (upstream + downstream lineage)
+graph = yr.get_graph("abc12345")
+# Include sibling branches (full weakly connected component):
+graph = yr.get_graph("abc12345", weakly_connected=True)
+# Or from an Experiment object:
+graph = exp.get_graph()
+
+# Navigate
+graph.experiments      # all experiments in the pipeline
+graph.roots            # experiments with no dependencies
+graph.leaves           # experiments with no dependents
+
+# Filter (same kwargs as yr.get_experiments)
+train_runs = graph.filter(script_pattern="train.py")
+completed = graph.filter(status="completed", tags=["sweep"])
+
+# Search for unique artifacts/params/metrics across the graph
+dataset = graph.load_artifact("dataset.json")   # unique → loaded, multiple → AmbiguousArtifactError
+lr = graph.get_param("learning_rate")            # unique → value, conflicting → ValueError
+acc = graph.get_metric("accuracy")               # same semantics
+
+# Fan-out pattern: filter → per-experiment access
+for t in graph.filter(script_pattern="train.py"):
+    print(t.get_param("learning_rate"), t.get_metric("accuracy"))
+```
+
+During experiment execution (Run API):
+```python
+import yanex
+graph = yanex.get_graph()  # graph of current experiment's pipeline
+```
+
 ## User Naming Conventions
 
 Many users follow prefix-based naming: `{project}-{iteration}-{stage}`

@@ -5,6 +5,8 @@ This module provides the main interface for experiment tracking using context ma
 and thread-local storage for safe concurrent usage.
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
@@ -12,7 +14,10 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .results.graph import ExperimentGraph
 
 from .core.manager import ExperimentManager
 from .results.experiment import Experiment
@@ -410,6 +415,44 @@ def get_dependencies(
                 continue
 
         return dependencies
+
+
+def get_graph(*, weakly_connected: bool = False) -> ExperimentGraph:
+    """Get the dependency graph of the current experiment's pipeline.
+
+    By default, returns only upstream and downstream experiments (the
+    causal lineage). With ``weakly_connected=True``, returns the full
+    weakly connected component including sibling branches.
+
+    Args:
+        weakly_connected: If True, include all experiments in the weakly
+            connected component (including siblings). Default: False.
+
+    Returns:
+        ExperimentGraph containing the selected experiments.
+
+    Raises:
+        ExperimentContextError: If not running inside an experiment context.
+
+    Examples:
+        graph = yanex.get_graph()
+        graph.experiments           # all experiments in the pipeline
+        graph.load_artifact("dataset.json")  # search entire graph
+        graph.filter(script_pattern="train.py")
+    """
+    experiment_id = _get_current_experiment_id()
+    if experiment_id is None:
+        raise ExperimentContextError(
+            "get_graph() requires an active experiment context. "
+            "Use yanex.results.get_graph(experiment_id) for post-hoc analysis."
+        )
+
+    from .results.graph import ExperimentGraph
+
+    manager = _get_experiment_manager()
+    return ExperimentGraph.build(
+        manager, experiment_id, weakly_connected=weakly_connected
+    )
 
 
 def assert_dependency(script_name: str, slot: str | None = None) -> None:

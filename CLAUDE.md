@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Yanex** (Yet Another Experiment Tracker) is a lightweight, Git-aware experiment tracking system for Python designed for machine learning and research reproducibility. It's currently in beta (v0.5.0) and provides CLI, Python API, and web UI interfaces.
+**Yanex** (Yet Another Experiment Tracker) is a lightweight, Git-aware experiment tracking system for Python designed for machine learning and research reproducibility. It's currently in alpha (v0.6.0a4) and provides CLI, Python API, and web UI interfaces.
 
 ## Essential Commands
 
@@ -493,6 +493,44 @@ best = yr.get_best('accuracy', minimize=False, status='completed')
 **Key API Differences**:
 - `yr.compare()`: Wide format with prefixed column names (`meta:id`, `param:lr`, `metric:accuracy`)
 - `yr.get_metrics()`: Long format with bare column names (`experiment_id`, `lr`, `accuracy`) - optimized for plotting
+
+**ExperimentGraph** (`yanex/results/graph.py`):
+Pipeline-level analysis of connected experiments. By default returns the causal lineage
+(upstream dependencies + downstream dependents). With `weakly_connected=True`, includes
+sibling branches that share a common ancestor.
+
+```python
+import yanex.results as yr
+
+# Get graph from any experiment (upstream + downstream lineage)
+graph = yr.get_graph("abc123")   # or exp.get_graph()
+
+# Include siblings (full weakly connected component)
+graph = yr.get_graph("abc123", weakly_connected=True)
+
+# Navigation
+graph.experiments                # all experiments in pipeline
+graph.roots                      # no dependencies (pipeline entry points)
+graph.leaves                     # no dependents (pipeline endpoints)
+
+# Filtering (same kwargs as yr.get_experiments)
+train_runs = graph.filter(script_pattern="train.py")
+
+# Graph-level search — error if ambiguous (found in multiple with different values)
+data = graph.load_artifact("dataset.json")   # AmbiguousArtifactError if multiple
+lr = graph.get_param("learning_rate")        # ValueError if conflicting
+acc = graph.get_metric("accuracy")           # same semantics
+
+# During experiment execution (Run API):
+import yanex
+graph = yanex.get_graph()        # raises ExperimentContextError if standalone
+```
+
+Key implementation files:
+- `yanex/results/graph.py` - `ExperimentGraph` class
+- `yanex/core/dependency_graph.py` - `DependencyGraph.get_connected_component()` and `get_lineage()` for graph building
+- `yanex/results/experiment.py` - `Experiment.get_graph()` convenience method
+- `yanex/api.py` - `yanex.get_graph()` Run API function
 
 ### Unified Key Syntax
 

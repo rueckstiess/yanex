@@ -218,6 +218,63 @@ print(f"\nComparison DataFrame shape: {df.shape}")
 print(df.head())
 ```
 
+## Experiment Graphs
+
+Use `ExperimentGraph` for pipeline-level analysis across connected experiments.
+
+### Getting a Graph
+```python
+# From experiment ID (upstream + downstream lineage)
+graph = yr.get_graph("abc12345")
+
+# Include sibling branches (full weakly connected component)
+graph = yr.get_graph("abc12345", weakly_connected=True)
+
+# From Experiment object
+graph = exp.get_graph()
+```
+
+### Navigation
+```python
+graph.experiments      # list[Experiment] — all experiments
+graph.roots            # list[Experiment] — no dependencies
+graph.leaves           # list[Experiment] — no dependents
+graph["abc12345"]      # Experiment by ID
+len(graph)             # number of experiments
+"abc12345" in graph    # membership check
+graph.digraph          # nx.DiGraph escape hatch
+```
+
+### Filtering (same kwargs as get_experiments)
+```python
+train_runs = graph.filter(script_pattern="train.py")
+completed = graph.filter(status="completed")
+tagged = graph.filter(tags=["sweep"])
+combined = graph.filter(status="completed", script_pattern="evaluate*")
+```
+
+### Graph-Level Data Access
+```python
+# Search all experiments — error if ambiguous
+dataset = graph.load_artifact("dataset.json")   # AmbiguousArtifactError if multiple
+lr = graph.get_param("learning_rate")            # ValueError if conflicting values
+acc = graph.get_metric("accuracy")               # same semantics as get_param
+```
+
+### Fan-Out Pattern (HPO, K-Fold)
+```python
+# When multiple experiments have same artifact name, use filter + per-experiment
+for run in graph.filter(script_pattern="train.py"):
+    print(run.get_param("lr"), run.get_metric("accuracy"))
+
+# Find best
+best = max(
+    graph.filter(script_pattern="train.py"),
+    key=lambda e: e.get_metric("accuracy")
+)
+model = best.load_artifact("model.pt")
+```
+
 ## Utility Functions
 
 ```python

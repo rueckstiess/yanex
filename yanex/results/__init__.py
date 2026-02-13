@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from .experiment import Experiment
+from .graph import ExperimentGraph
 from .manager import ResultsManager
 from .plotting import plot_metrics
 
@@ -508,6 +509,36 @@ def experiment_exists(experiment_id: str, include_archived: bool = True) -> bool
     return _get_manager().experiment_exists(experiment_id, include_archived)
 
 
+# Graph access
+def get_graph(experiment_id: str, *, weakly_connected: bool = False) -> ExperimentGraph:
+    """
+    Get the dependency graph containing an experiment.
+
+    By default, returns only upstream and downstream experiments (the
+    causal lineage). With ``weakly_connected=True``, returns the full
+    weakly connected component including sibling branches.
+
+    Args:
+        experiment_id: Starting experiment ID
+        weakly_connected: If True, include all experiments in the weakly
+            connected component (including siblings). Default: False.
+
+    Returns:
+        ExperimentGraph containing the selected experiments
+
+    Raises:
+        ExperimentNotFoundError: If experiment doesn't exist
+
+    Examples:
+        >>> graph = get_graph("abc123")              # upstream + downstream
+        >>> graph = get_graph("abc123", weakly_connected=True)  # full component
+        >>> graph.experiments           # all experiments in the graph
+        >>> graph.load_artifact("dataset.json")  # search entire graph
+        >>> graph.filter(script_pattern="train.py")
+    """
+    return _get_manager().get_graph(experiment_id, weakly_connected=weakly_connected)
+
+
 # Manager access for advanced usage
 def get_manager(storage_path: Path | None = None) -> ResultsManager:
     """
@@ -535,6 +566,7 @@ def get_manager(storage_path: Path | None = None) -> ResultsManager:
 __all__ = [
     # Core classes
     "Experiment",
+    "ExperimentGraph",
     "ResultsManager",
     # Individual experiment access
     "get_experiment",
@@ -547,6 +579,8 @@ __all__ = [
     # Comparison and DataFrames
     "compare",
     "get_metrics",
+    # Graph access
+    "get_graph",
     # Visualization
     "plot_metrics",
     # Bulk operations

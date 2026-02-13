@@ -34,6 +34,7 @@ from .api import (
     get_dependency,
     get_experiment_dir,
     get_experiment_id,
+    get_graph,
     get_metadata,
     get_param,
     # Parameter access
@@ -90,6 +91,7 @@ __all__ = [
     "get_dependencies",
     "get_dependency",
     "assert_dependency",
+    "get_graph",
     "Experiment",
     # Experiment creation (advanced)
     "create_experiment",

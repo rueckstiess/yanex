@@ -5,12 +5,16 @@ This module provides the ResultsManager class that handles the heavy lifting
 for experiment filtering, comparison, and bulk operations.
 """
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import pandas as pd
+
+    from .graph import ExperimentGraph
 else:
     # Create a dummy for runtime
     class pd:
@@ -326,7 +330,7 @@ class ResultsManager:
         include_dep_params: bool = False,
         as_dataframe: bool = True,
         **filters,
-    ) -> "pd.DataFrame | dict[str, list[dict]]":
+    ) -> pd.DataFrame | dict[str, list[dict]]:
         """
         Get time-series metrics from multiple experiments.
 
@@ -719,6 +723,37 @@ class ResultsManager:
             ...     print(f"{exp['id']}: {exp.get('name', '[unnamed]')}")
         """
         return self.find(limit=limit, **filters)
+
+    def get_graph(
+        self, experiment_id: str, *, weakly_connected: bool = False
+    ) -> ExperimentGraph:
+        """Get the dependency graph containing an experiment.
+
+        By default, returns only upstream and downstream experiments (the
+        causal lineage). With ``weakly_connected=True``, returns the full
+        weakly connected component including sibling branches.
+
+        Args:
+            experiment_id: Starting experiment ID.
+            weakly_connected: If True, include all experiments in the weakly
+                connected component (including siblings). Default: False.
+
+        Returns:
+            ExperimentGraph containing the selected experiments.
+
+        Raises:
+            ExperimentNotFoundError: If experiment doesn't exist.
+
+        Examples:
+            >>> manager = ResultsManager()
+            >>> graph = manager.get_graph("abc123")
+            >>> graph.load_artifact("dataset.json")
+        """
+        from .graph import ExperimentGraph
+
+        return ExperimentGraph.build(
+            self._manager, experiment_id, weakly_connected=weakly_connected
+        )
 
     @property
     def storage_path(self) -> Path:

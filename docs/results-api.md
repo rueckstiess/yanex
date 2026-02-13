@@ -466,6 +466,207 @@ exp.refresh()  # Reload all data from disk
 
 ---
 
+## Experiment Graphs
+
+The `ExperimentGraph` class represents a connected pipeline of experiments, providing graph-level navigation, filtering, artifact loading, and parameter/metric access.
+
+### Getting a Graph
+
+#### `yanex.results.get_graph(experiment_id, *, weakly_connected=False)`
+
+Get the dependency graph containing an experiment.
+
+By default, returns only upstream (dependencies) and downstream (dependents) experiments — the causal lineage. With `weakly_connected=True`, returns the full weakly connected component including sibling branches.
+
+```python
+import yanex.results as yr
+
+# Upstream + downstream only (default)
+graph = yr.get_graph("abc12345")
+
+# Full connected component including siblings
+graph = yr.get_graph("abc12345", weakly_connected=True)
+```
+
+**Parameters:**
+- `experiment_id` (str): Any experiment ID in the pipeline
+- `weakly_connected` (bool): If True, include all experiments in the weakly connected component (including siblings). Default: False.
+
+**Returns:**
+- `ExperimentGraph`: Graph containing the selected experiments
+
+**Raises:**
+- `ExperimentNotFoundError`: If experiment doesn't exist
+
+#### `Experiment.get_graph(*, weakly_connected=False)`
+
+Get the graph from an existing Experiment object:
+
+```python
+exp = yr.get_experiment("abc12345")
+graph = exp.get_graph()
+graph = exp.get_graph(weakly_connected=True)  # include siblings
+```
+
+### ExperimentGraph Properties
+
+```python
+graph = yr.get_graph("abc12345")
+
+# All experiments in the graph
+graph.experiments      # list[Experiment]
+
+# Experiments with no dependencies (in-degree 0)
+graph.roots            # list[Experiment]
+
+# Experiments with no dependents (out-degree 0)
+graph.leaves           # list[Experiment]
+
+# Underlying NetworkX DiGraph (edges in data-flow direction)
+graph.digraph          # nx.DiGraph
+```
+
+### Container Protocol
+
+```python
+graph["abc12345"]      # Get experiment by ID (raises KeyError if not found)
+len(graph)             # Number of experiments
+"abc12345" in graph    # Membership check
+for exp in graph: ...  # Iterate over Experiment objects
+```
+
+### Filtering
+
+#### `ExperimentGraph.filter(**filters)`
+
+Filter experiments within the graph. Accepts the same filter kwargs as `yr.get_experiments()` — `status`, `tags`, `name`, `script_pattern`, time ranges, etc.
+
+```python
+# Filter by script pattern
+train_runs = graph.filter(script_pattern="train.py")
+
+# Filter by status
+completed = graph.filter(status="completed")
+
+# Filter by tags
+tagged = graph.filter(tags=["sweep"])
+
+# Combine filters
+results = graph.filter(status="completed", script_pattern="evaluate*")
+```
+
+**Parameters:**
+- `**filters`: Same filter arguments as `yr.get_experiments()`
+
+**Returns:**
+- `list[Experiment]`: Matching experiments from this graph
+
+### Graph-Level Data Access
+
+#### `ExperimentGraph.load_artifact(filename, loader=None, format=None)`
+
+Load an artifact, searching all experiments in the graph. Returns None if not found.
+
+```python
+# Found in exactly one experiment — loaded
+dataset = graph.load_artifact("dataset.json")
+
+# Found in multiple experiments — raises error
+model = graph.load_artifact("model.pt")  # AmbiguousArtifactError
+```
+
+**Parameters:**
+- `filename` (str): Name of artifact to load
+- `loader` (callable, optional): Custom loader function `(path) -> object`
+- `format` (str, optional): Format name for explicit format selection
+
+**Returns:**
+- Loaded object, or None if not found
+
+**Raises:**
+- `AmbiguousArtifactError`: If artifact found in multiple experiments
+
+#### `ExperimentGraph.get_param(key, default=None)`
+
+Get a parameter value, searching all experiments. Returns the value if found in exactly one experiment (or all matching experiments have the same value).
+
+```python
+# Unique value — returned
+lr = graph.get_param("learning_rate")
+
+# Same value across all experiments — returned (not ambiguous)
+batch_size = graph.get_param("batch_size")
+
+# Different values — raises error
+lr = graph.get_param("learning_rate")  # ValueError if experiments disagree
+```
+
+**Parameters:**
+- `key` (str): Parameter key (supports dot notation like `"model.lr"`)
+- `default` (any): Default value if key not found in any experiment
+
+**Returns:**
+- Parameter value, or default if not found
+
+**Raises:**
+- `ValueError`: If parameter found in multiple experiments with different values
+
+#### `ExperimentGraph.get_metric(name)`
+
+Get a metric's final value, searching all experiments. Same ambiguity semantics as `get_param()`.
+
+```python
+acc = graph.get_metric("accuracy")  # value if unique, ValueError if ambiguous
+```
+
+**Parameters:**
+- `name` (str): Metric name
+
+**Returns:**
+- Metric value, or None if not found
+
+**Raises:**
+- `ValueError`: If metric found in multiple experiments with different values
+
+### Common Patterns
+
+#### Linear Pipeline Analysis
+
+```python
+graph = yr.get_graph("eval_id")
+
+# Navigate the pipeline
+print(f"Roots: {[e.name for e in graph.roots]}")   # preprocessing
+print(f"Leaves: {[e.name for e in graph.leaves]}")  # evaluation
+
+# Load unique artifacts
+data = graph.load_artifact("processed_data.pkl")
+accuracy = graph.get_metric("test_accuracy")
+```
+
+#### Fan-Out / HPO Results Collection
+
+When multiple experiments produce artifacts with the same name, use `filter()` + per-experiment access:
+
+```python
+graph = yr.get_graph("any_experiment_in_pipeline")
+
+# Collect results from all training runs
+for run in graph.filter(script_pattern="train.py"):
+    lr = run.get_param("learning_rate")
+    acc = run.get_metric("accuracy")
+    print(f"lr={lr}: accuracy={acc}")
+
+# Load models from specific experiments
+best_run = max(
+    graph.filter(script_pattern="train.py"),
+    key=lambda e: e.get_metric("accuracy")
+)
+model = best_run.load_artifact("model.pt")
+```
+
+---
+
 ## Bulk Operations
 
 ### `yanex.results.archive_experiments(**filters)`
