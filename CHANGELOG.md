@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Crash when running experiments outside a git repository**: `yanex run` no longer aborts with "No git repository found" when executed outside a git repo. Git tracking is now gracefully skipped with a warning, allowing experiments to run without git
 - **Streaming deadlock in `execute_bash_script()`**: Replaced alternating blocking readline loop with separate threads for stdout and stderr to prevent deadlocks when one pipe fills its buffer
 
 ## [0.5.0] - 2025-12-05

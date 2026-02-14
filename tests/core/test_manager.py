@@ -468,6 +468,33 @@ class TestExperimentFinding:
         assert "patch_file" in metadata["git"]
         assert metadata["environment"] == {"python_version": "3.11.0"}
 
+    @patch("yanex.core.manager.get_current_commit_info")
+    @patch("yanex.core.manager.capture_full_environment")
+    def test_build_metadata_no_git_repo(
+        self, mock_capture_env, mock_git_info, isolated_manager
+    ):
+        """Test build_metadata works gracefully when no git repo is available."""
+        from yanex.utils.exceptions import GitError
+
+        mock_git_info.side_effect = GitError("No git repository found at /workspace")
+        mock_capture_env.return_value = {"python_version": "3.11.0"}
+
+        metadata = isolated_manager.build_metadata(
+            experiment_id="test1234",
+            script_path=Path(__file__),
+            name="no-git-experiment",
+            tags=["test"],
+            description="Experiment without git repo",
+        )
+
+        # Should succeed and have empty git info with patch fields
+        assert metadata["id"] == "test1234"
+        assert metadata["name"] == "no-git-experiment"
+        assert metadata["status"] == "created"
+        assert metadata["git"]["has_uncommitted_changes"] is False
+        assert metadata["git"]["patch_file"] is None
+        assert metadata["environment"] == {"python_version": "3.11.0"}
+
 
 class TestExperimentLifecycle:
     """Test experiment lifecycle management - major improvements with utilities."""

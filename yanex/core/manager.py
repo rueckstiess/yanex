@@ -13,6 +13,7 @@ from typing import Any
 
 import git
 
+from ..utils.exceptions import GitError
 from ..utils.validation import validate_experiment_name, validate_tags
 from .environment import capture_full_environment
 from .git_utils import (
@@ -540,8 +541,16 @@ class ExperimentManager:
         # Get current timestamp
         timestamp = datetime.utcnow().isoformat()
 
-        # Capture git information
-        git_info = get_current_commit_info()
+        # Capture git information (gracefully handle missing git repo)
+        git_info: dict[str, Any] = {}
+        git_available = False
+        try:
+            git_info = get_current_commit_info()
+            git_available = True
+        except (git.GitError, GitError) as e:
+            logger.warning(f"No git repository found, skipping git tracking: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to capture git info: {type(e).__name__}: {e}")
 
         # Capture git patch if uncommitted changes exist
         git_patch = None
@@ -549,50 +558,51 @@ class ExperimentManager:
         patch_size_info = None
         secret_scan_results = None
 
-        try:
-            git_patch = generate_git_patch()
-            if git_patch:
-                patch_filename = "git_diff.patch"
+        if git_available:
+            try:
+                git_patch = generate_git_patch()
+                if git_patch:
+                    patch_filename = "git_diff.patch"
 
-                # Check patch size
-                patch_size_info = check_patch_size(git_patch, max_size_mb=1.0)
-                if patch_size_info["exceeds_limit"]:
-                    logger.warning(
-                        f"Git patch size ({patch_size_info['size_mb']} MB) exceeds "
-                        f"recommended limit of 1.0 MB. Large patches may impact "
-                        f"performance and storage."
-                    )
-
-                # Scan for potential secrets
-                secret_scan_results = scan_patch_for_secrets(git_patch)
-                if secret_scan_results["has_secrets"]:
-                    findings = secret_scan_results["findings"]
-                    logger.warning(
-                        f"Potential secrets detected in git patch! "
-                        f"Found {len(findings)} potential secret(s). "
-                        f"Review patch content before sharing or committing."
-                    )
-                    # Log details about findings
-                    for finding in findings:
+                    # Check patch size
+                    patch_size_info = check_patch_size(git_patch, max_size_mb=1.0)
+                    if patch_size_info["exceeds_limit"]:
                         logger.warning(
-                            f"  - {finding['type']} in {finding['filename']} "
-                            f"at line {finding['line']}"
+                            f"Git patch size ({patch_size_info['size_mb']} MB) exceeds "
+                            f"recommended limit of 1.0 MB. Large patches may impact "
+                            f"performance and storage."
                         )
 
-        except git.GitError as e:
-            logger.warning(f"Git operation failed while generating patch: {e}")
-            # Continue without patch
-        except OSError as e:
-            logger.warning(f"File system error while generating patch: {e}")
-            # Continue without patch
-        except (ValueError, KeyError, AttributeError) as e:
-            logger.warning(f"Failed to process patch data: {type(e).__name__}: {e}")
-            # Continue without patch
-        except Exception as e:
-            logger.warning(
-                f"Unexpected error while generating patch: {type(e).__name__}: {e}"
-            )
-            # Continue without patch
+                    # Scan for potential secrets
+                    secret_scan_results = scan_patch_for_secrets(git_patch)
+                    if secret_scan_results["has_secrets"]:
+                        findings = secret_scan_results["findings"]
+                        logger.warning(
+                            f"Potential secrets detected in git patch! "
+                            f"Found {len(findings)} potential secret(s). "
+                            f"Review patch content before sharing or committing."
+                        )
+                        # Log details about findings
+                        for finding in findings:
+                            logger.warning(
+                                f"  - {finding['type']} in {finding['filename']} "
+                                f"at line {finding['line']}"
+                            )
+
+            except git.GitError as e:
+                logger.warning(f"Git operation failed while generating patch: {e}")
+                # Continue without patch
+            except OSError as e:
+                logger.warning(f"File system error while generating patch: {e}")
+                # Continue without patch
+            except (ValueError, KeyError, AttributeError) as e:
+                logger.warning(f"Failed to process patch data: {type(e).__name__}: {e}")
+                # Continue without patch
+            except Exception as e:
+                logger.warning(
+                    f"Unexpected error while generating patch: {type(e).__name__}: {e}"
+                )
+                # Continue without patch
 
         # Add patch info to git metadata
         git_info["has_uncommitted_changes"] = git_patch is not None
