@@ -21,7 +21,7 @@ from .commands.update import update_experiments
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="yanex")
+@click.version_option(version="0.6.0", prog_name="yanex")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.pass_context
 def cli(ctx: click.Context, verbose: bool) -> None:
