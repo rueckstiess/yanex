@@ -292,6 +292,44 @@ Output behavior:
 - Development: `cd yanex/web && npm run dev` for Next.js hot reload
 - Production: `yanex ui` launches integrated server on port 8000
 
+### Experiment Syncing (Push/Pull)
+Sync experiments between machines via SSH or S3. Requires `rsync` (SSH) or `aws` CLI (S3).
+
+**Target syntax** — protocol inferred from string:
+- SSH: `host`, `host:path`, `user@host:path` (uses `~/.ssh/config` aliases)
+- S3: `s3://bucket/prefix`
+- Default SSH path: `~/.yanex/experiments/`
+
+```bash
+# Push experiments to a remote
+yanex push sky-dev                              # Push all to SSH host
+yanex push sky-dev -n "train*"                  # Push matching name pattern
+yanex push sky-dev -s completed -t sweep        # Push completed sweeps
+yanex push s3://my-bucket/experiments           # Push to S3
+yanex push user@gpu-box:~/experiments           # Custom remote path
+
+# Pull experiments from a remote
+yanex pull sky-dev                              # Pull all from SSH host
+yanex pull sky-dev -n "train*"                  # Pull matching name pattern
+yanex pull s3://my-bucket/experiments           # Pull from S3
+```
+
+**Key behaviors:**
+- **Global scope by default** (unlike `yanex list` which auto-filters by project)
+- All standard filter options work: `--name`, `--status`, `--tag`, `--ids`, `--script`, time filters
+- Pull reads remote metadata first to apply filters, then transfers matching experiments
+- Confirmation prompt by default, `--yes`/`-y` to skip
+- Push overwrites remote (local wins), pull overwrites local (remote wins)
+- No named remotes — SSH uses `~/.ssh/config` aliases, S3 requires full URL
+
+**Implementation files:**
+- `yanex/sync/target.py` — `SyncTarget` dataclass, `parse_target()` function
+- `yanex/sync/transport.py` — rsync/S3 subprocess wrappers
+- `yanex/sync/remote_metadata.py` — Fetch metadata from remote for pull filtering
+- `yanex/sync/filter_utils.py` — Apply filters to remote metadata dicts
+- `yanex/cli/commands/push.py` — CLI push command
+- `yanex/cli/commands/pull.py` — CLI pull command
+
 ### Parallel Experiment Execution
 - **New in v0.5.0**: Run multiple experiments simultaneously on multi-core systems
 - **Enhanced in v0.6.0**: Direct parameter sweep execution without staging
