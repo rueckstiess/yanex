@@ -58,7 +58,7 @@ from .core.artifact_formats import register_format
 from .executor import ExperimentResult, ExperimentSpec, run_multiple
 from .results.experiment import Experiment
 
-__version__ = "0.6.0a3"
+__version__ = "0.6.0"
 __author__ = "Thomas"
 
 __all__ = [

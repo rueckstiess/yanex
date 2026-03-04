@@ -7,12 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-04
+
 ### Breaking Changes
 
 - **Removed TrackedDict and parameter access tracking**: `get_params()` now returns a plain dict. `params.yaml` is written once at experiment creation and never overwritten. Removed `TrackedDict`, atexit handler, `ParameterConflictError`, `from_dependency` parameter (~3200 lines removed)
 - **Storage version bumped to v2**: New `project` field in experiment metadata. Run `yanex migrate --all` to update existing experiments
 
 ### Added
+
+- **Experiment Syncing (Push/Pull)**: Sync experiments between machines via SSH or S3
+  - `yanex push <target>` and `yanex pull <target>` commands
+  - SSH targets use `rsync` with `~/.ssh/config` aliases; S3 targets use `aws s3 sync`
+  - Full filtering API on both push and pull (`--name`, `--status`, `--tag`, `--ids`, etc.)
+  - Pull reads remote metadata first to apply filters before transferring
+  - `--progress` flag for transfer progress display
+  - Global scope by default; confirmation prompt with `--yes/-y` to skip
+  - Zero new Python dependencies (shells out to `rsync` and `aws` CLI)
 
 - **Project-Scoped Experiments**: Experiments are automatically associated with a project derived from the git repo name
   - Filter commands (`list`, `delete`, `archive`, etc.) default to current project's experiments
