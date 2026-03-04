@@ -11,6 +11,8 @@ from .commands.get import get_field
 from .commands.list import list_experiments
 from .commands.migrate import migrate_experiments
 from .commands.open import open_experiment
+from .commands.pull import pull_experiments
+from .commands.push import push_experiments
 from .commands.run import run
 from .commands.show import show_experiment
 from .commands.ui import ui
@@ -46,6 +48,8 @@ cli.add_command(migrate_experiments, name="migrate")
 cli.add_command(unarchive_experiments, name="unarchive")
 cli.add_command(update_experiments, name="update")
 cli.add_command(compare_experiments, name="compare")
+cli.add_command(push_experiments, name="push")
+cli.add_command(pull_experiments, name="pull")
 cli.add_command(ui, name="ui")
 
 
