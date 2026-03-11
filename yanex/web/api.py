@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 
 from ..cli.filters import ExperimentFilter
+from ..core.dependency_graph import DependencyGraph
 from ..core.manager import ExperimentManager
 
 router = APIRouter()
@@ -288,5 +289,116 @@ async def get_status() -> dict[str, Any]:
             "status_counts": status_counts,
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/graph/experiments")
+async def get_graph_experiments() -> dict[str, Any]:
+    """List experiments that participate in at least one dependency relationship.
+
+    Returns a flat list of experiments suitable for a picker / dropdown.
+    """
+    try:
+        dep_graph = DependencyGraph(manager.storage)
+        graph = dep_graph._reverse
+
+        # Collect IDs that have at least one edge
+        connected_ids: set[str] = set()
+        for u, v in graph.edges():
+            connected_ids.add(u)
+            connected_ids.add(v)
+
+        experiments = []
+        for exp_id in sorted(connected_ids):
+            meta = dep_graph.get_metadata(exp_id)
+            experiments.append(
+                {
+                    "id": exp_id,
+                    "name": meta.get("name", ""),
+                    "status": meta.get("status", "unknown"),
+                    "script": meta.get("script", ""),
+                }
+            )
+
+        return {"experiments": experiments}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/graph")
+async def get_dependency_graph(
+    experiment_id: str = Query(..., description="Experiment ID to show lineage for"),
+) -> dict[str, Any]:
+    """Get the lineage graph for a specific experiment.
+
+    Returns the upstream (dependencies) and downstream (dependents) of the
+    given experiment as a single connected DAG. Edges point from dependency
+    to dependent (data-flow direction).
+    """
+    try:
+        dep_graph = DependencyGraph(manager.storage)
+
+        if not dep_graph.experiment_exists(experiment_id):
+            raise HTTPException(
+                status_code=404, detail=f"Experiment {experiment_id} not found"
+            )
+
+        # get_lineage returns upstream + downstream as a single DAG
+        # with edges in data-flow direction (dependency → dependent)
+        graph = dep_graph.get_lineage(experiment_id)
+
+        nodes = []
+        for node_id in graph.nodes():
+            attrs = graph.nodes[node_id]
+            # Load config (parameters) for tooltip display
+            params: dict[str, Any] = {}
+            try:
+                params = manager.storage.load_config(
+                    node_id, include_archived=True
+                )
+            except Exception:
+                pass
+
+            # Load metrics for tooltip display
+            metrics: dict[str, Any] = {}
+            try:
+                results = manager.storage.load_results(
+                    node_id, include_archived=True
+                )
+                if results:
+                    for result in results:
+                        for k, v in result.items():
+                            if k not in ("step", "timestamp"):
+                                metrics[k] = v
+            except Exception:
+                pass
+
+            nodes.append(
+                {
+                    "id": node_id,
+                    "name": attrs.get("name", ""),
+                    "status": attrs.get("status", "unknown"),
+                    "script": attrs.get("script", ""),
+                    "params": params,
+                    "metrics": metrics,
+                }
+            )
+
+        edges = []
+        for u, v, data in graph.edges(data=True):
+            edges.append(
+                {
+                    "source": u,
+                    "target": v,
+                    "slot": data.get("slot", ""),
+                }
+            )
+
+        return {"nodes": nodes, "edges": edges, "target": experiment_id}
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
