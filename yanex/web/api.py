@@ -4,7 +4,7 @@ API routes for yanex web UI.
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from ..cli.filters import ExperimentFilter
 from ..core.dependency_graph import DependencyGraph
@@ -51,6 +51,18 @@ async def list_experiments(
 ) -> dict[str, Any]:
     """List experiments with filtering options."""
     try:
+        # Normalize FastAPI Query defaults when function is called directly
+        tags = tags if isinstance(tags, str) else None
+        status = status if isinstance(status, str) else None
+        name_pattern = name_pattern if isinstance(name_pattern, str) else None
+        started_after = started_after if isinstance(started_after, str) else None
+        started_before = started_before if isinstance(started_before, str) else None
+        ended_after = ended_after if isinstance(ended_after, str) else None
+        ended_before = ended_before if isinstance(ended_before, str) else None
+        sort_by = sort_by if isinstance(sort_by, str) else "created_at"
+        sort_order = sort_order if isinstance(sort_order, str) else "desc"
+        project = project if isinstance(project, str) else None
+
         # Parse tags if provided
         tag_list = None
         if tags:
@@ -294,18 +306,154 @@ async def get_status() -> dict[str, Any]:
 
 
 @router.get("/graph")
-async def get_dependency_graph() -> dict[str, Any]:
+async def get_dependency_graph(
+    limit: int | None = Query(
+        None, description="Maximum number of experiments to consider"
+    ),
+    status: str | None = Query(None, description="Filter by experiment status"),
+    name_pattern: str | None = Query(
+        None, description="Filter by name using glob patterns"
+    ),
+    tags: str | None = Query(
+        None, description="Comma-separated list of tags to filter by"
+    ),
+    started_after: str | None = Query(
+        None, description="Filter experiments started after this date"
+    ),
+    started_before: str | None = Query(
+        None, description="Filter experiments started before this date"
+    ),
+    ended_after: str | None = Query(
+        None, description="Filter experiments ended after this date"
+    ),
+    ended_before: str | None = Query(
+        None, description="Filter experiments ended before this date"
+    ),
+    sort_by: str = Query(
+        "created_at", description="Sort by field: 'name', 'status', 'created_at'"
+    ),
+    sort_order: str = Query(
+        "desc", description="Sort order: 'asc'/'desc' or 'newest'/'oldest'"
+    ),
+    project: str | None = Query(None, description="Filter by project name"),
+) -> dict[str, Any]:
     """Get the full dependency graph using the reverse graph.
 
     Returns all experiments that participate in at least one dependency
     relationship. Edges point from dependency to dependent (data-flow direction).
     """
     try:
+        # Parse tags if provided
+        tag_list = None
+        if tags:
+            tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
+
+        # Parse time filters
+        started_after_dt = None
+        started_before_dt = None
+        ended_after_dt = None
+        ended_before_dt = None
+
+        if started_after:
+            from ..cli.error_handling import CLIErrorHandler
+
+            started_after_dt, _, _, _ = CLIErrorHandler.parse_time_filters(
+                started_after, None, None, None
+            )
+
+        if started_before:
+            from ..cli.error_handling import CLIErrorHandler
+
+            _, started_before_dt, _, _ = CLIErrorHandler.parse_time_filters(
+                None, started_before, None, None
+            )
+
+        if ended_after:
+            from ..cli.error_handling import CLIErrorHandler
+
+            _, _, ended_after_dt, _ = CLIErrorHandler.parse_time_filters(
+                None, None, ended_after, None
+            )
+
+        if ended_before:
+            from ..cli.error_handling import CLIErrorHandler
+
+            _, _, _, ended_before_dt = CLIErrorHandler.parse_time_filters(
+                None, None, None, ended_before
+            )
+
+        # Apply same filtering semantics as experiment list endpoint
+        filtered_experiments = experiment_filter.filter_experiments(
+            status=status,
+            name=name_pattern,
+            tags=tag_list,
+            started_after=started_after_dt,
+            started_before=started_before_dt,
+            ended_after=ended_after_dt,
+            ended_before=ended_before_dt,
+            archived=False,
+            project=project,
+            limit=None,
+            include_all=True,
+        )
+
+        # Apply sorting semantics
+        # "none" preserves ExperimentFilter's natural ordering
+        if sort_order in ["newest", "oldest"]:
+            reverse = sort_order == "newest"
+            sort_by = "created_at"
+            if sort_by == "name":
+                filtered_experiments.sort(
+                    key=lambda x: (x.get("name") or "").lower(), reverse=reverse
+                )
+            elif sort_by == "status":
+                filtered_experiments.sort(
+                    key=lambda x: x.get("status", ""), reverse=reverse
+                )
+            else:
+                filtered_experiments.sort(
+                    key=lambda x: x.get("created_at", ""), reverse=reverse
+                )
+        elif sort_order in ["asc", "desc"]:
+            reverse = sort_order == "desc"
+            if sort_by == "name":
+                filtered_experiments.sort(
+                    key=lambda x: (x.get("name") or "").lower(), reverse=reverse
+                )
+            elif sort_by == "status":
+                filtered_experiments.sort(
+                    key=lambda x: x.get("status", ""), reverse=reverse
+                )
+            else:
+                filtered_experiments.sort(
+                    key=lambda x: x.get("created_at", ""), reverse=reverse
+                )
+
+        if limit and limit > 0:
+            filtered_experiments = filtered_experiments[:limit]
+
+        allowed_ids = {exp["id"] for exp in filtered_experiments}
+
         dep_graph = DependencyGraph(manager.storage)
         graph = dep_graph._reverse
 
+        # Keep only edges where both endpoints match filters
+        filtered_edges = []
+        node_ids: set[str] = set()
+        for u, v, data in graph.edges(data=True):
+            if u in allowed_ids and v in allowed_ids:
+                filtered_edges.append(
+                    {
+                        "source": u,
+                        "target": v,
+                        "slot": data.get("slot", ""),
+                    }
+                )
+                node_ids.add(u)
+                node_ids.add(v)
+
         nodes = []
-        for node_id in graph.nodes():
+        for node_id in node_ids:
             # Load config (parameters) for tooltip display
             params: dict[str, Any] = {}
             try:
@@ -341,17 +489,7 @@ async def get_dependency_graph() -> dict[str, Any]:
                 }
             )
 
-        edges = []
-        for u, v, data in graph.edges(data=True):
-            edges.append(
-                {
-                    "source": u,
-                    "target": v,
-                    "slot": data.get("slot", ""),
-                }
-            )
-
-        return {"nodes": nodes, "edges": edges}
+        return {"nodes": nodes, "edges": filtered_edges}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

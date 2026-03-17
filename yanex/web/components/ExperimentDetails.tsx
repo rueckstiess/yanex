@@ -8,6 +8,52 @@ interface ExperimentDetailsProps {
   experimentId: string
 }
 
+function isExpandableObject(value: any): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0
+  )
+}
+
+type ConfigRow = {
+  key: string
+  path: string
+  value: any
+  depth: number
+  expandable: boolean
+}
+
+function buildConfigRows(
+  obj: Record<string, any>,
+  expandedPaths: Set<string>,
+  prefix = '',
+  depth = 0,
+): ConfigRow[] {
+  const rows: ConfigRow[] = []
+
+  for (const [key, value] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${key}` : key
+    const expandable = isExpandableObject(value)
+
+    rows.push({ key, path, value, depth, expandable })
+
+    if (expandable && expandedPaths.has(path)) {
+      rows.push(...buildConfigRows(value as Record<string, any>, expandedPaths, path, depth + 1))
+    }
+  }
+
+  return rows
+}
+
+function formatConfigValue(value: any): string {
+  if (value === null) return 'null'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return JSON.stringify(value)
+}
+
 export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
   const [details, setDetails] = useState<{
     experiment: ExperimentDetailsType
@@ -30,6 +76,7 @@ export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -85,6 +132,19 @@ export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
   }
 
   const experiment = details.experiment
+  const configRows = buildConfigRows(details.config, expandedPaths)
+
+  const toggleExpanded = (path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) {
+        next.delete(path)
+      } else {
+        next.add(path)
+      }
+      return next
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -146,13 +206,30 @@ export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {Object.entries(details.config).map(([key, value]) => (
-                  <tr key={key}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {key}
+                {configRows.map((row) => (
+                  <tr key={row.path}>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900 font-mono break-all">
+                      <div
+                        className="flex items-center"
+                        style={{ paddingLeft: `${row.depth * 1.25}rem` }}
+                      >
+                        {row.expandable ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(row.path)}
+                            className="mr-2 text-gray-500 hover:text-gray-700"
+                            aria-label={expandedPaths.has(row.path) ? 'Collapse' : 'Expand'}
+                          >
+                            {expandedPaths.has(row.path) ? '▾' : '▸'}
+                          </button>
+                        ) : (
+                          <span className="mr-2 text-gray-300">•</span>
+                        )}
+                        <span>{row.key}</span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                    <td className="px-6 py-4 text-sm text-gray-500 break-all font-mono">
+                      {row.expandable ? '{...}' : formatConfigValue(row.value)}
                     </td>
                   </tr>
                 ))}

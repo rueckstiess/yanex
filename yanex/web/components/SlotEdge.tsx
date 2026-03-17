@@ -28,6 +28,10 @@ function SlotEdge({
   })
 
   const slot = (data as Record<string, any>)?.slot || ''
+  const labelOffsetX = (data as Record<string, any>)?.labelOffsetX || 0
+  const labelOffsetY = (data as Record<string, any>)?.labelOffsetY || 0
+  const targetLabelX = targetX + labelOffsetX
+  const targetLabelY = targetY + labelOffsetY
 
   return (
     <>
@@ -41,9 +45,9 @@ function SlotEdge({
         <EdgeLabelRenderer>
           <div
             className="absolute bg-white px-1.5 py-0.5 rounded border border-gray-200
-              text-[10px] text-gray-500 font-medium pointer-events-none"
+              text-[10px] text-gray-500 font-medium pointer-events-none nodrag nopan"
             style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              transform: `translate(-50%, -50%) translate(${targetLabelX}px, ${targetLabelY}px)`,
             }}
           >
             {slot}
