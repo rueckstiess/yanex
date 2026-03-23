@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -53,42 +53,220 @@ interface GraphFilters {
 
 const NODE_WIDTH = 220
 const NODE_HEIGHT = 80
+const COMPONENT_GAP_Y = 140
 
 const nodeTypes = { experiment: ExperimentNode }
 const edgeTypes = { slot: SlotEdge }
 
+function getGraphNodeSortKey(node: GraphNode) {
+  const normalizedName = (node.name ?? '').toLowerCase()
+  return `${normalizedName}\u0000${node.id}`
+}
+
+function compareGraphNodes(leftNode: GraphNode, rightNode: GraphNode) {
+  return getGraphNodeSortKey(rightNode).localeCompare(getGraphNodeSortKey(leftNode))
+}
+
+function createComponentGraph(componentNodes: Node[], componentEdges: Edge[]) {
+  const componentGraph = new dagre.graphlib.Graph()
+  componentGraph.setDefaultEdgeLabel(() => ({}))
+  componentGraph.setGraph({
+    rankdir: 'LR',
+    nodesep: 90,
+    ranksep: 120,
+    edgesep: 30,
+  })
+
+  componentNodes.forEach((node) => {
+    componentGraph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
+  })
+
+  componentEdges.forEach((edge) => {
+    componentGraph.setEdge(edge.source, edge.target)
+  })
+
+  return componentGraph
+}
+
 /**
- * Auto-layout nodes using dagre (top-to-bottom).
+ * Auto-layout nodes using dagre.
+ *
+ * - Within each connected component: left-to-right (LR)
+ * - Across disconnected components: stacked top-to-bottom for clean separation
  */
 function layoutGraph(
   nodes: Node[],
   edges: Edge[],
 ): { nodes: Node[]; edges: Edge[] } {
-  const g = new dagre.graphlib.Graph()
-  g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80, edgesep: 30 })
+  if (nodes.length === 0) {
+    return { nodes, edges }
+  }
 
-  nodes.forEach((node) => {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
-  })
+  const nodeOrder = new Map<string, number>()
+  nodes.forEach((node, index) => nodeOrder.set(node.id, index))
 
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const adjacency = new Map<string, Set<string>>()
+
+  nodes.forEach((node) => adjacency.set(node.id, new Set()))
   edges.forEach((edge) => {
-    g.setEdge(edge.source, edge.target)
+    if (!adjacency.has(edge.source) || !adjacency.has(edge.target)) {
+      return
+    }
+    adjacency.get(edge.source)?.add(edge.target)
+    adjacency.get(edge.target)?.add(edge.source)
   })
 
-  dagre.layout(g)
+  const visited = new Set<string>()
+  const components: string[][] = []
 
-  const layoutedNodes = nodes.map((node) => {
-    const dagreNode = g.node(node.id)
-    return {
-      ...node,
-      position: {
+  for (const node of nodes) {
+    if (visited.has(node.id)) {
+      continue
+    }
+
+    const stack = [node.id]
+    const component: string[] = []
+    visited.add(node.id)
+
+    while (stack.length > 0) {
+      const current = stack.pop()
+      if (!current) continue
+      component.push(current)
+
+      const neighbors = adjacency.get(current)
+      if (!neighbors) {
+        continue
+      }
+
+      neighbors.forEach((neighbor) => {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor)
+          stack.push(neighbor)
+        }
+      })
+    }
+
+    component.sort((leftId, rightId) => {
+      return (nodeOrder.get(leftId) ?? 0) - (nodeOrder.get(rightId) ?? 0)
+    })
+    components.push(component)
+  }
+
+  components.sort((leftComponent, rightComponent) => {
+    const leftFirst = nodeOrder.get(leftComponent[0]) ?? 0
+    const rightFirst = nodeOrder.get(rightComponent[0]) ?? 0
+    return leftFirst - rightFirst
+  })
+
+  const positionedNodesById = new Map<string, Node>()
+  let currentY = 0
+
+  for (const componentNodeIds of components) {
+    const componentNodeIdSet = new Set(componentNodeIds)
+    const componentNodes = componentNodeIds
+      .map((nodeId) => nodeById.get(nodeId))
+      .filter((node): node is Node => node !== undefined)
+
+    const componentEdges = edges.filter(
+      (edge) =>
+        componentNodeIdSet.has(edge.source) && componentNodeIdSet.has(edge.target),
+    )
+
+    const incomingCounts = new Map<string, number>()
+    const outgoingCounts = new Map<string, number>()
+    componentNodeIds.forEach((nodeId) => {
+      incomingCounts.set(nodeId, 0)
+      outgoingCounts.set(nodeId, 0)
+    })
+    componentEdges.forEach((edge) => {
+      incomingCounts.set(edge.target, (incomingCounts.get(edge.target) ?? 0) + 1)
+      outgoingCounts.set(edge.source, (outgoingCounts.get(edge.source) ?? 0) + 1)
+    })
+
+    const rootNodeIds = componentNodeIds.filter(
+      (nodeId) => (incomingCounts.get(nodeId) ?? 0) === 0,
+    )
+
+    let componentGraph = createComponentGraph(componentNodes, componentEdges)
+    dagre.layout(componentGraph)
+
+    const primaryRootId = [...rootNodeIds].sort((leftId, rightId) => {
+      const outgoingDelta =
+        (outgoingCounts.get(rightId) ?? 0) - (outgoingCounts.get(leftId) ?? 0)
+      if (outgoingDelta !== 0) {
+        return outgoingDelta
+      }
+      return (nodeOrder.get(leftId) ?? 0) - (nodeOrder.get(rightId) ?? 0)
+    })[0]
+
+    const secondaryRootFanout = [...rootNodeIds]
+      .filter((nodeId) => nodeId !== primaryRootId)
+      .reduce(
+        (maxFanout, nodeId) => Math.max(maxFanout, outgoingCounts.get(nodeId) ?? 0),
+        0,
+      )
+
+    const shouldGuideSecondaryRoots =
+      rootNodeIds.length > 1 &&
+      primaryRootId !== undefined &&
+      (outgoingCounts.get(primaryRootId) ?? 0) >= 8 &&
+      (outgoingCounts.get(primaryRootId) ?? 0) >= secondaryRootFanout * 2
+
+    if (shouldGuideSecondaryRoots && primaryRootId) {
+      const guidedGraph = createComponentGraph(componentNodes, componentEdges)
+      const secondaryRoots = rootNodeIds
+        .filter((nodeId) => nodeId !== primaryRootId)
+        .sort((leftId, rightId) => {
+          const leftY = guidedGraph.node(leftId)?.y ?? componentGraph.node(leftId)?.y ?? 0
+          const rightY = guidedGraph.node(rightId)?.y ?? componentGraph.node(rightId)?.y ?? 0
+          return leftY - rightY
+        })
+
+      secondaryRoots.forEach((rootId) => {
+        guidedGraph.setEdge(primaryRootId, rootId, {
+          minlen: 1,
+          weight: 0.1,
+          guide: true,
+        })
+      })
+
+      dagre.layout(guidedGraph)
+      componentGraph = guidedGraph
+    }
+
+    const componentTopLeftPositions = componentNodes.map((node) => {
+      const dagreNode = componentGraph.node(node.id)
+      return {
+        id: node.id,
         x: dagreNode.x - NODE_WIDTH / 2,
         y: dagreNode.y - NODE_HEIGHT / 2,
-      },
-    }
-  })
+      }
+    })
 
+    const minX = Math.min(...componentTopLeftPositions.map((p) => p.x))
+    const minY = Math.min(...componentTopLeftPositions.map((p) => p.y))
+    const maxY = Math.max(...componentTopLeftPositions.map((p) => p.y + NODE_HEIGHT))
+    const componentHeight = maxY - minY
+
+    componentNodes.forEach((node) => {
+      const localPosition = componentTopLeftPositions.find((p) => p.id === node.id)
+      if (!localPosition) {
+        return
+      }
+      positionedNodesById.set(node.id, {
+        ...node,
+        position: {
+          x: localPosition.x - minX,
+          y: localPosition.y - minY + currentY,
+        },
+      })
+    })
+
+    currentY += componentHeight + COMPONENT_GAP_Y
+  }
+
+  const layoutedNodes = nodes.map((node) => positionedNodesById.get(node.id) ?? node)
   return { nodes: layoutedNodes, edges }
 }
 
@@ -96,7 +274,32 @@ function layoutGraph(
  * Convert API graph data to React Flow nodes and edges.
  */
 function toReactFlow(data: GraphData): { nodes: Node[]; edges: Edge[] } {
-  const rfNodes: Node[] = data.nodes.map((n) => ({
+  const sortedGraphNodes = [...data.nodes].sort(compareGraphNodes)
+  const graphNodesById = new Map(sortedGraphNodes.map((node) => [node.id, node]))
+
+  const sortedGraphEdges = [...data.edges].sort((leftEdge, rightEdge) => {
+    const leftSource = graphNodesById.get(leftEdge.source)
+    const rightSource = graphNodesById.get(rightEdge.source)
+    if (leftSource && rightSource) {
+      const sourceDelta = compareGraphNodes(leftSource, rightSource)
+      if (sourceDelta !== 0) {
+        return sourceDelta
+      }
+    }
+
+    const leftTarget = graphNodesById.get(leftEdge.target)
+    const rightTarget = graphNodesById.get(rightEdge.target)
+    if (leftTarget && rightTarget) {
+      const targetDelta = compareGraphNodes(leftTarget, rightTarget)
+      if (targetDelta !== 0) {
+        return targetDelta
+      }
+    }
+
+    return leftEdge.slot.localeCompare(rightEdge.slot)
+  })
+
+  const rfNodes: Node[] = sortedGraphNodes.map((n) => ({
     id: n.id,
     type: 'experiment',
     position: { x: 0, y: 0 },
@@ -112,19 +315,29 @@ function toReactFlow(data: GraphData): { nodes: Node[]; edges: Edge[] } {
   }))
 
   const incomingEdgeCounts = new Map<string, number>()
-  for (const edge of data.edges) {
+  const outgoingEdgeCounts = new Map<string, number>()
+  for (const edge of sortedGraphEdges) {
     incomingEdgeCounts.set(
       edge.target,
       (incomingEdgeCounts.get(edge.target) || 0) + 1,
     )
+    outgoingEdgeCounts.set(
+      edge.source,
+      (outgoingEdgeCounts.get(edge.source) || 0) + 1,
+    )
   }
 
   const incomingEdgeIndex = new Map<string, number>()
+  const outgoingEdgeIndex = new Map<string, number>()
 
-  const rfEdges: Edge[] = data.edges.map((e, i) => {
-    const count = incomingEdgeCounts.get(e.target) || 1
-    const index = incomingEdgeIndex.get(e.target) || 0
-    incomingEdgeIndex.set(e.target, index + 1)
+  const rfEdges: Edge[] = sortedGraphEdges.map((e, i) => {
+    const incomingCount = incomingEdgeCounts.get(e.target) || 1
+    const incomingIndex = incomingEdgeIndex.get(e.target) || 0
+    incomingEdgeIndex.set(e.target, incomingIndex + 1)
+
+    const outgoingCount = outgoingEdgeCounts.get(e.source) || 1
+    const outgoingIndex = outgoingEdgeIndex.get(e.source) || 0
+    outgoingEdgeIndex.set(e.source, outgoingIndex + 1)
 
     return {
       id: `e-${e.source}-${e.target}-${i}`,
@@ -133,8 +346,11 @@ function toReactFlow(data: GraphData): { nodes: Node[]; edges: Edge[] } {
       type: 'slot',
       data: {
         slot: e.slot,
-        labelOffsetX: count > 1 ? (index - (count - 1) / 2) * 56 : 0,
-        labelOffsetY: -18,
+        labelOffsetX: -56,
+        labelOffsetY:
+          incomingCount > 1 ? (incomingIndex - (incomingCount - 1) / 2) * 18 : -14,
+        fanoutCount: outgoingCount,
+        fanoutIndex: outgoingIndex,
       },
       markerEnd: {
         type: MarkerType.ArrowClosed,
@@ -166,6 +382,8 @@ export function DependencyGraphView({ filters }: { filters: GraphFilters }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [graphData, setGraphData] = useState<GraphData | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const graphContainerRef = useRef<HTMLDivElement>(null)
 
   // Fetch full graph data with list-style filters
   useEffect(() => {
@@ -211,6 +429,27 @@ export function DependencyGraphView({ filters }: { filters: GraphFilters }) {
 
     fetchGraph()
   }, [filters, setNodes, setEdges])
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === graphContainerRef.current)
+    }
+
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+  }, [])
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement && graphContainerRef.current) {
+        await graphContainerRef.current.requestFullscreen()
+      } else if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      }
+    } catch {
+      setError('Failed to toggle fullscreen mode')
+    }
+  }
 
   const miniMapNodeColor = useCallback(
     (node: Node) => {
@@ -271,29 +510,42 @@ export function DependencyGraphView({ filters }: { filters: GraphFilters }) {
     <div className="space-y-4">
       {/* Stats bar */}
       {stats && (
-        <div className="flex items-center gap-4 text-sm text-gray-500">
-          <span>{stats.total} experiments</span>
-          <span className="text-gray-300">|</span>
-          <span>{stats.edges} dependencies</span>
-          <span className="text-gray-300">|</span>
-          <span>{stats.completed} completed</span>
-          <span className="text-gray-300">|</span>
-          {Object.entries(stats.statusCounts)
-            .filter(([status]) => status !== 'completed')
-            .map(([status, count]) => (
-            <span key={status} className="flex items-center gap-1">
-              <span
-                className="w-2 h-2 rounded-full inline-block"
-                style={{ backgroundColor: statusMiniMapColors[status] || '#9ca3af' }}
-              />
-              {count} {status}
-            </span>
-            ))}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <span>{stats.total} experiments</span>
+            <span className="text-gray-300">|</span>
+            <span>{stats.edges} dependencies</span>
+            <span className="text-gray-300">|</span>
+            <span>{stats.completed} completed</span>
+            <span className="text-gray-300">|</span>
+            {Object.entries(stats.statusCounts)
+              .filter(([status]) => status !== 'completed')
+              .map(([status, count]) => (
+                <span key={status} className="flex items-center gap-1">
+                  <span
+                    className="w-2 h-2 rounded-full inline-block"
+                    style={{ backgroundColor: statusMiniMapColors[status] || '#9ca3af' }}
+                  />
+                  {count} {status}
+                </span>
+              ))}
+          </div>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="btn btn-secondary"
+          >
+            {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          </button>
         </div>
       )}
 
       {/* Graph */}
-      <div className="card" style={{ height: '70vh' }}>
+      <div
+        ref={graphContainerRef}
+        className="card bg-white"
+        style={{ height: isFullscreen ? '100vh' : '70vh' }}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}

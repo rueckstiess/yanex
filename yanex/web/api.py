@@ -343,6 +343,18 @@ async def get_dependency_graph(
     relationship. Edges point from dependency to dependent (data-flow direction).
     """
     try:
+        # Normalize FastAPI Query defaults when function is called directly
+        tags = tags if isinstance(tags, str) else None
+        status = status if isinstance(status, str) else None
+        name_pattern = name_pattern if isinstance(name_pattern, str) else None
+        started_after = started_after if isinstance(started_after, str) else None
+        started_before = started_before if isinstance(started_before, str) else None
+        ended_after = ended_after if isinstance(ended_after, str) else None
+        ended_before = ended_before if isinstance(ended_before, str) else None
+        sort_by = sort_by if isinstance(sort_by, str) else "created_at"
+        sort_order = sort_order if isinstance(sort_order, str) else "desc"
+        project = project if isinstance(project, str) else None
+
         # Parse tags if provided
         tag_list = None
         if tags:
@@ -451,6 +463,12 @@ async def get_dependency_graph(
                 )
                 node_ids.add(u)
                 node_ids.add(v)
+
+        # Also include filtered experiments that are part of the dependency graph,
+        # even if no same-filter edge remains (e.g. failed child of completed parent)
+        for exp_id in allowed_ids:
+            if exp_id in graph:
+                node_ids.add(exp_id)
 
         nodes = []
         for node_id in node_ids:

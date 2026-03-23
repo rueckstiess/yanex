@@ -2,18 +2,20 @@ import { useState } from 'react'
 import { DependencyGraphView } from '@/components/DependencyGraph'
 import { ExperimentFilters } from '@/components/ExperimentFilters'
 
+const defaultGraphFilters = {
+  status: '',
+  name_pattern: '',
+  tags: '',
+  limit: 0,
+  started_before: '',
+  started_after: '',
+  ended_before: '',
+  ended_after: '',
+  sort_order: 'none',
+}
+
 export default function GraphPage() {
-  const [filters, setFilters] = useState({
-    status: '',
-    name_pattern: '',
-    tags: '',
-    limit: 0,
-    started_before: '',
-    started_after: '',
-    ended_before: '',
-    ended_after: '',
-    sort_order: 'none',
-  })
+  const [filters, setFilters] = useState(defaultGraphFilters)
 
   const handleFilterChange = (newFilters: Partial<typeof filters>) => {
     setFilters((prev) => ({ ...prev, ...newFilters }))
@@ -33,6 +35,8 @@ export default function GraphPage() {
           <ExperimentFilters
             filters={filters}
             onFilterChange={handleFilterChange}
+            showSortOrder={false}
+            clearFilters={defaultGraphFilters}
           />
         </div>
 

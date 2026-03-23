@@ -2,7 +2,6 @@ import { memo } from 'react'
 import {
   BaseEdge,
   EdgeLabelRenderer,
-  getSmoothStepPath,
   type EdgeProps,
 } from '@xyflow/react'
 
@@ -17,19 +16,35 @@ function SlotEdge({
   data,
   markerEnd,
 }: EdgeProps) {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-    borderRadius: 8,
-  })
+  const edgeData = (data as Record<string, any>) || {}
+  const fanoutCount = Number(edgeData.fanoutCount || 1)
 
-  const slot = (data as Record<string, any>)?.slot || ''
-  const labelOffsetX = (data as Record<string, any>)?.labelOffsetX || 0
-  const labelOffsetY = (data as Record<string, any>)?.labelOffsetY || 0
+  const isNearlyHorizontal = Math.abs(sourceY - targetY) <= 6
+
+  let edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`
+  let labelX = (sourceX + targetX) / 2
+  let labelY = (sourceY + targetY) / 2
+
+  if (!isNearlyHorizontal) {
+    const hasSiblingFanout = fanoutCount > 1
+    const forkDistance = hasSiblingFanout ? 42 : 30
+
+    const branchXMin = sourceX + 12
+    const branchXMax = targetX - 12
+    const branchX = Math.max(
+      branchXMin,
+      Math.min(branchXMax, sourceX + forkDistance),
+    )
+
+    edgePath = `M ${sourceX} ${sourceY} H ${branchX} V ${targetY} H ${targetX}`
+
+    labelX = (branchX + targetX) / 2
+    labelY = targetY
+  }
+
+  const slot = edgeData.slot || ''
+  const labelOffsetX = edgeData.labelOffsetX || 0
+  const labelOffsetY = edgeData.labelOffsetY || 0
   const targetLabelX = targetX + labelOffsetX
   const targetLabelY = targetY + labelOffsetY
 

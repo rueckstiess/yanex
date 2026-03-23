@@ -64,7 +64,7 @@ function ExperimentNode({ data }: NodeProps) {
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
-      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2" />
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-2 !h-2" />
       <Link href={`/experiment/${nodeData.fullId}`}>
         <div
           className={`
@@ -96,7 +96,7 @@ function ExperimentNode({ data }: NodeProps) {
           )}
         </div>
       </Link>
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2" />
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-2 !h-2" />
 
       {/* Tooltip rendered via portal so it's not clipped by React Flow's node stacking */}
       {showTooltip && hasTooltipContent && typeof document !== 'undefined' &&

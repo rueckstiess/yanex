@@ -1,24 +1,142 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-interface ExperimentFiltersProps {
-  filters: {
-    status: string
-    name_pattern: string
-    tags: string
-    limit: number
-    started_before: string
-    started_after: string
-    ended_before: string
-    ended_after: string
-    sort_order: string
-  }
-  onFilterChange: (filters: Partial<ExperimentFiltersProps['filters']>) => void
+function pad2(value: number): string {
+  return String(value).padStart(2, '0')
 }
 
-export function ExperimentFilters({ filters, onFilterChange }: ExperimentFiltersProps) {
+function getLocalDateTimeParts(value: string): { date: string; time: string } {
+  if (!value) return { date: '', time: '' }
+
+  const dateObj = new Date(value.endsWith('Z') ? value : `${value}Z`)
+  if (Number.isNaN(dateObj.getTime())) return { date: '', time: '' }
+
+  const date = `${dateObj.getFullYear()}-${pad2(dateObj.getMonth() + 1)}-${pad2(dateObj.getDate())}`
+  const time = `${pad2(dateObj.getHours())}:${pad2(dateObj.getMinutes())}`
+  return { date, time }
+}
+
+function localDateTimeToUtcString(date: string, time: string): string | null {
+  if (!date) return null
+
+  const [year, month, day] = date.split('-').map(Number)
+  const [hours, minutes] = (time || '00:00').split(':').map(Number)
+
+  if (
+    Number.isNaN(year) ||
+    Number.isNaN(month) ||
+    Number.isNaN(day) ||
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes)
+  ) {
+    return null
+  }
+
+  const localDateTime = new Date(year, month - 1, day, hours, minutes, 0)
+  return localDateTime.toISOString().split('.')[0]
+}
+
+function isValidDateInput(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
+
+  const [year, month, day] = date.split('-').map(Number)
+  const dateObj = new Date(year, month - 1, day)
+
+  return (
+    dateObj.getFullYear() == year &&
+    dateObj.getMonth() == month - 1 &&
+    dateObj.getDate() == day
+  )
+}
+
+function getTodayLocalDate(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
+interface FilterValues {
+  status: string
+  name_pattern: string
+  tags: string
+  limit: number
+  started_before: string
+  started_after: string
+  ended_before: string
+  ended_after: string
+  sort_order: string
+}
+
+interface ExperimentFiltersProps {
+  filters: FilterValues
+  onFilterChange: (filters: Partial<FilterValues>) => void
+  showSortOrder?: boolean
+  clearFilters?: FilterValues
+}
+
+const DEFAULT_CLEAR_FILTERS: FilterValues = {
+  status: '',
+  name_pattern: '',
+  tags: '',
+  limit: 50,
+  started_before: '',
+  started_after: '',
+  ended_before: '',
+  ended_after: '',
+  sort_order: 'none',
+}
+
+export function ExperimentFilters({
+  filters,
+  onFilterChange,
+  showSortOrder = true,
+  clearFilters = DEFAULT_CLEAR_FILTERS,
+}: ExperimentFiltersProps) {
   const [dateFilterType, setDateFilterType] = useState<'started' | 'ended'>('started')
+  const [afterDateInput, setAfterDateInput] = useState('')
+  const [afterTimeInput, setAfterTimeInput] = useState('')
+  const [beforeDateInput, setBeforeDateInput] = useState('')
+  const [beforeTimeInput, setBeforeTimeInput] = useState('')
+
+  const activeAfter = dateFilterType === 'started' ? filters.started_after : filters.ended_after
+  const activeBefore = dateFilterType === 'started' ? filters.started_before : filters.ended_before
+
+  useEffect(() => {
+    const afterParts = getLocalDateTimeParts(activeAfter)
+    const beforeParts = getLocalDateTimeParts(activeBefore)
+    setAfterDateInput(afterParts.date)
+    setAfterTimeInput(afterParts.time)
+    setBeforeDateInput(beforeParts.date)
+    setBeforeTimeInput(beforeParts.time)
+  }, [dateFilterType, activeAfter, activeBefore])
+
+  const commitBoundValue = (
+    bound: 'after' | 'before',
+    dateValue: string,
+    timeValue: string,
+  ) => {
+    const key =
+      dateFilterType === 'started'
+        ? bound === 'after'
+          ? 'started_after'
+          : 'started_before'
+        : bound === 'after'
+          ? 'ended_after'
+          : 'ended_before'
+
+    if (!dateValue) {
+      onFilterChange({ [key]: '' })
+      return
+    }
+
+    if (!isValidDateInput(dateValue)) {
+      return
+    }
+
+    const utcString = localDateTimeToUtcString(dateValue, timeValue || '00:00')
+    if (!utcString) return
+    onFilterChange({ [key]: utcString })
+  }
   const statusOptions = [
     { value: '', label: 'All Statuses' },
     { value: 'staged', label: 'Staged' },
@@ -125,61 +243,46 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
             </label>
             <div className="grid grid-cols-2 gap-2">
               <input
-                type="date"
-                value={(() => {
-                  const value = dateFilterType === 'started' ? filters.started_after : filters.ended_after
-                  if (!value) return ''
-                  // Convert UTC to local for display
-                  const utcDate = new Date(value + 'Z')
-                  return utcDate.toISOString().split('T')[0]
-                })()}
+                type="text"
+                inputMode="numeric"
+                pattern="\d{4}-\d{2}-\d{2}"
+                placeholder="YYYY-MM-DD"
+                value={afterDateInput}
                 onChange={(e) => {
-                  const currentValue = dateFilterType === 'started' ? filters.started_after : filters.ended_after
-                  const currentTime = currentValue ? new Date(currentValue + 'Z').toISOString().split('T')[1].substring(0, 5) : '00:00'
-                  
-                  if (!e.target.value) {
-                    // Clear the filter
-                    if (dateFilterType === 'started') {
-                      onFilterChange({ started_after: '' })
-                    } else {
-                      onFilterChange({ ended_after: '' })
-                    }
+                  const nextDate = e.target.value
+                  setAfterDateInput(nextDate)
+                  if (isValidDateInput(nextDate)) {
+                    commitBoundValue('after', nextDate, afterTimeInput)
+                  }
+                }}
+                onBlur={() => {
+                  if (!afterDateInput) {
+                    commitBoundValue('after', '', afterTimeInput)
                     return
                   }
-                  
-                  // Create local datetime and convert to UTC
-                  const localDateTime = new Date(`${e.target.value}T${currentTime}`)
-                  const utcString = localDateTime.toISOString().split('.')[0] // Remove milliseconds
-                  
-                  if (dateFilterType === 'started') {
-                    onFilterChange({ started_after: utcString })
-                  } else {
-                    onFilterChange({ ended_after: utcString })
+
+                  if (isValidDateInput(afterDateInput)) {
+                    commitBoundValue('after', afterDateInput, afterTimeInput)
+                    return
                   }
+
+                  setAfterDateInput(getLocalDateTimeParts(activeAfter).date)
                 }}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
               />
               <input
                 type="time"
-                value={(() => {
-                  const value = dateFilterType === 'started' ? filters.started_after : filters.ended_after
-                  if (!value) return ''
-                  // Convert UTC to local for display
-                  const utcDate = new Date(value + 'Z')
-                  return utcDate.toISOString().split('T')[1].substring(0, 5)
-                })()}
+                value={afterTimeInput}
                 onChange={(e) => {
-                  const currentValue = dateFilterType === 'started' ? filters.started_after : filters.ended_after
-                  const currentDate = currentValue ? new Date(currentValue + 'Z').toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
-                  
-                  // Create local datetime and convert to UTC
-                  const localDateTime = new Date(`${currentDate}T${e.target.value}`)
-                  const utcString = localDateTime.toISOString().split('.')[0] // Remove milliseconds
-                  
-                  if (dateFilterType === 'started') {
-                    onFilterChange({ started_after: utcString })
-                  } else {
-                    onFilterChange({ ended_after: utcString })
+                  const nextTime = e.target.value
+                  setAfterTimeInput(nextTime)
+                  if (afterDateInput.length === 10 && nextTime.length === 5) {
+                    commitBoundValue('after', afterDateInput, nextTime)
+                  }
+                }}
+                onBlur={() => {
+                  if (afterDateInput.length === 10) {
+                    commitBoundValue('after', afterDateInput, afterTimeInput)
                   }
                 }}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
@@ -193,61 +296,46 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
             </label>
             <div className="grid grid-cols-2 gap-2">
               <input
-                type="date"
-                value={(() => {
-                  const value = dateFilterType === 'started' ? filters.started_before : filters.ended_before
-                  if (!value) return ''
-                  // Convert UTC to local for display
-                  const utcDate = new Date(value + 'Z')
-                  return utcDate.toISOString().split('T')[0]
-                })()}
+                type="text"
+                inputMode="numeric"
+                pattern="\d{4}-\d{2}-\d{2}"
+                placeholder="YYYY-MM-DD"
+                value={beforeDateInput}
                 onChange={(e) => {
-                  const currentValue = dateFilterType === 'started' ? filters.started_before : filters.ended_before
-                  const currentTime = currentValue ? new Date(currentValue + 'Z').toISOString().split('T')[1].substring(0, 5) : '00:00'
-                  
-                  if (!e.target.value) {
-                    // Clear the filter
-                    if (dateFilterType === 'started') {
-                      onFilterChange({ started_before: '' })
-                    } else {
-                      onFilterChange({ ended_before: '' })
-                    }
+                  const nextDate = e.target.value
+                  setBeforeDateInput(nextDate)
+                  if (isValidDateInput(nextDate)) {
+                    commitBoundValue('before', nextDate, beforeTimeInput)
+                  }
+                }}
+                onBlur={() => {
+                  if (!beforeDateInput) {
+                    commitBoundValue('before', '', beforeTimeInput)
                     return
                   }
-                  
-                  // Create local datetime and convert to UTC
-                  const localDateTime = new Date(`${e.target.value}T${currentTime}`)
-                  const utcString = localDateTime.toISOString().split('.')[0] // Remove milliseconds
-                  
-                  if (dateFilterType === 'started') {
-                    onFilterChange({ started_before: utcString })
-                  } else {
-                    onFilterChange({ ended_before: utcString })
+
+                  if (isValidDateInput(beforeDateInput)) {
+                    commitBoundValue('before', beforeDateInput, beforeTimeInput)
+                    return
                   }
+
+                  setBeforeDateInput(getLocalDateTimeParts(activeBefore).date)
                 }}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
               />
               <input
                 type="time"
-                value={(() => {
-                  const value = dateFilterType === 'started' ? filters.started_before : filters.ended_before
-                  if (!value) return ''
-                  // Convert UTC to local for display
-                  const utcDate = new Date(value + 'Z')
-                  return utcDate.toISOString().split('T')[1].substring(0, 5)
-                })()}
+                value={beforeTimeInput}
                 onChange={(e) => {
-                  const currentValue = dateFilterType === 'started' ? filters.started_before : filters.ended_before
-                  const currentDate = currentValue ? new Date(currentValue + 'Z').toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
-                  
-                  // Create local datetime and convert to UTC
-                  const localDateTime = new Date(`${currentDate}T${e.target.value}`)
-                  const utcString = localDateTime.toISOString().split('.')[0] // Remove milliseconds
-                  
-                  if (dateFilterType === 'started') {
-                    onFilterChange({ started_before: utcString })
-                  } else {
-                    onFilterChange({ ended_before: utcString })
+                  const nextTime = e.target.value
+                  setBeforeTimeInput(nextTime)
+                  if (beforeDateInput.length === 10 && nextTime.length === 5) {
+                    commitBoundValue('before', beforeDateInput, nextTime)
+                  }
+                }}
+                onBlur={() => {
+                  if (beforeDateInput.length === 10) {
+                    commitBoundValue('before', beforeDateInput, beforeTimeInput)
                   }
                 }}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-transparent"
@@ -278,35 +366,27 @@ export function ExperimentFilters({ filters, onFilterChange }: ExperimentFilters
         </select>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Sort Order
-        </label>
-        <select
-          value={filters.sort_order}
-          onChange={(e) => onFilterChange({ sort_order: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-        >
-          {sortOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      {showSortOrder && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Sort Order
+          </label>
+          <select
+            value={filters.sort_order}
+            onChange={(e) => onFilterChange({ sort_order: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          >
+            {sortOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <button
-        onClick={() => onFilterChange({ 
-          status: '', 
-          name_pattern: '', 
-          tags: '', 
-          limit: 50,
-          started_before: '',
-          started_after: '',
-          ended_before: '',
-          ended_after: '',
-          sort_order: 'none'
-        })}
+        onClick={() => onFilterChange(clearFilters)}
         className="w-full btn btn-secondary"
       >
         Clear Filters
