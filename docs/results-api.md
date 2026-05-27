@@ -166,7 +166,7 @@ params_df = df.xs("param", axis=1, level=0)  # All parameters
 **Raises:**
 - `ImportError`: If pandas is not available
 
-#### `yanex.results.get_metrics(metrics=None, include_params='auto', as_dataframe=True, **filters)`
+#### `yanex.results.get_metrics(metrics=None, params='auto', as_dataframe=True, **filters)`
 
 Get time-series metrics from multiple experiments in long (tidy) format, optimized for visualization with matplotlib and pandas.
 
@@ -186,14 +186,14 @@ plt.legend()
 plt.show()
 
 # Control parameter inclusion
-df = yr.get_metrics(tags=["training"], include_params="all")     # All params
-df = yr.get_metrics(tags=["training"], include_params="none")    # No params
-df = yr.get_metrics(tags=["training"], include_params=["lr"])    # Specific params
+df = yr.get_metrics(tags=["training"], params="all")     # All params
+df = yr.get_metrics(tags=["training"], params="none")    # No params
+df = yr.get_metrics(tags=["training"], params=["lr"])    # Specific params
 ```
 
 **Parameters:**
 - `metrics` (str | list[str], optional): Metric name(s) to include. If None, includes all metrics.
-- `include_params` (str | list[str], default='auto'):
+- `params` (str | list[str], default='auto'):
   - `'auto'`: Include only parameters that vary across experiments (default)
   - `'all'`: Include all parameters
   - `'none'`: Include no parameters
@@ -207,7 +207,7 @@ df = yr.get_metrics(tags=["training"], include_params=["lr"])    # Specific para
   - `step`: Metric step/iteration number
   - `metric_name`: Name of the metric
   - `value`: Metric value
-  - `<param_cols>`: Parameter columns (based on `include_params`)
+  - `<param_cols>`: Parameter columns (based on `params`)
 - `dict[str, list[dict]]` (if `as_dataframe=False`): Experiment ID → metrics list
 
 **Use Cases:**
