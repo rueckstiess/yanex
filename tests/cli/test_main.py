@@ -5,6 +5,7 @@ Tests for yanex CLI main entry point.
 import pytest
 
 from tests.test_utils import TestFileHelpers, create_cli_runner
+from yanex import __version__
 from yanex.cli.main import cli
 
 
@@ -26,7 +27,7 @@ class TestCLIMain:
         """Test CLI version output."""
         result = self.runner.invoke(cli, ["--version"])
         assert result.exit_code == 0
-        assert "0.6.0" in result.output
+        assert __version__ in result.output
 
     def test_run_command_help(self):
         """Test run command help."""

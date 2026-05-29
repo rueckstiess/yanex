@@ -9,13 +9,15 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from yanex._version import __version__
+
 from .api import router as api_router
 
 # Create FastAPI app
 app = FastAPI(
     title="Yanex Web UI",
     description="Web interface for yanex experiment tracking",
-    version="0.6.0",
+    version=__version__,
 )
 
 # Include API routes first (highest priority)
