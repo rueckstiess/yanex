@@ -47,7 +47,11 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
-matplotlib = ["matplotlib>=3.5.0"]
+results = [
+    "matplotlib>=3.5.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+]
 
 [project.scripts]
 yanex = "yanex.cli.main:cli"

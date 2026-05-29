@@ -56,10 +56,19 @@ from .core.artifact_formats import register_format
 
 # Batch execution API
 from .executor import ExperimentResult, ExperimentSpec, run_multiple
-from .results.experiment import Experiment
 
 __version__ = "0.6.0"
 __author__ = "Thomas"
+
+
+def __getattr__(name: str):
+    """Lazily expose optional analysis objects from the top-level package."""
+    if name == "Experiment":
+        from .results.experiment import Experiment
+
+        return Experiment
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     # Parameter access

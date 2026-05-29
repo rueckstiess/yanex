@@ -1631,8 +1631,10 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
 ]
-matplotlib = [
+results = [
     { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
 ]
 
 [package.dev-dependencies]
@@ -1648,9 +1650,11 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "httpx", specifier = ">=0.24.0" },
-    { name = "matplotlib", marker = "extra == 'matplotlib'", specifier = ">=3.5.0" },
+    { name = "matplotlib", marker = "extra == 'results'", specifier = ">=3.5.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "networkx", specifier = ">=3.0" },
+    { name = "numpy", marker = "extra == 'results'", specifier = ">=1.24.0" },
+    { name = "pandas", marker = "extra == 'results'", specifier = ">=2.0.0" },
     { name = "py-dagviz", specifier = ">=0.1.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
@@ -1661,7 +1665,7 @@ requires-dist = [
     { name = "textual", specifier = ">=0.45.0" },
     { name = "uvicorn", specifier = ">=0.20.0" },
 ]
-provides-extras = ["dev", "matplotlib"]
+provides-extras = ["dev", "results"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pandas", specifier = ">=2.3.3" }]

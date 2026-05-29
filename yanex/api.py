@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .results.experiment import Experiment
     from .results.graph import ExperimentGraph
 
 from .core.manager import ExperimentManager
-from .results.experiment import Experiment
 from .utils.dict_utils import get_nested_value
 from .utils.exceptions import (
     AmbiguousArtifactError,
@@ -333,6 +333,8 @@ def get_dependency(slot: str) -> Experiment | None:
     if dep_id is None:
         return None
 
+    from .results.experiment import Experiment
+
     try:
         return Experiment(dep_id, manager)
     except Exception:
@@ -377,6 +379,7 @@ def get_dependencies(
         return [] if transitive else {}  # Standalone mode - no dependencies
 
     manager = _get_experiment_manager()
+    from .results.experiment import Experiment
 
     # Get dependency IDs
     if transitive:
