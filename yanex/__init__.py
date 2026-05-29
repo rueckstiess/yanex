@@ -4,6 +4,7 @@ Yanex - Yet Another Experiment Tracker
 A lightweight, Git-aware experiment tracking system for Python.
 """
 
+from ._version import __version__
 from .api import (
     ExperimentContext,
     _clear_current_experiment_id,
@@ -57,7 +58,6 @@ from .core.artifact_formats import register_format
 # Batch execution API
 from .executor import ExperimentResult, ExperimentSpec, run_multiple
 
-__version__ = "0.6.0"
 __author__ = "Thomas"
 
 
@@ -71,6 +71,7 @@ def __getattr__(name: str):
 
 
 __all__ = [
+    "__version__",
     # Parameter access
     "get_params",
     "get_param",
