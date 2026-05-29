@@ -1,5 +1,7 @@
 """Tests for yanex run command error handling and validation."""
 
+import git
+
 from tests.test_utils import TestFileHelpers
 from yanex.cli.main import cli
 
@@ -84,6 +86,51 @@ class TestRunCommandErrorHandling:
         assert result.exit_code == 0
         # Verbose mode should show running script message
         # (This tests lines 226-236 in run.py)
+
+    def test_run_in_unborn_git_repository(
+        self, tmp_path, cli_runner, monkeypatch, per_test_experiments_dir
+    ):
+        """Test run works in a git repository with no commits yet."""
+        git.Repo.init(tmp_path)
+        script_path = TestFileHelpers.create_test_script(tmp_path, "test.py", "simple")
+        monkeypatch.chdir(tmp_path)
+
+        result = cli_runner.invoke(cli, ["run", str(script_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "Experiment completed successfully:" in result.output
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        experiments = manager.storage.list_experiments()
+        assert len(experiments) == 1
+        metadata = manager.storage.load_metadata(experiments[0])
+        assert metadata["status"] == "completed"
+        assert metadata["git"]["has_uncommitted_changes"] is False
+        assert metadata["git"]["patch_file"] is None
+
+    def test_run_outside_git_repository(
+        self, tmp_path, cli_runner, monkeypatch, per_test_experiments_dir
+    ):
+        """Test run works when there is no git repository at all."""
+        script_path = TestFileHelpers.create_test_script(tmp_path, "test.py", "simple")
+        monkeypatch.chdir(tmp_path)
+
+        result = cli_runner.invoke(cli, ["run", str(script_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "Experiment completed successfully:" in result.output
+
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        experiments = manager.storage.list_experiments()
+        assert len(experiments) == 1
+        metadata = manager.storage.load_metadata(experiments[0])
+        assert metadata["status"] == "completed"
+        assert metadata["git"]["has_uncommitted_changes"] is False
+        assert metadata["git"]["patch_file"] is None
 
     def test_failed_experiments_in_sweep_summary(self, tmp_path, cli_runner):
         """Test that sweep summary shows failed experiments."""

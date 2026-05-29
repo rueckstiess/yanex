@@ -75,7 +75,7 @@ def capture_git_environment(repo_path: Path | None = None) -> dict[str, Any]:
 
         return git_info
 
-    except GitError:
+    except (GitError, git.GitError, ValueError, TypeError):
         # If we can't get git info, return minimal info
         return {
             "repository": None,

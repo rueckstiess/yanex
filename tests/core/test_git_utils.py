@@ -513,6 +513,13 @@ class TestGetCurrentCommitInfo:
             with pytest.raises(GitError, match="Failed to get commit info"):
                 get_current_commit_info()
 
+    def test_get_commit_info_unborn_repository(self, tmp_path):
+        """Test unborn git repositories are reported as unavailable commit info."""
+        git.Repo.init(tmp_path)
+
+        with pytest.raises(GitError, match="No commits found"):
+            get_current_commit_info(get_git_repo(tmp_path))
+
     def test_get_commit_info_detached_head(self):
         """Test getting commit info when in detached HEAD state."""
         with patch("yanex.core.git_utils.get_git_repo") as mock_get_repo:
