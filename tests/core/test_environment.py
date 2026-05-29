@@ -144,6 +144,20 @@ class TestCaptureGitEnvironment:
         assert "error" in result
         assert "Git repository not found" in result["error"]
 
+    def test_capture_git_environment_unborn_repo(self, temp_dir):
+        """Test capturing git environment before the first commit."""
+        import git
+
+        git.Repo.init(temp_dir)
+
+        result = capture_git_environment(temp_dir)
+
+        assert isinstance(result, dict)
+        assert result["repository"] is None
+        assert result["commit"] is None
+        assert result["git_version"] is None
+        assert "error" in result
+
     @pytest.mark.parametrize(
         "mock_repo_info,mock_commit_info,git_version",
         [
