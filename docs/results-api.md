@@ -19,6 +19,13 @@ df = yr.compare(params=["learning_rate"], metrics=["accuracy"])
 best = yr.get_best("accuracy", maximize=True, status="completed")
 ```
 
+DataFrame comparison requires pandas. Plotting with `yr.plot_metrics(...)` requires
+the optional plotting dependencies, which can be installed with:
+
+```bash
+pip install "yanex[results]"
+```
+
 ---
 
 ## Core Functions
