@@ -97,6 +97,18 @@ yanex run train.py -p lr=$(yanex get params.lr -s completed -F sweep)
 # Expands to: yanex run train.py -p lr=0.001,0.01,0.1
 ```
 
+### Aggregating dependencies (`-F deps`)
+
+Use `deps` with `id` or `meta:id` to pass all matches into one run:
+
+```bash
+yanex run aggregate.py $(yanex get id -n "train-*" -s completed -F deps)
+# Expands to: yanex run aggregate.py -D abc12345 -D def67890
+```
+
+Empty results succeed with no output, so check for matches first if the run
+must have dependencies. Status is not filtered implicitly.
+
 ### Lineage Visualization
 
 Visualize experiment dependency graphs:

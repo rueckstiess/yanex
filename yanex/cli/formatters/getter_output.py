@@ -2,7 +2,7 @@
 
 This module provides a unified abstraction for formatting getter output
 across different getter types (scalar, list, complex, multiline) and
-output formats (default, json, csv, markdown, sweep).
+output formats (default, json, csv, markdown, sweep, deps).
 
 To add a new getter:
 1. Add to GETTER_TYPES registry if it's a known field
@@ -107,7 +107,7 @@ class GetterOutput:
 
     This class provides unified output handling for the yanex get command,
     supporting all getter types (SCALAR, LIST, COMPLEX, MULTILINE) and
-    all output formats (DEFAULT, JSON, CSV, MARKDOWN, SWEEP).
+    all output formats (DEFAULT, JSON, CSV, MARKDOWN, SWEEP, DEPS).
 
     Usage:
         results = [(exp_id1, value1), (exp_id2, value2), ...]
@@ -133,6 +133,14 @@ class GetterOutput:
             results: List of (exp_id, value) tuples
             getter_type: Type of the getter
         """
+        if self.format == OutputFormat.DEPS:
+            if self.field not in ("id", "meta:id"):
+                raise click.ClickException(
+                    "--format deps only supports 'id' and 'meta:id' fields"
+                )
+            click.echo(" ".join(f"-D {exp_id}" for exp_id, _ in results), nl=False)
+            return
+
         if getter_type == GetterType.MULTILINE:
             self._output_multiline(results)
         else:

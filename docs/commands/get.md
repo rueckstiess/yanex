@@ -129,6 +129,7 @@ Control output format with `--format` or `-F`:
 | `csv` | CSV with ID column and headers | Spreadsheets, data analysis |
 | `markdown` | GitHub-flavored markdown table | Documentation |
 | `sweep` | Comma-separated values only (no headers) | Bash command substitution |
+| `deps` | Repeated `-D <id>` arguments (`id` and `meta:id` only) | Aggregate dependencies into one run |
 
 ### Format Examples
 
@@ -230,6 +231,31 @@ for id in $(yanex get id -n "baseline-*" -F sweep | tr ',' ' '); do
     echo "Processing $id"
 done
 ```
+
+Use `deps` to aggregate all matching experiments into **one run**:
+
+```bash
+yanex run aggregate.py $(yanex get id -n "train-*" -s completed -F deps)
+# Expands to: yanex run aggregate.py -D abc12345 -D def67890
+
+# The canonical metadata spelling also works:
+yanex get meta:id -n "train-*" -s completed -F deps
+```
+
+Unlike `sweep`, which supplies alternatives for one dependency slot, `deps`
+supplies a separate slot for each experiment (`dep1`, `dep2`, and so on).
+It supports only `id` and `meta:id`, emits full IDs without headers or a
+trailing newline, and preserves the normal filtering, ordering, project scope,
+and limit behavior. Use `--global` to select across projects.
+
+Name patterns are globs. Completed status is not implicit: include
+`-s completed` when selecting dependencies for execution.
+
+If nothing matches, output is empty and the command succeeds. In the
+substitution example, this means the outer command runs with no generated
+dependencies. Scripts that require inputs should check for nonempty output
+before launching the run. Leave the substitution unquoted so Bash or Zsh
+splits the generated flags and IDs into separate arguments.
 
 ## Lineage Visualization
 
@@ -416,7 +442,7 @@ Same as [`yanex list`](list.md):
 
 ### Output Options
 
-- `--format`, `-F FORMAT`: Output format (default, json, csv, markdown, sweep)
+- `--format`, `-F FORMAT`: Output format (default, json, csv, markdown, sweep, deps)
 - `--default VALUE`: Value for missing fields (default: `[not_found]`)
 
 ### Stdout/Stderr Options
