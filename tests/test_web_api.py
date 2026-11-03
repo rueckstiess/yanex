@@ -865,3 +865,75 @@ class TestWebAPIParameterValidation:
             data = response.json()
             assert "detail" in data
             assert isinstance(data["detail"], str)
+
+
+class TestDetailIdentity(TestWebAPIBase):
+    @patch("yanex.web.api.experiment_filter")
+    @patch("yanex.web.api.manager")
+    def test_prefix_reads_canonical_id(self, manager, filters, client):
+        filters.filter_experiments.return_value = [{"id": "abcdef12"}]
+        manager.storage.load_config.return_value = {}
+        manager.storage.load_results.return_value = []
+        manager.storage.load_metadata.return_value = {}
+        manager.storage.get_experiment_dir.return_value = Path("/nonexistent")
+        response = client.get("/api/experiments/abc")
+        assert response.status_code == 200
+        manager.storage.load_config.assert_called_once_with(
+            "abcdef12", include_archived=False
+        )
+        manager.storage.load_results.assert_called_once_with(
+            "abcdef12", include_archived=False
+        )
+
+    @patch("yanex.web.api.experiment_filter")
+    def test_ambiguous_prefix_is_rejected(self, filters, client):
+        filters.filter_experiments.return_value = [
+            {"id": "abcdef12"},
+            {"id": "abcdef34"},
+        ]
+        response = client.get("/api/experiments/abc")
+        assert response.status_code == 409
+
+
+class TestProductionRouting:
+    @pytest.mark.parametrize("url", ["/experiment/abcdef12", "/experiment/abcdef12/"])
+    def test_detail_deep_link_serves_detail_template(self, tmp_path, url):
+        template = tmp_path / "experiment" / "[id]" / "index.html"
+        template.parent.mkdir(parents=True)
+        template.write_text("detail template")
+        (tmp_path / "index.html").write_text("home template")
+        with patch("yanex.web.app.out_dir", tmp_path):
+            response = TestClient(app).get(url)
+        assert response.status_code == 200
+        assert response.text == "detail template"
+
+
+class TestGraphContract(TestWebAPIBase):
+    def test_filtered_graph_keeps_only_edges_between_matches(
+        self, client, per_test_experiments_dir, tmp_path
+    ):
+        from yanex.core.manager import ExperimentManager
+
+        manager = ExperimentManager(per_test_experiments_dir)
+        script = tmp_path / "run.py"
+        script.write_text("pass")
+        parent = manager.create_experiment(script, name="parent")
+        manager.complete_experiment(parent)
+        child = manager.create_experiment(
+            script, name="child", dependencies={"data": parent}
+        )
+        manager.complete_experiment(child)
+        with (
+            patch("yanex.web.api.manager", manager),
+            patch("yanex.web.api.experiment_filter") as filters,
+        ):
+            filters.filter_experiments.return_value = [{"id": parent}, {"id": child}]
+            response = client.get("/api/graph")
+            assert response.status_code == 200
+            assert response.json()["edges"] == [
+                {"source": parent, "target": child, "slot": "data"}
+            ]
+            filters.filter_experiments.return_value = [{"id": child}]
+            filtered = client.get("/api/graph").json()
+            assert filtered["edges"] == []
+            assert [node["id"] for node in filtered["nodes"]] == [child]

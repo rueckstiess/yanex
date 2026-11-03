@@ -63,7 +63,10 @@ async def serve_spa(full_path: str):
 
     # Handle dynamic routes
     # For /experiment/[id] routes, serve the experiment template
-    if full_path.startswith("experiment/") and "/" in full_path[10:]:
+    if (
+        full_path.startswith("experiment/")
+        and len(full_path.strip("/").split("/")) == 2
+    ):
         experiment_template = out_dir / "experiment" / "[id]" / "index.html"
         if experiment_template.is_file():
             return FileResponse(experiment_template)

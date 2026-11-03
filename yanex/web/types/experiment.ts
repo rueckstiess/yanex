@@ -40,3 +40,11 @@ export interface StatusStats {
 }
 
 
+
+export interface ExperimentDetailResponse {
+  experiment: Experiment
+  config: Record<string, unknown>
+  results: Array<Record<string, unknown>>
+  metadata: Record<string, unknown>
+  artifacts: Array<{ name: string; size: number; modified: number }>
+}

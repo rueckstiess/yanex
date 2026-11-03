@@ -74,6 +74,12 @@ class DependencyGraph:
                 # No dependencies or error loading - continue
                 pass
 
+    def get_dataflow_graph(self) -> nx.DiGraph:
+        """Return an independent dependency-to-dependent graph for visualization."""
+        graph = self._reverse.copy()
+        self._add_node_metadata(graph)
+        return graph
+
     def get_upstream(self, exp_id: str, max_depth: int = 10) -> nx.DiGraph:
         """Get all dependencies (upstream) as a subgraph.
 

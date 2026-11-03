@@ -1,42 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useResource } from '@/hooks/useResource'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
 import { ExperimentDetails } from '@/components/ExperimentDetails'
-import { Experiment } from '@/types/experiment'
+import { ExperimentDetailResponse } from '@/types/experiment'
 
 export default function ExperimentPage() {
   const router = useRouter()
   const { id } = router.query
   const experimentId = id as string
 
-  const [experiment, setExperiment] = useState<Experiment | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!experimentId) return
-
-    const fetchExperiment = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-
-        const response = await fetch(`/api/experiments/${experimentId}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch experiment')
-        }
-
-        const data = await response.json()
-        setExperiment(data.experiment)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchExperiment()
-  }, [experimentId])
+  const { data: details, loading, error, refresh } = useResource<ExperimentDetailResponse>(
+    experimentId ? `/api/experiments/${encodeURIComponent(experimentId)}` : null,
+  )
+  const experiment = details?.experiment
 
   if (loading) {
     return (
@@ -51,7 +27,7 @@ export default function ExperimentPage() {
       <div className="text-center py-12">
         <p className="text-red-600 mb-4">{error}</p>
         <button
-          onClick={() => router.reload()}
+          onClick={refresh}
           className="btn btn-primary"
         >
           Retry
@@ -87,7 +63,7 @@ export default function ExperimentPage() {
           </h1>
         </div>
 
-        <ExperimentDetails experimentId={experimentId} />
+        {details && <ExperimentDetails details={details} />}
       </div>
     </>
   )

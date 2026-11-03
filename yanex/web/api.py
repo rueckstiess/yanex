@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from ..cli.filters import ExperimentFilter
 from ..core.dependency_graph import DependencyGraph
 from ..core.manager import ExperimentManager
+from .queries import parse_filters
 
 router = APIRouter()
 
@@ -63,44 +64,15 @@ async def list_experiments(
         sort_order = sort_order if isinstance(sort_order, str) else "desc"
         project = project if isinstance(project, str) else None
 
-        # Parse tags if provided
-        tag_list = None
-        if tags:
-            tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
-
-        # Parse time filters
-        started_after_dt = None
-        started_before_dt = None
-        ended_after_dt = None
-        ended_before_dt = None
-
-        if started_after:
-            from ..cli.error_handling import CLIErrorHandler
-
-            started_after_dt, _, _, _ = CLIErrorHandler.parse_time_filters(
-                started_after, None, None, None
-            )
-
-        if started_before:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, started_before_dt, _, _ = CLIErrorHandler.parse_time_filters(
-                None, started_before, None, None
-            )
-
-        if ended_after:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, _, ended_after_dt, _ = CLIErrorHandler.parse_time_filters(
-                None, None, ended_after, None
-            )
-
-        if ended_before:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, _, _, ended_before_dt = CLIErrorHandler.parse_time_filters(
-                None, None, None, ended_before
-            )
+        (
+            tag_list,
+            started_after_dt,
+            started_before_dt,
+            ended_after_dt,
+            ended_before_dt,
+        ) = parse_filters(
+            tags, started_after, started_before, ended_after, ended_before
+        )
 
         # Get ALL experiments first (no limit applied yet)
         # Note: archived parameter changed - True=only archived, False=only non-archived, None=both
@@ -181,14 +153,18 @@ async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str
         # Note: Manual archived filtering removed - now handled by filter_experiments()
 
         # Find matching experiment
-        experiment = None
-        for exp in experiments:
-            if exp["id"] == experiment_id or exp["id"].startswith(experiment_id):
-                experiment = exp
-                break
-
-        if not experiment:
+        exact = [exp for exp in experiments if exp["id"] == experiment_id]
+        matches = exact or [
+            exp for exp in experiments if exp["id"].startswith(experiment_id)
+        ]
+        if not matches:
             raise HTTPException(status_code=404, detail="Experiment not found")
+        if len(matches) > 1:
+            raise HTTPException(
+                status_code=409, detail="Ambiguous experiment ID prefix"
+            )
+        experiment = matches[0]
+        experiment_id = experiment["id"]
 
         # Get additional details
         try:
@@ -355,44 +331,15 @@ async def get_dependency_graph(
         sort_order = sort_order if isinstance(sort_order, str) else "desc"
         project = project if isinstance(project, str) else None
 
-        # Parse tags if provided
-        tag_list = None
-        if tags:
-            tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
-
-        # Parse time filters
-        started_after_dt = None
-        started_before_dt = None
-        ended_after_dt = None
-        ended_before_dt = None
-
-        if started_after:
-            from ..cli.error_handling import CLIErrorHandler
-
-            started_after_dt, _, _, _ = CLIErrorHandler.parse_time_filters(
-                started_after, None, None, None
-            )
-
-        if started_before:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, started_before_dt, _, _ = CLIErrorHandler.parse_time_filters(
-                None, started_before, None, None
-            )
-
-        if ended_after:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, _, ended_after_dt, _ = CLIErrorHandler.parse_time_filters(
-                None, None, ended_after, None
-            )
-
-        if ended_before:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, _, _, ended_before_dt = CLIErrorHandler.parse_time_filters(
-                None, None, None, ended_before
-            )
+        (
+            tag_list,
+            started_after_dt,
+            started_before_dt,
+            ended_after_dt,
+            ended_before_dt,
+        ) = parse_filters(
+            tags, started_after, started_before, ended_after, ended_before
+        )
 
         # Apply same filtering semantics as experiment list endpoint
         filtered_experiments = experiment_filter.filter_experiments(
@@ -447,7 +394,7 @@ async def get_dependency_graph(
         allowed_ids = {exp["id"] for exp in filtered_experiments}
 
         dep_graph = DependencyGraph(manager.storage)
-        graph = dep_graph._reverse
+        graph = dep_graph.get_dataflow_graph()
 
         # Keep only edges where both endpoints match filters
         filtered_edges = []
@@ -486,7 +433,7 @@ async def get_dependency_graph(
                 if results:
                     for result in results:
                         for k, v in result.items():
-                            if k not in ("step", "timestamp"):
+                            if k not in ("step", "timestamp", "last_updated"):
                                 metrics[k] = v
             except Exception:
                 pass

@@ -436,17 +436,8 @@ import Image from 'next/image'
 
 ## Testing
 
-Currently, the web UI doesn't have automated tests. To add them:
-
-```bash
-# Install testing dependencies
-npm install --save-dev @testing-library/react @testing-library/jest-dom jest
-
-# Add test script to package.json
-"scripts": {
-  "test": "jest"
-}
-```
+Run `npm run test` for frontend behavior tests and `npm run typecheck` for TypeScript checks.
+Backend tests live in `tests/test_web_api.py`.
 
 ## Resources
 
@@ -480,3 +471,19 @@ When making changes to the web UI:
 6. **Commit changes** with descriptive message
 
 For questions or issues, refer to the main project documentation or the implementation plan in `planning/spa-mode-implementation.md`.
+
+## Frontend maintenance checks
+
+Run `npm run test`, `npm run typecheck`, and `npm run build` before shipping UI changes.
+Tests use Vitest and Testing Library. The API regression tests are in
+`tests/test_web_api.py` at the repository root.
+
+Data loading lives in `hooks/useResource.ts`; it cancels obsolete requests and
+ignores late responses. `data/api.ts` preserves server error explanations.
+Experiment details have one request owner (the page), with the response passed
+into the presentation component. Graph transformation and layout are pure
+functions in `data/graph.ts`, separate from fetching and React rendering.
+Table headers own list sorting; sorting applies before server pagination.
+
+This foundation remains read-only. Editing metadata, plotting metrics, and
+executing workflows should be introduced with explicit API contracts and tests.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Refactored web UI data loading and graph layout, added frontend regression tests, consolidated backend filter parsing, and fixed ambiguous experiment lookup and production detail-page routing.
+
 ### Added
 
 - **Dependency aggregation output**: `yanex get id --format deps` (also supported for `meta:id`) emits repeated `-D <id>` arguments, allowing all matching experiments to become dependencies of a single run via shell substitution. Empty results continue to succeed with no output. ([#60](https://github.com/rueckstiess/yanex/issues/60))

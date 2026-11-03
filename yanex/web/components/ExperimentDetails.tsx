@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ExperimentDetails as ExperimentDetailsType } from '@/types/experiment'
+import { useState } from 'react'
+import { ExperimentDetailResponse } from '@/types/experiment'
 import { formatRelativeTime } from '@/utils/dateUtils'
 
 interface ExperimentDetailsProps {
-  experimentId: string
+  details: ExperimentDetailResponse
 }
 
-function isExpandableObject(value: any): boolean {
+function isExpandableObject(value: unknown): boolean {
   return (
     value !== null &&
     typeof value === 'object' &&
@@ -20,13 +20,13 @@ function isExpandableObject(value: any): boolean {
 type ConfigRow = {
   key: string
   path: string
-  value: any
+  value: unknown
   depth: number
   expandable: boolean
 }
 
 function buildConfigRows(
-  obj: Record<string, any>,
+  obj: Record<string, unknown>,
   expandedPaths: Set<string>,
   prefix = '',
   depth = 0,
@@ -40,96 +40,23 @@ function buildConfigRows(
     rows.push({ key, path, value, depth, expandable })
 
     if (expandable && expandedPaths.has(path)) {
-      rows.push(...buildConfigRows(value as Record<string, any>, expandedPaths, path, depth + 1))
+      rows.push(...buildConfigRows(value as Record<string, unknown>, expandedPaths, path, depth + 1))
     }
   }
 
   return rows
 }
 
-function formatConfigValue(value: any): string {
+function formatConfigValue(value: unknown): string {
   if (value === null) return 'null'
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   return JSON.stringify(value)
 }
 
-export function ExperimentDetails({ experimentId }: ExperimentDetailsProps) {
-  const [details, setDetails] = useState<{
-    experiment: ExperimentDetailsType
-    config: Record<string, any>
-    results: Array<{
-      step?: number
-      timestamp: string
-      [key: string]: any
-    }>
-    metadata: {
-      environment?: any
-      git?: any
-      script_path?: string
-    }
-    artifacts: Array<{
-      name: string
-      size: number
-      modified: number
-    }>
-  } | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export function ExperimentDetails({ details }: ExperimentDetailsProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    const fetchDetails = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        
-        const response = await fetch(`/api/experiments/${experimentId}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch experiment details')
-        }
-        
-        const data = await response.json()
-        setDetails(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchDetails()
-  }, [experimentId])
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-red-600 mb-4">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="btn btn-primary"
-        >
-          Retry
-        </button>
-      </div>
-    )
-  }
-
-  if (!details) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">Experiment not found</p>
-      </div>
-    )
-  }
+  const experimentId = details.experiment.id
 
   const experiment = details.experiment
   const configRows = buildConfigRows(details.config, expandedPaths)

@@ -60,3 +60,5 @@ Thumbs.db
 experiments/
 archived_experiments/
 artifacts/
+# TypeScript incremental compiler cache
+*.tsbuildinfo
