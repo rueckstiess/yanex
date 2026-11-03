@@ -125,7 +125,7 @@ df = yr.get_metrics(name="yelp-2-*", metrics="train_loss")
 df = yr.get_metrics(
     tags=["training"],
     metrics=["train_loss", "val_loss"],
-    include_params="auto"  # Include varying params
+    params="auto"  # Include varying params
 )
 
 # DataFrame columns: experiment_id, step, metric_name, value, <params...>

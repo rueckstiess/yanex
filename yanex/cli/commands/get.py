@@ -794,7 +794,7 @@ def _handle_lineage_field(
 @click.argument("field", required=True)
 @click.argument("experiment_id", required=False)
 @experiment_filter_options(include_ids=True, include_archived=True, include_limit=True)
-@format_options(include_sweep=True)
+@format_options(include_sweep=True, include_deps=True)
 @click.option(
     "--no-id",
     is_flag=True,
@@ -940,6 +940,7 @@ def get_field(
       csv        CSV with ID column and headers
       markdown   GitHub-flavored markdown table
       sweep      Comma-separated values only (for bash substitution)
+      deps       Repeated -D arguments (id and meta:id only)
 
     \b
     Examples (single experiment):
@@ -978,7 +979,8 @@ def get_field(
 
     \b
     Bash substitution:
-      yanex run train.py -D data=$(yanex get id -n "*-prep-*" -F sweep)
+      yanex run train.py -D data=$(yanex get id -n "*-prep-*" -s completed -F sweep)
+      yanex run aggregate.py $(yanex get id -n "train-*" -s completed -F deps)
       yanex run train.py -p lr=$(yanex get params.lr -s completed -F sweep)
     """
     # Resolve output format from --format option or legacy flags
@@ -986,6 +988,11 @@ def get_field(
     fmt = resolve_output_format(
         output_format, json_flag, csv_flag, markdown_flag, csv_means_sweep=True
     )
+
+    if fmt == OutputFormat.DEPS and field not in ("id", "meta:id"):
+        raise click.ClickException(
+            "--format deps only supports 'id' and 'meta:id' fields"
+        )
 
     # Validate field name is recognized (catch typos early)
     validate_field(field)

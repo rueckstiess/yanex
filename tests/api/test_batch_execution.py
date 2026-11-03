@@ -5,8 +5,6 @@ Tests the programmatic API for running multiple experiments sequentially
 or in parallel, including error handling, validation, and context checks.
 """
 
-import os
-
 import pytest
 
 import yanex
@@ -219,7 +217,7 @@ print(f"Success with value={value}")
         with pytest.raises(ValueError, match="Invalid ExperimentSpec at index 1"):
             yanex.run_multiple(invalid_experiments)
 
-    def test_cli_context_allowed(self, per_test_experiments_dir, tmp_path):
+    def test_cli_context_allowed(self, per_test_experiments_dir, tmp_path, monkeypatch):
         """Test that run_multiple works from CLI context (orchestrator pattern)."""
         script_content = """
 print("Test")
@@ -227,7 +225,7 @@ print("Test")
         script_path = tmp_path / "train.py"
         script_path.write_text(script_content)
         # Simulate CLI context (e.g., orchestrator run via 'yanex run')
-        os.environ["YANEX_CLI_ACTIVE"] = "1"
+        monkeypatch.setenv("YANEX_CLI_ACTIVE", "1")
 
         experiments = [
             ExperimentSpec(script_path=script_path, config={"param": 1}),

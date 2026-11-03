@@ -158,6 +158,9 @@ def get_current_commit_info(repo: Repo | None = None) -> dict[str, str]:
         repo = get_git_repo()
 
     try:
+        if not repo.head.is_valid():
+            raise GitError("No commits found in git repository")
+
         commit = repo.head.commit
 
         return {
@@ -169,7 +172,9 @@ def get_current_commit_info(repo: Repo | None = None) -> dict[str, str]:
             "committed_date": commit.committed_datetime.isoformat(),
         }
 
-    except git.GitError as e:
+    except GitError:
+        raise
+    except (git.GitError, ValueError, TypeError) as e:
         raise GitError(f"Failed to get commit info: {e}") from e
 
 

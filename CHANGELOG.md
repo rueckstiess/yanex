@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Dependency aggregation output**: `yanex get id --format deps` (also supported for `meta:id`) emits repeated `-D <id>` arguments, allowing all matching experiments to become dependencies of a single run via shell substitution. Empty results continue to succeed with no output. ([#60](https://github.com/rueckstiess/yanex/issues/60))
+
+## [0.6.1] - 2026-05-29
+
+### Changed
+
+- **Centralized package version handling**: Runtime version strings now come from package metadata with a `pyproject.toml` fallback, so releases only need to update the project version in one place.
+
+### Fixed
+
+- **Optional results dependencies no longer required for core CLI usage**: `yanex run` no longer imports plotting dependencies on startup. Install `yanex[results]` to use plotting and results analysis features that require `matplotlib`, `numpy`, or `pandas`.
+- **Graceful handling of repositories without git history**: `yanex run` now skips git state tracking when run outside a git repository or inside a newly initialized repository with no commits, instead of aborting with missing reference errors.
+
 ## [0.6.0] - 2026-03-04
 
 ### Breaking Changes

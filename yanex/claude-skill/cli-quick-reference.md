@@ -99,7 +99,7 @@ yanex get FIELD [EXPERIMENT_ID] [OPTIONS]
 | `--name PATTERN` | `-n` | Filter by name pattern |
 | `--tag TAG` | `-t` | Filter by tag (repeatable) |
 | `--limit N` | `-l` | Max results |
-| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown, sweep |
+| `--format FORMAT` | `-F` | Output format: default, json, csv, markdown, sweep, deps (id/meta:id only) |
 | `--default VALUE` | | Value for missing fields (default: `[not_found]`) |
 | `--head N` | | Return first N lines (stdout/stderr only) |
 | `--tail N` | | Return last N lines (stdout/stderr only) |

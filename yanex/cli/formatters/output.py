@@ -34,6 +34,7 @@ class OutputFormat(str, Enum):
     CSV = "csv"  # True CSV with ID,value columns
     MARKDOWN = "markdown"  # GitHub-flavored markdown table
     SWEEP = "sweep"  # Comma-separated values only (for bash substitution)
+    DEPS = "deps"  # Repeated -D arguments for dependency aggregation
 
 
 def output_mode_options(func):
@@ -154,13 +155,14 @@ def validate_output_mode_flags(
         )
 
 
-def format_options(include_sweep: bool = False) -> Callable:
+def format_options(include_sweep: bool = False, include_deps: bool = False) -> Callable:
     """Decorator adding --format option with optional legacy flags.
 
     This is the new unified approach replacing output_mode_options.
 
     Args:
         include_sweep: Whether to include 'sweep' format option (for yanex get)
+        include_deps: Whether to include 'deps' format option (for yanex get)
 
     Usage:
         @click.command()
@@ -178,6 +180,8 @@ def format_options(include_sweep: bool = False) -> Callable:
     choices = ["default", "json", "csv", "markdown"]
     if include_sweep:
         choices.append("sweep")
+    if include_deps:
+        choices.append("deps")
 
     def decorator(func: Callable) -> Callable:
         # Add --format option
@@ -275,22 +279,27 @@ def resolve_output_format(
 def is_machine_format(fmt: OutputFormat) -> bool:
     """Check if output format requires clean stdout for piping.
 
-    Machine-readable formats (JSON, CSV, SWEEP) should only output valid data
+    Machine-readable formats (JSON, CSV, SWEEP, DEPS) should only output valid data
     to stdout. Any informational messages should go to stderr.
 
     Args:
         fmt: The current output format
 
     Returns:
-        True for JSON, CSV, and SWEEP formats, False otherwise
+        True for JSON, CSV, SWEEP, and DEPS formats, False otherwise
     """
-    return fmt in (OutputFormat.JSON, OutputFormat.CSV, OutputFormat.SWEEP)
+    return fmt in (
+        OutputFormat.JSON,
+        OutputFormat.CSV,
+        OutputFormat.SWEEP,
+        OutputFormat.DEPS,
+    )
 
 
 def echo_format_info(message: str, fmt: OutputFormat) -> None:
     """Print informational message, respecting output format.
 
-    For machine-readable formats (JSON/CSV/SWEEP), messages go to stderr to keep
+    For machine-readable formats (JSON/CSV/SWEEP/DEPS), messages go to stderr to keep
     stdout clean for piping. For other formats, messages go to stdout.
 
     Args:

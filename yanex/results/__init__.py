@@ -34,7 +34,22 @@ if TYPE_CHECKING:
 from .experiment import Experiment
 from .graph import ExperimentGraph
 from .manager import ResultsManager
-from .plotting import plot_metrics
+
+
+def plot_metrics(*args: Any, **kwargs: Any) -> Any:
+    """Plot metrics, importing optional plotting dependencies on demand."""
+    try:
+        from .plotting import plot_metrics as _plot_metrics
+    except ModuleNotFoundError as exc:
+        missing_package = exc.name or "an optional plotting dependency"
+        raise ImportError(
+            "yanex.results.plot_metrics requires optional plotting dependencies. "
+            f"Missing package: {missing_package}. "
+            "Install them with: pip install 'yanex[results]'"
+        ) from exc
+
+    return _plot_metrics(*args, **kwargs)
+
 
 # Global default manager instance (lazy-loaded)
 _default_manager: ResultsManager | None = None
