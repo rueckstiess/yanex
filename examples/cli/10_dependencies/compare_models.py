@@ -1,5 +1,7 @@
 """Simulate comparing results from multiple model evaluations."""
+
 import time
+
 import yanex
 
 model_a = yanex.get_dependency("model_a")
@@ -13,10 +15,12 @@ if model_b:
 
 time.sleep(0.2)
 
-yanex.log_metrics({
-    "model_a_id": model_a.id if model_a else "unknown",
-    "model_b_id": model_b.id if model_b else "unknown",
-    "winner": "model_a",
-    "improvement_pct": 3.2,
-})
+yanex.log_metrics(
+    {
+        "model_a_id": model_a.id if model_a else "unknown",
+        "model_b_id": model_b.id if model_b else "unknown",
+        "winner": "model_a",
+        "improvement_pct": 3.2,
+    }
+)
 print("Comparison complete.")

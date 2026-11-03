@@ -31,4 +31,4 @@ yanex.log_metrics(
 )
 
 print(f"✓ Deployed to {target_env}")
-print(f"  Latency: 12.5ms | Throughput: 1500 rps")
+print("  Latency: 12.5ms | Throughput: 1500 rps")

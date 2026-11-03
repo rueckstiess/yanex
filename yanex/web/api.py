@@ -475,18 +475,14 @@ async def get_dependency_graph(
             # Load config (parameters) for tooltip display
             params: dict[str, Any] = {}
             try:
-                params = manager.storage.load_config(
-                    node_id, include_archived=True
-                )
+                params = manager.storage.load_config(node_id, include_archived=True)
             except Exception:
                 pass
 
             # Load metrics for tooltip display
             metrics: dict[str, Any] = {}
             try:
-                results = manager.storage.load_results(
-                    node_id, include_archived=True
-                )
+                results = manager.storage.load_results(node_id, include_archived=True)
                 if results:
                     for result in results:
                         for k, v in result.items():
