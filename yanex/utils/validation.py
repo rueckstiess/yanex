@@ -82,9 +82,9 @@ def validate_tags(tags: list[str]) -> list[str]:
             continue  # Preserve the API's handling of empty tags
         if len(tag) > 50:
             raise ValidationError(f"Tag too long (max 50 chars): {tag}")
-        if any(c.isspace() or not c.isprintable() or c in "*?[]" for c in tag):
+        if any(c.isspace() or not c.isprintable() or c in "*?[]," for c in tag):
             raise ValidationError(
-                f"Tag contains invalid characters: {tag!r}. Tags cannot contain whitespace, control or glob characters (* ? [ ])"
+                f"Tag contains invalid characters: {tag!r}. Tags cannot contain whitespace, commas, control or glob characters (* ? [ ])"
             )
 
         validated_tags.append(tag)

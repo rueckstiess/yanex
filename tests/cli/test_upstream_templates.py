@@ -204,3 +204,48 @@ def test_local_ambiguity_does_not_fall_back(cli_runner, pipeline):
     assert result.exit_code != 0
     assert "matches multiple keys" in result.output
     assert not manager.get_staged_experiments()
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    ["{broken", "[]", "{}", '{"dependencies": []}', '{"dependencies": {"data": 42}}'],
+)
+@pytest.mark.parametrize("mode", ["--dry-run", "--stage", "execute"])
+def test_malformed_ancestor_metadata_aborts_preflight(
+    cli_runner, pipeline, metadata, mode
+):
+    manager, script, create = pipeline
+    first = create({"lr": 1})
+    conflicting = create({"lr": 2})
+    intermediate = create({}, {"data": conflicting})
+    path = manager.storage.get_experiment_directory(intermediate) / "dependencies.json"
+    path.write_text(metadata)
+    before = set(manager.list_experiments())
+    args = [
+        "run",
+        str(script),
+        "-D",
+        f"base={first}",
+        "-D",
+        f"model={first},{intermediate}",
+        "-n",
+        "lr-{lr}",
+    ]
+    if mode != "execute":
+        args.append(mode)
+    result = cli_runner.invoke(cli, args)
+    assert result.exit_code != 0
+    assert "combination 2" in result.output
+    assert "Malformed dependency metadata" in result.output
+    assert intermediate in result.output
+    assert set(manager.list_experiments()) == before
+
+
+def test_comma_in_rendered_tag_rejected(cli_runner, pipeline):
+    manager, script, create = pipeline
+    result = cli_runner.invoke(
+        cli, ["run", str(script), "-p", "size=1000", "-t", "size={size:,d}", "--stage"]
+    )
+    assert result.exit_code != 0
+    assert "commas" in result.output
+    assert not manager.list_experiments()

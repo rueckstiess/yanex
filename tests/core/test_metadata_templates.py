@@ -62,3 +62,63 @@ def test_metadata_validation_after_rendering():
     for value in ["has space", "has\tspace", "glob*", "[x]"]:
         with pytest.raises(ValidationError):
             render_metadata(None, ["{value}"], None, {"value": value})
+
+
+def test_cache_shares_reads_but_not_combination_scope(tmp_path, monkeypatch):
+    from collections import Counter
+
+    from yanex.core.manager import ExperimentManager
+    from yanex.core.metadata_templates import UpstreamParameterCache
+
+    manager = ExperimentManager(tmp_path / "experiments")
+    script = tmp_path / "run.py"
+    script.write_text("pass")
+
+    def create(config, deps=None):
+        exp_id = manager.create_experiment(script, config=config, dependencies=deps)
+        manager.complete_experiment(exp_id)
+        return exp_id
+
+    root = create({"shared": 7})
+    first = create({"lr": 1}, {"data": root})
+    second = create({"lr": 2}, {"data": root})
+    config_reads, dependency_reads = Counter(), Counter()
+    original_config = manager.storage.load_config
+    original_dependencies = manager.storage.dependency_storage.load_dependencies
+
+    def load_config(exp_id, **kwargs):
+        config_reads[exp_id] += 1
+        return original_config(exp_id, **kwargs)
+
+    def load_dependencies(exp_id, **kwargs):
+        assert kwargs["strict"] is True
+        dependency_reads[exp_id] += 1
+        return original_dependencies(exp_id, **kwargs)
+
+    monkeypatch.setattr(manager.storage, "load_config", load_config)
+    monkeypatch.setattr(
+        manager.storage.dependency_storage, "load_dependencies", load_dependencies
+    )
+    cache = UpstreamParameterCache(manager)
+    for _ in range(3):
+        for exp_id, expected in [(first, 1), (second, 2)]:
+            lookup = cache.lookup({"model": exp_id})
+            assert lookup("lr") == expected
+            assert lookup("shared") == 7
+    assert config_reads == dependency_reads == Counter({root: 1, first: 1, second: 1})
+    manager.storage.save_config(first, {"lr": 3})
+    assert cache.lookup({"model": first})("lr") == 1
+    assert UpstreamParameterCache(manager).lookup({"model": first})("lr") == 3
+
+
+def test_cached_traversal_detects_cycles(tmp_path):
+    from yanex.core.manager import ExperimentManager
+    from yanex.core.metadata_templates import UpstreamParameterCache
+
+    manager = ExperimentManager(tmp_path / "experiments")
+    script = tmp_path / "run.py"
+    script.write_text("pass")
+    exp_id = manager.create_experiment(script, config={"lr": 1})
+    manager.storage.dependency_storage.save_dependencies(exp_id, {"self": exp_id})
+    with pytest.raises(ValidationError, match="Circular upstream dependencies"):
+        UpstreamParameterCache(manager).lookup({"model": exp_id})("lr")

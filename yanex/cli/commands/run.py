@@ -21,6 +21,7 @@ from ...core.config import expand_parameter_sweeps, has_sweep_parameters
 from ...core.dependencies import DependencyResolver
 from ...core.manager import ExperimentManager
 from ...core.metadata_templates import (
+    UpstreamParameterCache,
     has_placeholders,
     render_metadata,
     upstream_parameter_lookup,
@@ -781,6 +782,7 @@ def _build_sweep_experiment_specs(
     )
     manager = ExperimentManager()
     dependency_resolver = DependencyResolver(manager)
+    upstream_cache = UpstreamParameterCache(manager)
     for index, spec in enumerate(specs, 1):
         try:
             spec.dependencies = dependency_resolver.resolve_and_validate_dependencies(
@@ -791,7 +793,7 @@ def _build_sweep_experiment_specs(
                 spec.tags,
                 spec.description,
                 spec.config,
-                upstream_parameter_lookup(manager, spec.dependencies),
+                upstream_cache.lookup(spec.dependencies),
             )
         except Exception as exc:
             raise click.ClickException(f"Sweep combination {index}: {exc}") from exc

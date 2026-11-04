@@ -562,7 +562,10 @@ does not change stored parameter values.
 Lookup checks the current experiment's parameters first. If a key is absent
 locally, it searches the selected dependencies and all their upstream ancestors,
 including archived experiments. Downstream experiments and sibling branches are
-excluded, and a shared ancestor is counted once.
+excluded, and a shared ancestor is counted once. Malformed dependency metadata
+causes an error instead of silently truncating the search. Upstream configurations
+and dependency links are cached within each invocation and shared across sweep
+combinations; separate commands read fresh data.
 
 Repeated occurrences of the same parameter path are accepted when their values
 agree, using the same behavior as `ExperimentGraph.get_param()`. Conflicting
@@ -599,7 +602,7 @@ dots always refer to parameter paths, not Python object attributes.
 
 Names allow printable Unicode characters, spaces, and punctuation except glob
 characters (`*`, `?`, `[` and `]`). Tags allow printable Unicode characters except
-whitespace and those glob characters, with a maximum of 50 characters. Descriptions
+whitespace, commas, and those glob characters, with a maximum of 50 characters. Descriptions
 allow printable characters plus newlines and tabs, with a maximum of 1,000
 characters. Validation applies after substitution. Shell-sensitive punctuation
 must be quoted appropriately when passed on the command line.

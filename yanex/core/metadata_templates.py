@@ -1,6 +1,7 @@
 """Parameter-only metadata templates, resolved before experiment creation."""
 
 from collections.abc import Callable
+from graphlib import CycleError, TopologicalSorter
 from string import Formatter
 from typing import TYPE_CHECKING, Any
 
@@ -11,7 +12,6 @@ from ..utils.validation import (
     validate_tags,
 )
 from .access_resolver import AccessResolver
-from .dependencies import DependencyResolver
 from .parameter_lookup import get_agreed_parameter
 
 if TYPE_CHECKING:
@@ -20,34 +20,63 @@ if TYPE_CHECKING:
 _FORMATTER = Formatter()
 
 
+class UpstreamParameterCache:
+    """Invocation-scoped snapshots shared across sweep combinations.
+
+    Cache only per-experiment data, never the union across combinations. Each
+    lookup still resolves keys against precisely its selected upstream graph.
+    """
+
+    def __init__(self, manager: "ExperimentManager") -> None:
+        self.manager = manager
+        self.dependencies: dict[str, list[str]] = {}
+        self.configs: dict[str, dict[str, Any]] = {}
+
+    def lookup(self, dependencies: dict[str, str]) -> Callable[[str], Any]:
+        """Return a lazy lookup for resolved, validated dependency IDs."""
+        roots = tuple(dependencies.values())
+        configs = None
+
+        def lookup(key: str) -> Any:
+            nonlocal configs
+            if configs is None:
+                graph = {}
+                pending = list(roots)
+                while pending:
+                    exp_id = pending.pop()
+                    if exp_id in graph:
+                        continue
+                    if exp_id not in self.dependencies:
+                        data = (
+                            self.manager.storage.dependency_storage.load_dependencies(
+                                exp_id, include_archived=True, strict=True
+                            )
+                        )
+                        self.dependencies[exp_id] = list(data["dependencies"].values())
+                    graph[exp_id] = self.dependencies[exp_id]
+                    pending.extend(graph[exp_id])
+                try:
+                    ids = list(TopologicalSorter(graph).static_order())
+                except CycleError as exc:
+                    raise ValidationError(
+                        f"Circular upstream dependencies: {exc}"
+                    ) from exc
+                for exp_id in ids:
+                    if exp_id not in self.configs:
+                        self.configs[exp_id] = self.manager.storage.load_config(
+                            exp_id, include_archived=True
+                        )
+                configs = {exp_id: self.configs[exp_id] for exp_id in sorted(ids)}
+            return get_agreed_parameter(key, configs)
+
+        return lookup
+
+
 def upstream_parameter_lookup(
     manager: "ExperimentManager", dependencies: dict[str, str]
 ) -> Callable[[str], Any]:
-    """Lazily load the selected ancestors once, including archived experiments.
-
-    Dependencies must already contain resolved, validated IDs. Traversal follows
-    dependency edges only, and shared ancestors are deduplicated by ID.
-    """
-    configs = None
-
-    def lookup(key: str) -> Any:
-        nonlocal configs
-        if configs is None:
-            resolver = DependencyResolver(manager)
-            ids = set()
-            for dep_id in dependencies.values():
-                ids.update(
-                    resolver.get_transitive_dependencies(
-                        dep_id, include_self=True, include_archived=True
-                    )
-                )
-            configs = {
-                exp_id: manager.storage.load_config(exp_id, include_archived=True)
-                for exp_id in sorted(ids)
-            }
-        return get_agreed_parameter(key, configs)
-
-    return lookup
+    """Create an isolated lookup for a single experiment's ancestors."""
+    return UpstreamParameterCache(manager).lookup(dependencies)
 
 
 def has_placeholders(template: str) -> bool:

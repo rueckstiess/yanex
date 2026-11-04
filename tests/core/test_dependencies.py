@@ -477,3 +477,38 @@ class TestExperimentManagerDependencies:
             manager.create_experiment(
                 script_path, config={}, dependencies={"dep1": "notfound"}
             )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"{broken",
+        b"\xff",
+        b"[]",
+        b"{}",
+        b'{"dependencies": null}',
+        b'{"dependencies": {"data": ""}}',
+    ],
+)
+def test_strict_dependency_reads_reject_malformed_metadata(temp_dir, content):
+    from yanex.utils.exceptions import StorageError
+
+    manager = ExperimentManager(temp_dir / "experiments")
+    exp_id = manager.generate_experiment_id()
+    directory = manager.storage.create_experiment_directory(exp_id)
+    (directory / "dependencies.json").write_bytes(content)
+    with pytest.raises(
+        StorageError, match=f"Malformed dependency metadata for experiment '{exp_id}'"
+    ):
+        manager.storage.dependency_storage.load_dependencies(exp_id, strict=True)
+
+
+def test_tolerant_dependency_reads_still_allow_malformed_json(temp_dir):
+    manager = ExperimentManager(temp_dir / "experiments")
+    exp_id = manager.generate_experiment_id()
+    directory = manager.storage.create_experiment_directory(exp_id)
+    (directory / "dependencies.json").write_text("{broken")
+    assert (
+        manager.storage.dependency_storage.load_dependencies(exp_id)["dependencies"]
+        == {}
+    )
