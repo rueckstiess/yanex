@@ -27,10 +27,9 @@ def validate_experiment_name(name: str) -> str:
 
     name = name.strip()
 
-    # Check for invalid characters (basic validation)
-    if not re.match(r"^[a-zA-Z0-9_\-\s]+$", name):
+    if any(not c.isprintable() or c in "*?[]" for c in name):
         raise ValidationError(
-            "Experiment name can only contain letters, numbers, spaces, hyphens, and underscores"
+            "Experiment name must be printable and cannot contain glob characters (* ? [ ])"
         )
 
     return name
@@ -79,17 +78,13 @@ def validate_tags(tags: list[str]) -> list[str]:
         if not isinstance(tag, str):
             raise ValidationError(f"Tag must be a string: {tag}")
 
-        tag = tag.strip()
         if not tag:
-            continue  # Skip empty tags
-
+            continue  # Preserve the API's handling of empty tags
         if len(tag) > 50:
             raise ValidationError(f"Tag too long (max 50 chars): {tag}")
-
-        if not re.match(r"^[a-zA-Z0-9_\-]+$", tag):
+        if any(c.isspace() or not c.isprintable() or c in "*?[]" for c in tag):
             raise ValidationError(
-                f"Tag contains invalid characters: {tag}. "
-                "Only letters, numbers, hyphens, and underscores allowed"
+                f"Tag contains invalid characters: {tag!r}. Tags cannot contain whitespace, control or glob characters (* ? [ ])"
             )
 
         validated_tags.append(tag)
@@ -170,3 +165,14 @@ def validate_config_data(config_data: dict[str, Any]) -> dict[str, Any]:
         validate_value(key, value)
 
     return config_data
+
+
+def validate_description(description: str) -> str:
+    """Allow multiline prose, but not terminal control characters."""
+    if len(description) > 1000:
+        raise ValidationError("Description too long (max 1000 characters)")
+    if any(not c.isprintable() and c not in "\n\t" for c in description):
+        raise ValidationError(
+            "Description cannot contain control characters other than newlines and tabs"
+        )
+    return description
