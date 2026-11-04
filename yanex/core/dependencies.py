@@ -58,12 +58,15 @@ class DependencyStorage:
         self,
         experiment_id: str,
         include_archived: bool = False,
+        *,
+        strict: bool = False,
     ) -> dict[str, Any]:
         """Load dependencies.json file.
 
         Args:
             experiment_id: Experiment ID to load dependencies for.
             include_archived: Whether to search archived experiments.
+            strict: Raise StorageError for malformed JSON or dependency mappings.
 
         Returns:
             Dict with keys: dependencies (dict), created_at, metadata.
@@ -80,11 +83,32 @@ class DependencyStorage:
 
             with open(dependencies_file) as f:
                 data = json.load(f)
+                if strict and (
+                    not isinstance(data, dict)
+                    or not isinstance(data.get("dependencies"), dict)
+                    or any(
+                        not isinstance(slot, str)
+                        or not isinstance(dep_id, str)
+                        or not dep_id
+                        for slot, dep_id in data["dependencies"].items()
+                    )
+                ):
+                    raise StorageError(
+                        f"Malformed dependency metadata for experiment '{experiment_id}': expected a dependencies mapping of slots to experiment IDs"
+                    )
                 return data
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
+            if strict:
+                raise StorageError(
+                    f"Cannot read dependency metadata for experiment '{experiment_id}': {exc}"
+                ) from exc
             return {"dependencies": {}, "created_at": None, "metadata": {}}
-        except json.JSONDecodeError:
-            # Malformed file - return empty
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            if strict:
+                raise StorageError(
+                    f"Malformed dependency metadata for experiment '{experiment_id}': {exc}"
+                ) from exc
+            # Preserve tolerant reads for existing callers.
             return {"dependencies": {}, "created_at": None, "metadata": {}}
 
     def dependency_file_exists(

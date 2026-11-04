@@ -74,19 +74,26 @@ Build multi-stage ML pipelines with experiment dependencies. Track complete data
 
 ---
 
+### [11: Metadata Templates](11_metadata_templates/README.md)
+Generate names, tags, and descriptions from each experiment's parameters. Preview formatted sweep metadata and resolve parameters through upstream dependencies.
+
+**Concepts**: `{parameter}` placeholders, format specifications, YAML templates, upstream lookup, agreement and conflicts, `--dry-run`
+
+---
+
 ## Learning Path
 
 **New to yanex?** Start with examples in order:
 1. **01-04**: Core features (parameters, config, artifacts, metadata)
 2. **05-07**: Training and scaling (multi-step metrics, bash, sweeps)
-3. **08-10**: Advanced features (script args, staging, dependencies)
+3. **08-11**: Advanced features (script args, staging, dependencies, templates)
 
 **Quick references:**
 - **ML/Training workflows**: 02 → 05 → 07 → 10
 - **Multi-stage pipelines**: 03 → 10
 - **Bash tool integration**: 06 → 08
 - **Batch processing**: 07 → 09 → 10
-- **Experiment organization**: 04 → 07 → 10
+- **Experiment organization**: 04 → 07 → 11
 
 ## Running Examples
 

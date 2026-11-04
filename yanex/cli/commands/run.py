@@ -18,7 +18,14 @@ from ...cli.formatters import (
     format_warning_message,
 )
 from ...core.config import expand_parameter_sweeps, has_sweep_parameters
+from ...core.dependencies import DependencyResolver
 from ...core.manager import ExperimentManager
+from ...core.metadata_templates import (
+    UpstreamParameterCache,
+    has_placeholders,
+    render_metadata,
+    upstream_parameter_lookup,
+)
 from ...core.script_executor import ScriptExecutor
 
 
@@ -45,9 +52,11 @@ from ...core.script_executor import ScriptExecutor
     multiple=True,
     help="Parameter override in format key=value (repeatable)",
 )
-@click.option("--name", "-n", help="Experiment name")
+@click.option("--name", "-n", help="Experiment name (supports {param} templates)")
 @click.option("--tag", "-t", multiple=True, help="Experiment tag (repeatable)")
-@click.option("--description", "-d", help="Experiment description")
+@click.option(
+    "--description", "-d", help="Experiment description (supports {param} templates)"
+)
 @click.option(
     "--depends-on",
     "-D",
@@ -313,14 +322,46 @@ def run(
         # Validate configuration
         validate_experiment_config(
             script=script,
-            name=resolved_name,
-            tags=resolved_tags,
-            description=resolved_description,
+            name=None,
+            tags=[],
+            description=None,
             config=experiment_config,
         )
 
         # Validate sweep requirements
         validate_sweep_requirements(experiment_config, resolved_stage)
+
+        has_any_sweep = _has_dependency_sweep(dependency_slots) or has_sweep_parameters(
+            experiment_config
+        )
+        if has_any_sweep:
+            # Prepare every combination before any execution or storage writes.
+            preview_specs = _build_sweep_experiment_specs(
+                script,
+                experiment_config,
+                dependency_slots,
+                resolved_name,
+                resolved_tags,
+                resolved_description,
+                script_args,
+                cli_args,
+                stage_only=resolved_stage,
+            )
+        else:
+            manager = ExperimentManager()
+            dependencies = DependencyResolver(
+                manager
+            ).resolve_and_validate_dependencies(
+                expand_dependency_slots(dependency_slots)[0], for_staging=resolved_stage
+            )
+            resolved_name, resolved_tags, resolved_description = render_metadata(
+                resolved_name,
+                resolved_tags,
+                resolved_description,
+                experiment_config,
+                upstream_parameter_lookup(manager, dependencies),
+            )
+            preview_specs = []
 
         if resolved_dry_run:
             click.echo("✓ Configuration validation passed")
@@ -330,6 +371,10 @@ def run(
             click.echo(f"  Tags: {resolved_tags}")
             click.echo(f"  Description: {resolved_description}")
             click.echo(f"  Config: {experiment_config}")
+            for index, spec in enumerate(preview_specs, 1):
+                click.echo(
+                    f"  Experiment {index}: name={spec.name!r}, tags={spec.tags!r}, description={spec.description!r}"
+                )
             return
 
         # Phase 3: Execute, stage, or execute sweep
@@ -351,6 +396,7 @@ def run(
                 script_args=script_args,
                 cli_args=cli_args,
                 project=resolved_project,
+                prepared_specs=preview_specs,
             )
         elif has_any_sweep:
             # Execute any type of sweep using unified executor
@@ -366,6 +412,7 @@ def run(
                 script_args=script_args,
                 cli_args=cli_args,
                 project=resolved_project,
+                prepared_specs=preview_specs,
             )
         else:
             # Single experiment execution
@@ -530,6 +577,9 @@ def _generate_sweep_experiment_name(
     Returns:
         Generated experiment name
     """
+    if base_name is not None and has_placeholders(base_name):
+        return base_name
+
     # Start with base name or "sweep" if not provided
     name_parts = [base_name if base_name else "sweep"]
 
@@ -724,6 +774,41 @@ def _build_sweep_experiment_specs(
     description: str | None,
     script_args: list[str],
     cli_args: list[str],
+    stage_only: bool = False,
+) -> list:
+    """Prepare all sweep metadata before staging or executing any member."""
+    specs = _build_raw_sweep_experiment_specs(
+        script, config, dependency_slots, name, tags, description, script_args, cli_args
+    )
+    manager = ExperimentManager()
+    dependency_resolver = DependencyResolver(manager)
+    upstream_cache = UpstreamParameterCache(manager)
+    for index, spec in enumerate(specs, 1):
+        try:
+            spec.dependencies = dependency_resolver.resolve_and_validate_dependencies(
+                spec.dependencies, for_staging=stage_only
+            )
+            spec.name, spec.tags, spec.description = render_metadata(
+                spec.name,
+                spec.tags,
+                spec.description,
+                spec.config,
+                upstream_cache.lookup(spec.dependencies),
+            )
+        except Exception as exc:
+            raise click.ClickException(f"Sweep combination {index}: {exc}") from exc
+    return specs
+
+
+def _build_raw_sweep_experiment_specs(
+    script: Path,
+    config: dict[str, Any],
+    dependency_slots: list[tuple[str, list[str]]],
+    name: str | None,
+    tags: list[str],
+    description: str | None,
+    script_args: list[str],
+    cli_args: list[str],
 ) -> list:
     """Build ExperimentSpec objects for sweep execution or staging.
 
@@ -805,6 +890,7 @@ def _stage_experiment(
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
     project: str | None = None,
+    prepared_specs: list | None = None,
 ) -> None:
     """Stage experiment(s) for later execution, expanding all sweep types."""
 
@@ -823,15 +909,20 @@ def _stage_experiment(
 
     if has_dep_sweep or has_param_sweep:
         # Use shared spec builder to handle all sweep types
-        sweep_specs = _build_sweep_experiment_specs(
-            script=script,
-            config=config,
-            dependency_slots=dependency_slots,
-            name=name,
-            tags=tags,
-            description=description,
-            script_args=script_args,
-            cli_args=cli_args,
+        sweep_specs = (
+            prepared_specs
+            if prepared_specs is not None
+            else _build_sweep_experiment_specs(
+                script=script,
+                config=config,
+                dependency_slots=dependency_slots,
+                name=name,
+                tags=tags,
+                description=description,
+                script_args=script_args,
+                cli_args=cli_args,
+                stage_only=True,
+            )
         )
 
         click.echo(f"✓ Sweep detected: expanding into {len(sweep_specs)} experiments")
@@ -1275,6 +1366,7 @@ def _execute_sweep(
     script_args: list[str] | None = None,
     cli_args: list[str] | None = None,
     project: str | None = None,
+    prepared_specs: list | None = None,
 ) -> None:
     """Execute any type of sweep directly using unified spec builder.
 
@@ -1304,15 +1396,19 @@ def _execute_sweep(
         dependency_slots = []
 
     # Use shared spec builder for all sweep types
-    sweep_specs = _build_sweep_experiment_specs(
-        script=script,
-        config=config,
-        dependency_slots=dependency_slots,
-        name=name,
-        tags=tags,
-        description=description,
-        script_args=script_args,
-        cli_args=cli_args,
+    sweep_specs = (
+        prepared_specs
+        if prepared_specs is not None
+        else _build_sweep_experiment_specs(
+            script=script,
+            config=config,
+            dependency_slots=dependency_slots,
+            name=name,
+            tags=tags,
+            description=description,
+            script_args=script_args,
+            cli_args=cli_args,
+        )
     )
 
     # Set project on all specs

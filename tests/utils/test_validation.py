@@ -26,6 +26,7 @@ class TestValidateExperimentName:
             "simple",
             "test_exp_with_numbers_123",
             "A-B_C 123",
+            "模型-lr=0.01/@value",
         ]
 
         for name in valid_names:
@@ -50,18 +51,10 @@ class TestValidateExperimentName:
 
     def test_invalid_characters(self):
         """Test names with invalid characters."""
-        invalid_names = [
-            "test@experiment",
-            "test#experiment",
-            "test$experiment",
-            "test/experiment",
-            "test\\experiment",
-            "test.experiment",
-            "test,experiment",
-        ]
+        invalid_names = ["test*", "test?", "test[1]", "test\x1b", "test\nname"]
 
         for name in invalid_names:
-            with pytest.raises(ValidationError, match="can only contain"):
+            with pytest.raises(ValidationError, match="must be printable"):
                 validate_experiment_name(name)
 
 
@@ -120,6 +113,7 @@ class TestValidateTags:
             ["tag_with_underscores"],
             ["tag-with-hyphens"],
             ["tag123"],
+            ["α=0.01", "path/value", "tag@symbol"],
             [],  # empty list is valid
         ]
 
@@ -127,11 +121,11 @@ class TestValidateTags:
             result = validate_tags(tags)
             assert result == tags
 
-    def test_tag_stripping_and_filtering(self):
-        """Test that tags are stripped and empty ones filtered."""
-        input_tags = ["  tag1  ", "", "tag2", "   ", "tag3"]
-        result = validate_tags(input_tags)
-        assert result == ["tag1", "tag2", "tag3"]
+    def test_tag_whitespace_rejected(self):
+        for tag in [" tag", "tag ", "tag\tname", "tag\nname", "tag\u00a0name"]:
+            with pytest.raises(ValidationError):
+                validate_tags([tag])
+        assert validate_tags(["", "tag"]) == ["tag"]
 
     def test_invalid_tag_type(self):
         """Test that non-list input raises ValidationError."""
@@ -154,12 +148,7 @@ class TestValidateTags:
 
     def test_invalid_tag_characters(self):
         """Test that tags with invalid characters raise ValidationError."""
-        invalid_tags = [
-            "tag with spaces",
-            "tag@symbol",
-            "tag.dot",
-            "tag/slash",
-        ]
+        invalid_tags = ["tag with spaces", "tag*", "tag?", "tag[1]", "tag\x1b"]
 
         for tag in invalid_tags:
             with pytest.raises(

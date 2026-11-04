@@ -338,7 +338,7 @@ class TestExperimentCreation:
         # Invalid name should raise ValidationError
         with pytest.raises(ValidationError):
             isolated_manager.create_experiment(
-                Path(__file__), name="invalid@name#with$symbols", tags=["unit-tests"]
+                Path(__file__), name="invalid*name[glob]", tags=["unit-tests"]
             )
 
     @patch("yanex.core.manager.get_current_commit_info")
