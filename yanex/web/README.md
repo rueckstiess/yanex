@@ -487,3 +487,11 @@ Table headers own list sorting; sorting applies before server pagination.
 
 This foundation remains read-only. Editing metadata, plotting metrics, and
 executing workflows should be introduced with explicit API contracts and tests.
+
+Backend response schemas live in `models.py` and appear in FastAPI's OpenAPI
+schema. Tests can override `get_manager` and `get_filter` with
+`app.dependency_overrides` to use isolated stores. Storage calls run in synchronous
+route handlers. Missing optional configuration/results retain their storage-layer
+empty defaults; unreadable files produce HTTP 500 errors. Invalid pagination
+returns HTTP 422, invalid dates HTTP 400, missing runs HTTP 404, and ambiguous ID
+prefixes HTTP 409.

@@ -295,7 +295,7 @@ class TestListExperiments(TestWebAPIBase):
         response = client.get("/api/experiments?started_after=invalid-date")
 
         # Verify error response
-        assert response.status_code == 500
+        assert response.status_code == 400
         data = response.json()
         assert "detail" in data
         assert "Invalid time specification" in data["detail"]
@@ -445,7 +445,7 @@ class TestGetExperiment(TestWebAPIBase):
         """Test get experiment when config is missing."""
         # Setup mocks
         mock_filter.filter_experiments.return_value = sample_experiments[:1]
-        mock_manager.storage.load_config.side_effect = Exception("Config not found")
+        mock_manager.storage.load_config.return_value = {}
         mock_manager.storage.load_results.return_value = []
         mock_manager.storage.load_metadata.return_value = {}
         mock_manager.storage.get_experiment_dir.return_value = Path("/tmp")
@@ -467,7 +467,7 @@ class TestGetExperiment(TestWebAPIBase):
         # Setup mocks
         mock_filter.filter_experiments.return_value = sample_experiments[:1]
         mock_manager.storage.load_config.return_value = {}
-        mock_manager.storage.load_results.side_effect = Exception("Results not found")
+        mock_manager.storage.load_results.return_value = []
         mock_manager.storage.load_metadata.return_value = {}
         mock_manager.storage.get_experiment_dir.return_value = Path("/tmp")
 
@@ -490,8 +490,8 @@ class TestGetExperiment(TestWebAPIBase):
         mock_manager.storage.load_config.return_value = {}
         mock_manager.storage.load_results.return_value = []
         mock_manager.storage.load_metadata.return_value = {}
-        mock_manager.storage.get_experiment_dir.side_effect = Exception(
-            "Directory not found"
+        mock_manager.storage.get_experiment_dir.return_value = Path(
+            "/nonexistent-artifacts"
         )
 
         # Test request
@@ -810,8 +810,8 @@ class TestWebAPIParameterValidation:
 
         # Test with invalid limit (negative)
         response = client.get("/api/experiments?limit=-1")
-        # Should still work but with default behavior
-        assert response.status_code == 200
+        # Invalid pagination is rejected at the HTTP boundary
+        assert response.status_code == 422
 
         # Test with invalid sort_order
         response = client.get("/api/experiments?sort_order=invalid")
@@ -937,3 +937,35 @@ class TestGraphContract(TestWebAPIBase):
             filtered = client.get("/api/graph").json()
             assert filtered["edges"] == []
             assert [node["id"] for node in filtered["nodes"]] == [child]
+
+
+class TestHTTPContracts:
+    def test_storage_can_be_injected_and_corruption_is_not_empty_data(self, tmp_path):
+        from yanex.core.manager import ExperimentManager
+        from yanex.web.api import get_filter, get_manager
+
+        manager = ExperimentManager(tmp_path / "experiments")
+        script = tmp_path / "run.py"
+        script.write_text("pass")
+        ident = manager.create_experiment(script, config={"value": 1})
+        filters = Mock()
+        filters.filter_experiments.return_value = [{"id": ident}]
+        app.dependency_overrides[get_manager] = lambda: manager
+        app.dependency_overrides[get_filter] = lambda: filters
+        try:
+            client = TestClient(app)
+            assert client.get(f"/api/experiments/{ident}").json()["config"] == {
+                "value": 1
+            }
+            (manager.storage.get_experiment_dir(ident) / "params.yaml").write_text(
+                "value: [broken"
+            )
+            response = client.get(f"/api/experiments/{ident}")
+            assert response.status_code == 500
+            assert "config" not in response.json()
+        finally:
+            app.dependency_overrides.clear()
+
+    @pytest.mark.parametrize("query", ["page=0", "limit=-1"])
+    def test_invalid_pagination_returns_validation_error(self, query):
+        assert TestClient(app).get(f"/api/experiments?{query}").status_code == 422

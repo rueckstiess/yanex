@@ -2,26 +2,51 @@
 API routes for yanex web UI.
 """
 
-from typing import Any
+from functools import lru_cache
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..cli.filters import ExperimentFilter
 from ..core.dependency_graph import DependencyGraph
 from ..core.manager import ExperimentManager
+from .models import ExperimentDetail, ExperimentPage, GraphResponse, StatusSummary
 from .queries import parse_filters
 
 router = APIRouter()
 
 # Initialize experiment manager and filter
-manager = ExperimentManager()
-experiment_filter = ExperimentFilter()
+manager = None
+experiment_filter = None
 
 
-@router.get("/experiments")
-async def list_experiments(
+@lru_cache
+def default_manager():
+    return ExperimentManager()
+
+
+@lru_cache
+def default_filter():
+    return ExperimentFilter()
+
+
+def get_manager():
+    return manager if manager is not None else default_manager()
+
+
+def get_filter():
+    return experiment_filter if experiment_filter is not None else default_filter()
+
+
+ManagerDependency = Annotated[ExperimentManager, Depends(get_manager)]
+FilterDependency = Annotated[ExperimentFilter, Depends(get_filter)]
+
+
+@router.get("/experiments", response_model=ExperimentPage)
+def list_experiments(
+    experiment_filter: FilterDependency,
     limit: int | None = Query(
-        None, description="Maximum number of experiments to return"
+        None, ge=0, description="Maximum number of experiments to return"
     ),
     status: str | None = Query(None, description="Filter by experiment status"),
     name_pattern: str | None = Query(
@@ -46,7 +71,7 @@ async def list_experiments(
         "created_at", description="Sort by field: 'name', 'status', 'created_at'"
     ),
     sort_order: str = Query("desc", description="Sort order: 'asc' or 'desc'"),
-    page: int = Query(1, description="Page number for pagination"),
+    page: int = Query(1, ge=1, description="Page number for pagination"),
     archived: bool = Query(False, description="Include archived experiments"),
     project: str | None = Query(None, description="Filter by project name"),
 ) -> dict[str, Any]:
@@ -137,12 +162,19 @@ async def list_experiments(
             "has_prev": page > 1,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/experiments/{experiment_id}")
-async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str, Any]:
+@router.get("/experiments/{experiment_id}", response_model=ExperimentDetail)
+def get_experiment(
+    experiment_id: str,
+    manager: ManagerDependency,
+    experiment_filter: FilterDependency,
+    archived: bool = False,
+) -> dict[str, Any]:
     """Get detailed information about a specific experiment."""
     try:
         # Find the experiment
@@ -166,47 +198,27 @@ async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str
         experiment = matches[0]
         experiment_id = experiment["id"]
 
-        # Get additional details
-        try:
-            config = manager.storage.load_config(
-                experiment_id, include_archived=archived
-            )
-        except Exception:
-            config = {}
-
-        try:
-            results = manager.storage.load_results(
-                experiment_id, include_archived=archived
-            )
-        except Exception:
-            results = []
-
-        try:
-            metadata = manager.storage.load_metadata(
-                experiment_id, include_archived=archived
-            )
-        except Exception:
-            metadata = {}
-
-        # Get artifacts
-        try:
-            exp_dir = manager.storage.get_experiment_dir(
-                experiment_id, include_archived=archived
-            )
-            artifacts_dir = exp_dir / "artifacts"
-            artifacts = []
-            if artifacts_dir.exists():
-                for artifact_path in artifacts_dir.iterdir():
-                    if artifact_path.is_file():
-                        artifacts.append(
-                            {
-                                "name": artifact_path.name,
-                                "size": artifact_path.stat().st_size,
-                                "modified": artifact_path.stat().st_mtime,
-                            }
-                        )
-        except Exception:
-            artifacts = []
+        config = manager.storage.load_config(experiment_id, include_archived=archived)
+        results = manager.storage.load_results(experiment_id, include_archived=archived)
+        metadata = manager.storage.load_metadata(
+            experiment_id, include_archived=archived
+        )
+        exp_dir = manager.storage.get_experiment_dir(
+            experiment_id, include_archived=archived
+        )
+        artifacts_dir = exp_dir / "artifacts"
+        artifacts = []
+        if artifacts_dir.exists():
+            for path in sorted(artifacts_dir.iterdir()):
+                if path.is_file():
+                    stat = path.stat()
+                    artifacts.append(
+                        {
+                            "name": path.name,
+                            "size": stat.st_size,
+                            "modified": stat.st_mtime,
+                        }
+                    )
 
         return {
             "experiment": experiment,
@@ -223,8 +235,11 @@ async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str
 
 
 @router.get("/experiments/{experiment_id}/artifacts/{artifact_name}")
-async def download_artifact(
-    experiment_id: str, artifact_name: str, archived: bool = False
+def download_artifact(
+    experiment_id: str,
+    artifact_name: str,
+    manager: ManagerDependency,
+    archived: bool = False,
 ):
     """Download an artifact file."""
     try:
@@ -250,8 +265,8 @@ async def download_artifact(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/status")
-async def get_status() -> dict[str, Any]:
+@router.get("/status", response_model=StatusSummary)
+def get_status(experiment_filter: FilterDependency) -> dict[str, Any]:
     """Get system status and statistics."""
     try:
         # Get basic statistics
@@ -277,14 +292,18 @@ async def get_status() -> dict[str, Any]:
             "status_counts": status_counts,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/graph")
-async def get_dependency_graph(
+@router.get("/graph", response_model=GraphResponse)
+def get_dependency_graph(
+    manager: ManagerDependency,
+    experiment_filter: FilterDependency,
     limit: int | None = Query(
-        None, description="Maximum number of experiments to consider"
+        None, ge=0, description="Maximum number of experiments to consider"
     ),
     status: str | None = Query(None, description="Filter by experiment status"),
     name_pattern: str | None = Query(
@@ -419,24 +438,16 @@ async def get_dependency_graph(
 
         nodes = []
         for node_id in node_ids:
-            # Load config (parameters) for tooltip display
-            params: dict[str, Any] = {}
-            try:
-                params = manager.storage.load_config(node_id, include_archived=True)
-            except Exception:
-                pass
-
-            # Load metrics for tooltip display
-            metrics: dict[str, Any] = {}
-            try:
-                results = manager.storage.load_results(node_id, include_archived=True)
-                if results:
-                    for result in results:
-                        for k, v in result.items():
-                            if k not in ("step", "timestamp", "last_updated"):
-                                metrics[k] = v
-            except Exception:
-                pass
+            params = manager.storage.load_config(node_id, include_archived=True)
+            metrics = {}
+            for result in manager.storage.load_results(node_id, include_archived=True):
+                metrics.update(
+                    {
+                        key: value
+                        for key, value in result.items()
+                        if key not in ("step", "timestamp", "last_updated")
+                    }
+                )
 
             meta = dep_graph.get_metadata(node_id)
             nodes.append(
@@ -452,5 +463,7 @@ async def get_dependency_graph(
 
         return {"nodes": nodes, "edges": filtered_edges}
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
