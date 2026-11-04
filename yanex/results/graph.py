@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 from ..core.access_resolver import AccessResolver, parse_canonical_key
 from ..core.dependency_graph import DependencyGraph
 from ..core.filtering import ExperimentFilter
+from ..core.parameter_lookup import get_agreed_parameter
 from ..utils.dict_utils import deep_merge, flatten_dict
 from ..utils.exceptions import (
     AmbiguousArtifactError,
@@ -432,33 +433,10 @@ class ExperimentGraph:
             >>> graph.get_param("lr")  # resolves to "model.lr" if unambiguous
             0.001
         """
-        resolver = self._get_resolver()
-        if resolver is None:
-            raise KeyNotFoundError(key, scope="param")
-
-        # Resolve key via AccessResolver — raises KeyNotFoundError or
-        # AmbiguousKeyError if resolution fails
-        canonical = resolver.resolve(key, scope="param")
-        _, resolved_path = parse_canonical_key(canonical)
-
-        # Search all experiments for the resolved key
-        found: list[tuple[str, Any]] = []
-        for exp_id, exp in self._experiments.items():
-            params = flatten_dict(exp.get_params())
-            if resolved_path in params:
-                found.append((exp_id, params[resolved_path]))
-
-        if not found:
-            raise KeyNotFoundError(key, scope="param")
-
-        values = [v for _, v in found]
-        if all(v == values[0] for v in values):
-            return values[0]
-
-        details = ", ".join(f"{eid}={val!r}" for eid, val in found[:5])
-        raise ValueError(
-            f"Parameter '{key}' found in {len(found)} experiments with different "
-            f"values: {details}. Use graph.filter() to select specific experiments."
+        return get_agreed_parameter(
+            key,
+            {exp_id: exp.get_params() for exp_id, exp in self._experiments.items()},
+            resolver=self._get_resolver(),
         )
 
     def get_metric(self, name: str) -> Any:

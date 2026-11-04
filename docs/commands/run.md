@@ -539,6 +539,7 @@ If an experiment was run with uncommitted changes, you can reproduce it by:
 - [Python API Reference](../python-api.md)
 - [Configuration Guide](../configuration.md)
 - [Best Practices - Git Workflow](../best-practices.md#git-workflow-integration)
+
 ## Parameter templates in metadata
 
 Names, tags, and descriptions support placeholders resolved from each experiment's
@@ -558,9 +559,31 @@ such as `{learning_rate}` work. Python format specifications are supported:
 three significant digits, and `{seed:03d}` pads an integer with zeros. Formatting
 does not change stored parameter values.
 
-This first version looks up **local parameters only**. Upstream dependency lookup
-is not yet supported. Missing or ambiguous keys, malformed templates, invalid
-format specifications, and invalid rendered metadata fail before any member of
+Lookup checks the current experiment's parameters first. If a key is absent
+locally, it searches the selected dependencies and all their upstream ancestors,
+including archived experiments. Downstream experiments and sibling branches are
+excluded, and a shared ancestor is counted once.
+
+Repeated occurrences of the same parameter path are accepted when their values
+agree, using the same behavior as `ExperimentGraph.get_param()`. Conflicting
+values fail with the source experiment IDs and values. Different matching paths
+(such as `model.lr` and `optimizer.lr`) remain ambiguous even when their values
+agree; use a more specific path. Local ambiguity fails immediately rather than
+falling back upstream. A local parameter override takes precedence over upstream
+values, including conflicting upstream values.
+
+For example, if a selected training experiment or its ancestor records
+`model.learning_rate`, it can be used in an evaluation name:
+
+```bash
+yanex run evaluate.py -D model=abc12345 \
+  -n "evaluation-lr-{learning_rate:.3g}" \
+  -d "Evaluation of learning rate {model.learning_rate}"
+```
+
+Each dependency-sweep combination uses its own selected ancestors. Dependency
+IDs and statuses, missing or ambiguous keys, malformed templates, invalid format
+specifications, and invalid rendered metadata are checked before any member of
 the sweep is created or executed. `--dry-run` previews rendered metadata for each
 combination. Staging stores the rendered strings; executing a staged run does not
 render them again.
