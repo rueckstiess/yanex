@@ -1,0 +1,9 @@
+batch_size: "10,50,100,200"
+multiplier: 0.125
+
+yanex:
+  name: "batch-{batch_size:03d}-scale-{multiplier:.2f}"
+  tag:
+    - metadata-templates
+    - "batch-{batch_size}"
+  description: "Batch size {batch_size}; multiplier {multiplier:.3g}"
