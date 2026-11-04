@@ -2,24 +2,51 @@
 API routes for yanex web UI.
 """
 
-from typing import Any
+from functools import lru_cache
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..cli.filters import ExperimentFilter
+from ..core.dependency_graph import DependencyGraph
 from ..core.manager import ExperimentManager
+from .models import ExperimentDetail, ExperimentPage, GraphResponse, StatusSummary
+from .queries import parse_filters
 
 router = APIRouter()
 
 # Initialize experiment manager and filter
-manager = ExperimentManager()
-experiment_filter = ExperimentFilter()
+manager = None
+experiment_filter = None
 
 
-@router.get("/experiments")
-async def list_experiments(
+@lru_cache
+def default_manager():
+    return ExperimentManager()
+
+
+@lru_cache
+def default_filter():
+    return ExperimentFilter()
+
+
+def get_manager():
+    return manager if manager is not None else default_manager()
+
+
+def get_filter():
+    return experiment_filter if experiment_filter is not None else default_filter()
+
+
+ManagerDependency = Annotated[ExperimentManager, Depends(get_manager)]
+FilterDependency = Annotated[ExperimentFilter, Depends(get_filter)]
+
+
+@router.get("/experiments", response_model=ExperimentPage)
+def list_experiments(
+    experiment_filter: FilterDependency,
     limit: int | None = Query(
-        None, description="Maximum number of experiments to return"
+        None, ge=0, description="Maximum number of experiments to return"
     ),
     status: str | None = Query(None, description="Filter by experiment status"),
     name_pattern: str | None = Query(
@@ -44,50 +71,33 @@ async def list_experiments(
         "created_at", description="Sort by field: 'name', 'status', 'created_at'"
     ),
     sort_order: str = Query("desc", description="Sort order: 'asc' or 'desc'"),
-    page: int = Query(1, description="Page number for pagination"),
+    page: int = Query(1, ge=1, description="Page number for pagination"),
     archived: bool = Query(False, description="Include archived experiments"),
     project: str | None = Query(None, description="Filter by project name"),
 ) -> dict[str, Any]:
     """List experiments with filtering options."""
     try:
-        # Parse tags if provided
-        tag_list = None
-        if tags:
-            tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
+        # Normalize FastAPI Query defaults when function is called directly
+        tags = tags if isinstance(tags, str) else None
+        status = status if isinstance(status, str) else None
+        name_pattern = name_pattern if isinstance(name_pattern, str) else None
+        started_after = started_after if isinstance(started_after, str) else None
+        started_before = started_before if isinstance(started_before, str) else None
+        ended_after = ended_after if isinstance(ended_after, str) else None
+        ended_before = ended_before if isinstance(ended_before, str) else None
+        sort_by = sort_by if isinstance(sort_by, str) else "created_at"
+        sort_order = sort_order if isinstance(sort_order, str) else "desc"
+        project = project if isinstance(project, str) else None
 
-        # Parse time filters
-        started_after_dt = None
-        started_before_dt = None
-        ended_after_dt = None
-        ended_before_dt = None
-
-        if started_after:
-            from ..cli.error_handling import CLIErrorHandler
-
-            started_after_dt, _, _, _ = CLIErrorHandler.parse_time_filters(
-                started_after, None, None, None
-            )
-
-        if started_before:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, started_before_dt, _, _ = CLIErrorHandler.parse_time_filters(
-                None, started_before, None, None
-            )
-
-        if ended_after:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, _, ended_after_dt, _ = CLIErrorHandler.parse_time_filters(
-                None, None, ended_after, None
-            )
-
-        if ended_before:
-            from ..cli.error_handling import CLIErrorHandler
-
-            _, _, _, ended_before_dt = CLIErrorHandler.parse_time_filters(
-                None, None, None, ended_before
-            )
+        (
+            tag_list,
+            started_after_dt,
+            started_before_dt,
+            ended_after_dt,
+            ended_before_dt,
+        ) = parse_filters(
+            tags, started_after, started_before, ended_after, ended_before
+        )
 
         # Get ALL experiments first (no limit applied yet)
         # Note: archived parameter changed - True=only archived, False=only non-archived, None=both
@@ -152,12 +162,19 @@ async def list_experiments(
             "has_prev": page > 1,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/experiments/{experiment_id}")
-async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str, Any]:
+@router.get("/experiments/{experiment_id}", response_model=ExperimentDetail)
+def get_experiment(
+    experiment_id: str,
+    manager: ManagerDependency,
+    experiment_filter: FilterDependency,
+    archived: bool = False,
+) -> dict[str, Any]:
     """Get detailed information about a specific experiment."""
     try:
         # Find the experiment
@@ -168,56 +185,40 @@ async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str
         # Note: Manual archived filtering removed - now handled by filter_experiments()
 
         # Find matching experiment
-        experiment = None
-        for exp in experiments:
-            if exp["id"] == experiment_id or exp["id"].startswith(experiment_id):
-                experiment = exp
-                break
-
-        if not experiment:
+        exact = [exp for exp in experiments if exp["id"] == experiment_id]
+        matches = exact or [
+            exp for exp in experiments if exp["id"].startswith(experiment_id)
+        ]
+        if not matches:
             raise HTTPException(status_code=404, detail="Experiment not found")
-
-        # Get additional details
-        try:
-            config = manager.storage.load_config(
-                experiment_id, include_archived=archived
+        if len(matches) > 1:
+            raise HTTPException(
+                status_code=409, detail="Ambiguous experiment ID prefix"
             )
-        except Exception:
-            config = {}
+        experiment = matches[0]
+        experiment_id = experiment["id"]
 
-        try:
-            results = manager.storage.load_results(
-                experiment_id, include_archived=archived
-            )
-        except Exception:
-            results = []
-
-        try:
-            metadata = manager.storage.load_metadata(
-                experiment_id, include_archived=archived
-            )
-        except Exception:
-            metadata = {}
-
-        # Get artifacts
-        try:
-            exp_dir = manager.storage.get_experiment_dir(
-                experiment_id, include_archived=archived
-            )
-            artifacts_dir = exp_dir / "artifacts"
-            artifacts = []
-            if artifacts_dir.exists():
-                for artifact_path in artifacts_dir.iterdir():
-                    if artifact_path.is_file():
-                        artifacts.append(
-                            {
-                                "name": artifact_path.name,
-                                "size": artifact_path.stat().st_size,
-                                "modified": artifact_path.stat().st_mtime,
-                            }
-                        )
-        except Exception:
-            artifacts = []
+        config = manager.storage.load_config(experiment_id, include_archived=archived)
+        results = manager.storage.load_results(experiment_id, include_archived=archived)
+        metadata = manager.storage.load_metadata(
+            experiment_id, include_archived=archived
+        )
+        exp_dir = manager.storage.get_experiment_dir(
+            experiment_id, include_archived=archived
+        )
+        artifacts_dir = exp_dir / "artifacts"
+        artifacts = []
+        if artifacts_dir.exists():
+            for path in sorted(artifacts_dir.iterdir()):
+                if path.is_file():
+                    stat = path.stat()
+                    artifacts.append(
+                        {
+                            "name": path.name,
+                            "size": stat.st_size,
+                            "modified": stat.st_mtime,
+                        }
+                    )
 
         return {
             "experiment": experiment,
@@ -234,8 +235,11 @@ async def get_experiment(experiment_id: str, archived: bool = False) -> dict[str
 
 
 @router.get("/experiments/{experiment_id}/artifacts/{artifact_name}")
-async def download_artifact(
-    experiment_id: str, artifact_name: str, archived: bool = False
+def download_artifact(
+    experiment_id: str,
+    artifact_name: str,
+    manager: ManagerDependency,
+    archived: bool = False,
 ):
     """Download an artifact file."""
     try:
@@ -261,8 +265,8 @@ async def download_artifact(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/status")
-async def get_status() -> dict[str, Any]:
+@router.get("/status", response_model=StatusSummary)
+def get_status(experiment_filter: FilterDependency) -> dict[str, Any]:
     """Get system status and statistics."""
     try:
         # Get basic statistics
@@ -288,5 +292,178 @@ async def get_status() -> dict[str, Any]:
             "status_counts": status_counts,
         }
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/graph", response_model=GraphResponse)
+def get_dependency_graph(
+    manager: ManagerDependency,
+    experiment_filter: FilterDependency,
+    limit: int | None = Query(
+        None, ge=0, description="Maximum number of experiments to consider"
+    ),
+    status: str | None = Query(None, description="Filter by experiment status"),
+    name_pattern: str | None = Query(
+        None, description="Filter by name using glob patterns"
+    ),
+    tags: str | None = Query(
+        None, description="Comma-separated list of tags to filter by"
+    ),
+    started_after: str | None = Query(
+        None, description="Filter experiments started after this date"
+    ),
+    started_before: str | None = Query(
+        None, description="Filter experiments started before this date"
+    ),
+    ended_after: str | None = Query(
+        None, description="Filter experiments ended after this date"
+    ),
+    ended_before: str | None = Query(
+        None, description="Filter experiments ended before this date"
+    ),
+    sort_by: str = Query(
+        "created_at", description="Sort by field: 'name', 'status', 'created_at'"
+    ),
+    sort_order: str = Query(
+        "desc", description="Sort order: 'asc'/'desc' or 'newest'/'oldest'"
+    ),
+    project: str | None = Query(None, description="Filter by project name"),
+) -> dict[str, Any]:
+    """Get the full dependency graph using the reverse graph.
+
+    Returns all experiments that participate in at least one dependency
+    relationship. Edges point from dependency to dependent (data-flow direction).
+    """
+    try:
+        # Normalize FastAPI Query defaults when function is called directly
+        tags = tags if isinstance(tags, str) else None
+        status = status if isinstance(status, str) else None
+        name_pattern = name_pattern if isinstance(name_pattern, str) else None
+        started_after = started_after if isinstance(started_after, str) else None
+        started_before = started_before if isinstance(started_before, str) else None
+        ended_after = ended_after if isinstance(ended_after, str) else None
+        ended_before = ended_before if isinstance(ended_before, str) else None
+        sort_by = sort_by if isinstance(sort_by, str) else "created_at"
+        sort_order = sort_order if isinstance(sort_order, str) else "desc"
+        project = project if isinstance(project, str) else None
+
+        (
+            tag_list,
+            started_after_dt,
+            started_before_dt,
+            ended_after_dt,
+            ended_before_dt,
+        ) = parse_filters(
+            tags, started_after, started_before, ended_after, ended_before
+        )
+
+        # Apply same filtering semantics as experiment list endpoint
+        filtered_experiments = experiment_filter.filter_experiments(
+            status=status,
+            name=name_pattern,
+            tags=tag_list,
+            started_after=started_after_dt,
+            started_before=started_before_dt,
+            ended_after=ended_after_dt,
+            ended_before=ended_before_dt,
+            archived=False,
+            project=project,
+            limit=None,
+            include_all=True,
+        )
+
+        # Apply sorting semantics
+        # "none" preserves ExperimentFilter's natural ordering
+        if sort_order in ["newest", "oldest"]:
+            reverse = sort_order == "newest"
+            sort_by = "created_at"
+            if sort_by == "name":
+                filtered_experiments.sort(
+                    key=lambda x: (x.get("name") or "").lower(), reverse=reverse
+                )
+            elif sort_by == "status":
+                filtered_experiments.sort(
+                    key=lambda x: x.get("status", ""), reverse=reverse
+                )
+            else:
+                filtered_experiments.sort(
+                    key=lambda x: x.get("created_at", ""), reverse=reverse
+                )
+        elif sort_order in ["asc", "desc"]:
+            reverse = sort_order == "desc"
+            if sort_by == "name":
+                filtered_experiments.sort(
+                    key=lambda x: (x.get("name") or "").lower(), reverse=reverse
+                )
+            elif sort_by == "status":
+                filtered_experiments.sort(
+                    key=lambda x: x.get("status", ""), reverse=reverse
+                )
+            else:
+                filtered_experiments.sort(
+                    key=lambda x: x.get("created_at", ""), reverse=reverse
+                )
+
+        if limit and limit > 0:
+            filtered_experiments = filtered_experiments[:limit]
+
+        allowed_ids = {exp["id"] for exp in filtered_experiments}
+
+        dep_graph = DependencyGraph(manager.storage)
+        graph = dep_graph.get_dataflow_graph()
+
+        # Keep only edges where both endpoints match filters
+        filtered_edges = []
+        node_ids: set[str] = set()
+        for u, v, data in graph.edges(data=True):
+            if u in allowed_ids and v in allowed_ids:
+                filtered_edges.append(
+                    {
+                        "source": u,
+                        "target": v,
+                        "slot": data.get("slot", ""),
+                    }
+                )
+                node_ids.add(u)
+                node_ids.add(v)
+
+        # Also include filtered experiments that are part of the dependency graph,
+        # even if no same-filter edge remains (e.g. failed child of completed parent)
+        for exp_id in allowed_ids:
+            if exp_id in graph:
+                node_ids.add(exp_id)
+
+        nodes = []
+        for node_id in node_ids:
+            params = manager.storage.load_config(node_id, include_archived=True)
+            metrics = {}
+            for result in manager.storage.load_results(node_id, include_archived=True):
+                metrics.update(
+                    {
+                        key: value
+                        for key, value in result.items()
+                        if key not in ("step", "timestamp", "last_updated")
+                    }
+                )
+
+            meta = dep_graph.get_metadata(node_id)
+            nodes.append(
+                {
+                    "id": node_id,
+                    "name": meta.get("name", ""),
+                    "status": meta.get("status", "unknown"),
+                    "script": meta.get("script", ""),
+                    "params": params,
+                    "metrics": metrics,
+                }
+            )
+
+        return {"nodes": nodes, "edges": filtered_edges}
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
